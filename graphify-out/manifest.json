@@ -145,9 +145,9 @@
     "semantic_hash": "ff51cc45b706be0d3b4aec79d771bbbb"
   },
   "apps/lyron_app/lib/src/application/planning/drift_planning_mutation_store.dart": {
-    "mtime": 1786207189.739655,
-    "ast_hash": "500deb0ecfc959812eef58229e814fad",
-    "semantic_hash": "500deb0ecfc959812eef58229e814fad"
+    "mtime": 1790838015.6949317,
+    "ast_hash": "e6129db172cc17b57e8712ea4dd0a78d",
+    "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/planning/planning_data_revision.dart": {
     "mtime": 1786207189.739971,
@@ -155,19 +155,19 @@
     "semantic_hash": "ac900f147c0626f0d8120dd422a6ef96"
   },
   "apps/lyron_app/lib/src/application/planning/planning_local_read_repository.dart": {
-    "mtime": 1786207189.7402737,
-    "ast_hash": "3c9096f42c257be0af1c806c9c72d351",
-    "semantic_hash": "3c9096f42c257be0af1c806c9c72d351"
+    "mtime": 1790838015.6955028,
+    "ast_hash": "fad40118b8caa74d38ef8cdb1a00630c",
+    "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/planning/planning_mutation_sync_controller.dart": {
-    "mtime": 1787666672.1719968,
-    "ast_hash": "d180ff523d7994573ba9261b47ed9ba8",
-    "semantic_hash": "d180ff523d7994573ba9261b47ed9ba8"
+    "mtime": 1790838015.6962392,
+    "ast_hash": "af3ac35c12041b8b1e82b4464383413e",
+    "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/planning/planning_mutation_sync_types.dart": {
-    "mtime": 1786130453.210866,
-    "ast_hash": "84edf049f1321227cb415d153cd4c78e",
-    "semantic_hash": "84edf049f1321227cb415d153cd4c78e"
+    "mtime": 1790838015.6965907,
+    "ast_hash": "5cbe559debdc1af1c38bd0eef70873d3",
+    "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/planning/planning_remote_refresh_repository.dart": {
     "mtime": 1775242229.9732199,
@@ -175,14 +175,14 @@
     "semantic_hash": "578bdd72d5623f7f2ff41dae75e73b83"
   },
   "apps/lyron_app/lib/src/application/planning/planning_sync_controller.dart": {
-    "mtime": 1790697604.248846,
-    "ast_hash": "aee55e85e06d0b9a8e6343267a3b6552",
-    "semantic_hash": "aee55e85e06d0b9a8e6343267a3b6552"
+    "mtime": 1790838015.6968114,
+    "ast_hash": "dc45523a54aa9864382ec367d0c60a6b",
+    "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/planning/planning_sync_payload.dart": {
-    "mtime": 1775927170.3988783,
-    "ast_hash": "123e183497f08e8fc9aef10b2d43dfca",
-    "semantic_hash": "123e183497f08e8fc9aef10b2d43dfca"
+    "mtime": 1790838015.6970255,
+    "ast_hash": "433f9a95b6f7f759127a40aada354068",
+    "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/planning/planning_sync_state.dart": {
     "mtime": 1775242229.9741623,
@@ -190,9 +190,9 @@
     "semantic_hash": "519288b21423618c87c95434293efb74"
   },
   "apps/lyron_app/lib/src/application/planning/planning_write_service.dart": {
-    "mtime": 1787507734.99421,
-    "ast_hash": "a98ba04245d3c8c1c64bcc425ba499d4",
-    "semantic_hash": "a98ba04245d3c8c1c64bcc425ba499d4"
+    "mtime": 1790838015.697322,
+    "ast_hash": "16c1a50be62853cb899f0a642e2a5398",
+    "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/providers.dart": {
     "mtime": 1790532990.4920275,
@@ -300,9 +300,9 @@
     "semantic_hash": "7f27e76515c385c648d614423e6129a2"
   },
   "apps/lyron_app/lib/src/application/sync/unified_sync_overview.dart": {
-    "mtime": 1786130453.216853,
-    "ast_hash": "f21ba7bc96cef5cd7fa696f8c6707576",
-    "semantic_hash": "f21ba7bc96cef5cd7fa696f8c6707576"
+    "mtime": 1790838015.6975436,
+    "ast_hash": "2326f978a32935185da4272c2a8d3c40",
+    "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/bootstrap/bootstrap.dart": {
     "mtime": 1790697604.2501574,
@@ -350,9 +350,9 @@
     "semantic_hash": "d98ce94be2a76f8c8744ae49086880be"
   },
   "apps/lyron_app/lib/src/domain/planning/plan_summary.dart": {
-    "mtime": 1775927170.4019663,
-    "ast_hash": "55d8b703243f6bd1351751d5e94e5755",
-    "semantic_hash": "55d8b703243f6bd1351751d5e94e5755"
+    "mtime": 1790838015.6977448,
+    "ast_hash": "492edba3752ec945eee7063fbabce6aa",
+    "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/domain/planning/planning_repository.dart": {
     "mtime": 1775327448.972303,
@@ -440,14 +440,14 @@
     "semantic_hash": "6f8f4ecda3e1fab6f3a519e31419b6f0"
   },
   "apps/lyron_app/lib/src/infrastructure/planning/supabase_planning_mutation_repository.dart": {
-    "mtime": 1787666672.1736884,
-    "ast_hash": "f3e7b53f97f2876e2dfb8f43a823a35e",
-    "semantic_hash": "f3e7b53f97f2876e2dfb8f43a823a35e"
+    "mtime": 1790838015.6981063,
+    "ast_hash": "c45a9a797945ce4d5c99320e8a39d8d4",
+    "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/infrastructure/planning/supabase_planning_repository.dart": {
-    "mtime": 1786207189.7468574,
-    "ast_hash": "fc4e7db66f30dcb10ad9b0ac58a2ffbb",
-    "semantic_hash": "fc4e7db66f30dcb10ad9b0ac58a2ffbb"
+    "mtime": 1790838015.6983497,
+    "ast_hash": "920892049fa4f5d622cbf53ef3879b5d",
+    "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/infrastructure/song_library/asset_song_repository.dart": {
     "mtime": 1775327448.98229,
@@ -495,14 +495,14 @@
     "semantic_hash": "896bc7e582b3095c72269b5b5c7074ac"
   },
   "apps/lyron_app/lib/src/offline/planning/planning_local_database.dart": {
-    "mtime": 1786130453.2179627,
-    "ast_hash": "2fd4006570d59afe964a6cd698a4865c",
-    "semantic_hash": "2fd4006570d59afe964a6cd698a4865c"
+    "mtime": 1790838015.6985419,
+    "ast_hash": "d2718c28cd901de79833793b0fa7e312",
+    "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/offline/planning/planning_local_database.g.dart": {
-    "mtime": 1786130453.218606,
-    "ast_hash": "2911f521a149661ff3caf7bf0195d2a8",
-    "semantic_hash": "2911f521a149661ff3caf7bf0195d2a8"
+    "mtime": 1790838015.698894,
+    "ast_hash": "c30d23c4ef805b8f44d01caa221173af",
+    "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/offline/planning/planning_local_database_connection.dart": {
     "mtime": 1775242229.9762263,
@@ -525,14 +525,14 @@
     "semantic_hash": "3cc677a9c42b5e779930b6c20a197a48"
   },
   "apps/lyron_app/lib/src/offline/planning/planning_local_store.dart": {
-    "mtime": 1786207189.747829,
-    "ast_hash": "c162121f19934855c4bca77a80fccd44",
-    "semantic_hash": "c162121f19934855c4bca77a80fccd44"
+    "mtime": 1790838015.6991057,
+    "ast_hash": "613b715ddd1fc5aefb502646b40372c5",
+    "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/offline/planning/planning_local_tables.dart": {
-    "mtime": 1786130453.2193775,
-    "ast_hash": "118d0307976d9f01cddf9baf06290513",
-    "semantic_hash": "118d0307976d9f01cddf9baf06290513"
+    "mtime": 1790838015.699326,
+    "ast_hash": "a795fb5210e8a7e47ac25a264c915038",
+    "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/offline/song_catalog/song_catalog_database.dart": {
     "mtime": 1787432015.9180834,
@@ -615,9 +615,9 @@
     "semantic_hash": "dcd06cc7e5ec707052097b5ab75ef1b1"
   },
   "apps/lyron_app/lib/src/presentation/planning/plan_detail_screen.dart": {
-    "mtime": 1786207189.7485895,
-    "ast_hash": "43cca475d49734acdfd1a9dcebd26c11",
-    "semantic_hash": "43cca475d49734acdfd1a9dcebd26c11"
+    "mtime": 1790838015.69973,
+    "ast_hash": "9150708e1f836841a0e31f0bda0302da",
+    "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/presentation/planning/plan_list_screen.dart": {
     "mtime": 1785300464.1058578,
@@ -875,9 +875,9 @@
     "semantic_hash": "7eb85f8472ecfe0a56aa527bbc0aeb3a"
   },
   "apps/lyron_app/lib/src/presentation/sync/unified_sync_providers.dart": {
-    "mtime": 1790697604.2521884,
-    "ast_hash": "3b10c5d53296105c1f957143ec3d6d91",
-    "semantic_hash": "3b10c5d53296105c1f957143ec3d6d91"
+    "mtime": 1790838015.700368,
+    "ast_hash": "899d8aff992bb0ce668a9070cc2161d2",
+    "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/presentation/sync/unified_sync_status_popup.dart": {
     "mtime": 1790697604.2525375,
@@ -905,9 +905,9 @@
     "semantic_hash": "c6377a4abc6f16b7bed5c6fd67ff623d"
   },
   "apps/lyron_app/lib/src/shared/app_strings.dart": {
-    "mtime": 1790697604.2529068,
-    "ast_hash": "35d6f8e124755678da2ed4b1ae1e4b27",
-    "semantic_hash": "35d6f8e124755678da2ed4b1ae1e4b27"
+    "mtime": 1790838015.7006156,
+    "ast_hash": "22f13204800862438afaaf63663213f7",
+    "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/shared/connectivity_failure.dart": {
     "mtime": 1775160199.5095043,
@@ -915,9 +915,9 @@
     "semantic_hash": "0331a2a3e625539209ad663c85c214a1"
   },
   "apps/lyron_app/test/app/lyron_app_test.dart": {
-    "mtime": 1787666672.175782,
-    "ast_hash": "c7d9296c4e0264949ac6a0fecf37dfc8",
-    "semantic_hash": "c7d9296c4e0264949ac6a0fecf37dfc8"
+    "mtime": 1790838015.701356,
+    "ast_hash": "349b2f0027915d1fb817deff3baee7ab",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/application/active_organization_resolution_test.dart": {
     "mtime": 1777704136.2135193,
@@ -960,29 +960,29 @@
     "semantic_hash": "5b70cc28b57e54002c6664aa130c612d"
   },
   "apps/lyron_app/test/application/planning/planning_local_read_repository_test.dart": {
-    "mtime": 1786207189.7532766,
-    "ast_hash": "7ea2234803d05df277edf038ae32d68b",
-    "semantic_hash": "7ea2234803d05df277edf038ae32d68b"
+    "mtime": 1790838015.7021115,
+    "ast_hash": "20e7c7f78400a5ebe598cc75bffddf88",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/application/planning/planning_mutation_sync_controller_test.dart": {
-    "mtime": 1787666672.1773007,
-    "ast_hash": "0d48a9d0fc253d58250ce5bf799bd567",
-    "semantic_hash": "0d48a9d0fc253d58250ce5bf799bd567"
+    "mtime": 1790838015.702591,
+    "ast_hash": "740986e3a1833d625e0d0988a3d60fbf",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/application/planning/planning_sync_controller_test.dart": {
-    "mtime": 1790697604.2561324,
-    "ast_hash": "e6e97d997d5fee3eb5b70974961e4feb",
-    "semantic_hash": "e6e97d997d5fee3eb5b70974961e4feb"
+    "mtime": 1790838015.7029624,
+    "ast_hash": "08f86da50156ba1c7b15f55fe2e27732",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/application/planning/planning_write_service_test.dart": {
-    "mtime": 1787666672.1775973,
-    "ast_hash": "5d85bbb01008b31e7161de3a9209bd0e",
-    "semantic_hash": "5d85bbb01008b31e7161de3a9209bd0e"
+    "mtime": 1790838015.7034395,
+    "ast_hash": "22c39091f0c5b730cc4fcce7636a769d",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/application/providers_test.dart": {
-    "mtime": 1790697604.2567148,
-    "ast_hash": "278e34c034513a5d3e38315b5ae7bf08",
-    "semantic_hash": "278e34c034513a5d3e38315b5ae7bf08"
+    "mtime": 1790838015.7036324,
+    "ast_hash": "2d2c09591e15c54c7ec00da6756d6d3a",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/application/song_library/chordpro_import_service_test.dart": {
     "mtime": 1786130453.2271848,
@@ -1025,9 +1025,9 @@
     "semantic_hash": "d5f1e281ef5f213cc287f39c243339a9"
   },
   "apps/lyron_app/test/application/sync/unified_discard_controller_test.dart": {
-    "mtime": 1786130453.229848,
-    "ast_hash": "9557e0953a1d434a33b5705d42eca291",
-    "semantic_hash": "9557e0953a1d434a33b5705d42eca291"
+    "mtime": 1790838015.7040346,
+    "ast_hash": "9773ed9317be4a4bdd4d0bd76fb596d2",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/application/sync/unified_manual_sync_controller_test.dart": {
     "mtime": 1790697604.2578473,
@@ -1045,9 +1045,9 @@
     "semantic_hash": "86ed41af52a57f239e8836d4283be808"
   },
   "apps/lyron_app/test/application/sync/unified_sync_overview_test.dart": {
-    "mtime": 1787666672.1790895,
-    "ast_hash": "af114f9a5fc3abf60f6c9b7d9f63a447",
-    "semantic_hash": "af114f9a5fc3abf60f6c9b7d9f63a447"
+    "mtime": 1790838015.7043738,
+    "ast_hash": "4331ade20985fb53d8c3a0985fc36739",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/application/sync/unified_sync_providers_test.dart": {
     "mtime": 1786130453.2307138,
@@ -1085,14 +1085,14 @@
     "semantic_hash": "619a6f8385b87e49f92dcde94498fe5b"
   },
   "apps/lyron_app/test/infrastructure/planning/supabase_planning_mutation_repository_test.dart": {
-    "mtime": 1787666672.1794865,
-    "ast_hash": "ef137958400b4c0ab914eb07e8902f08",
-    "semantic_hash": "ef137958400b4c0ab914eb07e8902f08"
+    "mtime": 1790838015.704536,
+    "ast_hash": "76e3d9d34b113638c7d80ab047cb07f4",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/infrastructure/planning/supabase_planning_repository_test.dart": {
-    "mtime": 1775242229.9813154,
-    "ast_hash": "d935fcac588954c630c3d25395531968",
-    "semantic_hash": "d935fcac588954c630c3d25395531968"
+    "mtime": 1790838015.704722,
+    "ast_hash": "f2ce148ac87479f22e5bac5d696be649",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/infrastructure/song_library/asset_song_repository_test.dart": {
     "mtime": 1775160199.5160277,
@@ -1180,9 +1180,9 @@
     "semantic_hash": "90b2efb803315072d29562563e9749b4"
   },
   "apps/lyron_app/test/integration/song_list_plan_song_pick_flow_test.dart": {
-    "mtime": 1786130453.2310789,
-    "ast_hash": "7e23ed4494fd3f545b618c814f59fc3a",
-    "semantic_hash": "7e23ed4494fd3f545b618c814f59fc3a"
+    "mtime": 1790838015.7049205,
+    "ast_hash": "653bf94855130382e87aad8b77489058",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/integration/song_reader_flow_test.dart": {
     "mtime": 1787315862.222219,
@@ -1195,19 +1195,19 @@
     "semantic_hash": "81231325371d1b9468b04c13a02a9554"
   },
   "apps/lyron_app/test/offline/planning/planning_local_store_test.dart": {
-    "mtime": 1787432015.9299233,
-    "ast_hash": "9b8a056ec502030acef495b0b281841e",
-    "semantic_hash": "9b8a056ec502030acef495b0b281841e"
+    "mtime": 1790838015.706135,
+    "ast_hash": "6c2b00a8a5cf0f44e87a208b9616edc5",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/offline/planning/planning_mutation_store_test.dart": {
-    "mtime": 1786130453.2370563,
-    "ast_hash": "a076883ea98c98762ec7fca379acb5a5",
-    "semantic_hash": "a076883ea98c98762ec7fca379acb5a5"
+    "mtime": 1790838015.706366,
+    "ast_hash": "48e20c3293223725f8533417b420d22b",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/offline/song_catalog/song_catalog_store_test.dart": {
-    "mtime": 1787666672.182581,
-    "ast_hash": "9c050ce334bc3d6669efe111e499bf64",
-    "semantic_hash": "9c050ce334bc3d6669efe111e499bf64"
+    "mtime": 1790838015.7065842,
+    "ast_hash": "95143cc579832e6c9ad5b41f8a615b87",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/presentation/account/account_screen_test.dart": {
     "mtime": 1779695501.9180784,
@@ -1225,14 +1225,14 @@
     "semantic_hash": "33fe1884a407b3f56e1c641f7562f46f"
   },
   "apps/lyron_app/test/presentation/planning/plan_detail_screen_test.dart": {
-    "mtime": 1787142672.4616296,
-    "ast_hash": "3785bec192410ca0e4f3f0c8ba7c7fea",
-    "semantic_hash": "3785bec192410ca0e4f3f0c8ba7c7fea"
+    "mtime": 1790838015.707171,
+    "ast_hash": "0ff36a1548d506df9cc889769e7dffbe",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/presentation/planning/plan_list_screen_test.dart": {
-    "mtime": 1786130453.238893,
-    "ast_hash": "4a8289d6c5090b7924374d13f48ffac5",
-    "semantic_hash": "4a8289d6c5090b7924374d13f48ffac5"
+    "mtime": 1790838015.707452,
+    "ast_hash": "08e1281d5657534c697fc4542aee0982",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/presentation/planning/session_song_picker_test.dart": {
     "mtime": 1776793002.1673214,
@@ -1275,9 +1275,9 @@
     "semantic_hash": "df91520a1b1c29e621bd96aea5306734"
   },
   "apps/lyron_app/test/presentation/song_library/song_list_screen_test.dart": {
-    "mtime": 1790697604.2593262,
-    "ast_hash": "01ce78f13fa8c0a3a7cd0c247c2b2a10",
-    "semantic_hash": "01ce78f13fa8c0a3a7cd0c247c2b2a10"
+    "mtime": 1790838015.7078407,
+    "ast_hash": "d55e3f45d8271bee6f4279c8aa7f86ce",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/presentation/song_reader/session_scoped_reader_context_provider_test.dart": {
     "mtime": 1786190235.840723,
@@ -1375,9 +1375,9 @@
     "semantic_hash": "7c5e266985e5ad213073d1f19c0704ba"
   },
   "apps/lyron_app/test/presentation/sync/unified_sync_status_popup_test.dart": {
-    "mtime": 1790697604.2598383,
-    "ast_hash": "596dc4da2355ccbdb185c3e199b73d45",
-    "semantic_hash": "596dc4da2355ccbdb185c3e199b73d45"
+    "mtime": 1790838015.7080662,
+    "ast_hash": "3e9ba9402926760fb3d2daaa0ae3686f",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/router/app_router_test.dart": {
     "mtime": 1787666672.1838381,
@@ -1445,9 +1445,9 @@
     "semantic_hash": "359b34bfc639e7dc071aa6cddeec38a6"
   },
   "scripts/backend-write-contracts.sh": {
-    "mtime": 1786220044.232202,
-    "ast_hash": "64b44e592a833a175dae805f21ee2faa",
-    "semantic_hash": "64b44e592a833a175dae805f21ee2faa"
+    "mtime": 1790838015.7109125,
+    "ast_hash": "b6dd0361bb3eb931667a7125146df2b9",
+    "semantic_hash": ""
   },
   "scripts/bootstrap-app.sh": {
     "mtime": 1775160199.5528417,
@@ -1785,9 +1785,9 @@
     "semantic_hash": "29af3e2b7fc6997d0dbadf9db3fb9c45"
   },
   "docs/architecture/architecture.md": {
-    "mtime": 1790697604.2608097,
-    "ast_hash": "eadb36a3040f0aa507552e201df0d383",
-    "semantic_hash": "eadb36a3040f0aa507552e201df0d383"
+    "mtime": 1790838015.7082767,
+    "ast_hash": "01dd2ed1b5f52d0813880dc7997f8d49",
+    "semantic_hash": ""
   },
   "docs/architecture/decisions/2026-03-25-local-first-authenticated-song-catalog-cache.md": {
     "mtime": 1774560455.9505816,
@@ -1890,9 +1890,9 @@
     "semantic_hash": "64901fe62fb2d4d471e98680c1e7a307"
   },
   "docs/architecture/state-machines.md": {
-    "mtime": 1779695501.921269,
-    "ast_hash": "606a0bc72085d05a753b3ba5742dee2b",
-    "semantic_hash": "606a0bc72085d05a753b3ba5742dee2b"
+    "mtime": 1790838015.7085862,
+    "ast_hash": "421c0efb45cf2936290f8a48de50d0d0",
+    "semantic_hash": ""
   },
   "docs/deferred/2026-04-22-song-reader-chordpro-modulation.md": {
     "mtime": 1778345711.1928215,
@@ -1905,9 +1905,9 @@
     "semantic_hash": "76ecd28749e12aff9ee5be0d772fd680"
   },
   "docs/domain/domain-model.md": {
-    "mtime": 1785405729.8344457,
-    "ast_hash": "18fd1375f905158893fbcfd30d3ffdd5",
-    "semantic_hash": "18fd1375f905158893fbcfd30d3ffdd5"
+    "mtime": 1790838015.709516,
+    "ast_hash": "d96e39e48a53b4141a70fb1bdd888e43",
+    "semantic_hash": ""
   },
   "docs/domain/domain-vocabulary.md": {
     "mtime": 1779695501.9224043,
@@ -2615,9 +2615,9 @@
     "semantic_hash": "d10544284cbc9b1c8cb577f41326dce8"
   },
   "apps/lyron_app/lib/src/application/planning/planning_mutation_reconciler.dart": {
-    "mtime": 1786207189.740554,
-    "ast_hash": "764f9ed1cdf66bc51abde21367342ea3",
-    "semantic_hash": "764f9ed1cdf66bc51abde21367342ea3"
+    "mtime": 1790838015.6958802,
+    "ast_hash": "5794d872bf1a83aa265a0230fe294aa2",
+    "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/offline/auth/drift_last_known_identity_store.dart": {
     "mtime": 1787666672.1740863,
@@ -2690,14 +2690,14 @@
     "semantic_hash": "8a08c973ac016eec39d011cf684fde13"
   },
   "apps/lyron_app/test/application/planning/planning_mutation_reconciler_test.dart": {
-    "mtime": 1782669890.4267302,
-    "ast_hash": "224401fc82c3840f4d1cd4f792fce2f2",
-    "semantic_hash": "224401fc82c3840f4d1cd4f792fce2f2"
+    "mtime": 1790838015.7022924,
+    "ast_hash": "c61542d26dafeb32c2b9f97e40cdffa6",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/application/planning/planning_mutation_sync_types_test.dart": {
-    "mtime": 1782669890.4271777,
-    "ast_hash": "f4ad6e7e8de18333b8ba494ab94dfdfe",
-    "semantic_hash": "f4ad6e7e8de18333b8ba494ab94dfdfe"
+    "mtime": 1790838015.7027526,
+    "ast_hash": "a532fcf53c3ec98a94bf9de9714e416f",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/integration/offline_edit_relaunch_sync_flow_test.dart": {
     "mtime": 1787666672.181678,
@@ -2705,9 +2705,9 @@
     "semantic_hash": "0ab987a4f907e7e993a3c798bccddcbe"
   },
   "apps/lyron_app/test/integration/two_device_conflict_matrix_test.dart": {
-    "mtime": 1787666672.1819012,
-    "ast_hash": "077593c848d60851bcdbbb2bd8f25343",
-    "semantic_hash": "077593c848d60851bcdbbb2bd8f25343"
+    "mtime": 1790838015.7050982,
+    "ast_hash": "3c5589aebbdff9fc61177e373d6c3109",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/offline/adversarial/clock_skew_probe_test.dart": {
     "mtime": 1782718654.4563866,
@@ -2715,9 +2715,9 @@
     "semantic_hash": "cdd803d2f9ce17f82c505b656a870304"
   },
   "apps/lyron_app/test/offline/adversarial/planning_fault_injection_test.dart": {
-    "mtime": 1786130453.2314227,
-    "ast_hash": "9bbe29a9dc5a9aff9613c45f7d701631",
-    "semantic_hash": "9bbe29a9dc5a9aff9613c45f7d701631"
+    "mtime": 1790838015.7053812,
+    "ast_hash": "9495fe60c717117cc708869222b545db",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/offline/adversarial/planning_merge_visibility_test.dart": {
     "mtime": 1785300464.1175022,
@@ -2725,14 +2725,14 @@
     "semantic_hash": "902a1ffc7688b1c70dac64ef947d5a33"
   },
   "apps/lyron_app/test/offline/adversarial/planning_migration_test.dart": {
-    "mtime": 1786130453.2321055,
-    "ast_hash": "9ab6660bf579c0092ac2e7aed4605def",
-    "semantic_hash": "9ab6660bf579c0092ac2e7aed4605def"
+    "mtime": 1790838015.705735,
+    "ast_hash": "849a222389f587809bf82058cbebcced",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/offline/adversarial/planning_reconcile_failure_isolation_test.dart": {
-    "mtime": 1786130453.2324457,
-    "ast_hash": "49ec376077ac82e94940169496257ac3",
-    "semantic_hash": "49ec376077ac82e94940169496257ac3"
+    "mtime": 1790838015.7058885,
+    "ast_hash": "e91493141c495bd9361ced5c5b8fff20",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/offline/adversarial/planning_reconcile_nullfield_test.dart": {
     "mtime": 1782718654.4581568,
@@ -2875,9 +2875,9 @@
     "semantic_hash": "59010739dd6a08b06f8d3f26d1061a77"
   },
   "apps/lyron_app/test/application/planning/planning_invalidation_scope_test.dart": {
-    "mtime": 1786130453.2257497,
-    "ast_hash": "8461f173c1de6bd41c1d0869976c06f1",
-    "semantic_hash": "8461f173c1de6bd41c1d0869976c06f1"
+    "mtime": 1790838015.701913,
+    "ast_hash": "a1323fdfe5684405a0af246d18df03b2",
+    "semantic_hash": ""
   },
   "scripts/tests/capability-search-path-contract-test.sh": {
     "mtime": 1785405729.8459165,
@@ -2960,9 +2960,9 @@
     "semantic_hash": "3e9fede8a13b263ec976ce81ce307c8b"
   },
   "apps/lyron_app/lib/src/presentation/planning/widgets/plan_session_card.dart": {
-    "mtime": 1786207189.7491477,
-    "ast_hash": "5c4a4c20f1f85a147a79a94820318748",
-    "semantic_hash": "5c4a4c20f1f85a147a79a94820318748"
+    "mtime": 1790838015.7001262,
+    "ast_hash": "069adf7a053b961f428f62e78d3c8769",
+    "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/presentation/planning/widgets/plan_song_item_row.dart": {
     "mtime": 1785300464.106948,
@@ -3100,9 +3100,9 @@
     "semantic_hash": "d847a9a965a941c917fb80d7c8fdd6ae"
   },
   "apps/lyron_app/test/presentation/planning/widgets/plan_song_item_row_test.dart": {
-    "mtime": 1786130453.2391617,
-    "ast_hash": "4c5289bff1b527e25c21b04c0747abec",
-    "semantic_hash": "4c5289bff1b527e25c21b04c0747abec"
+    "mtime": 1790838015.7076352,
+    "ast_hash": "551d5b9905f6e0153ed5fcba944f8926",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/presentation/planning/widgets/retryable_error_state_test.dart": {
     "mtime": 1785300464.1193352,
@@ -3320,9 +3320,9 @@
     "semantic_hash": "cd456d08f673f5cacae06363e94f2dbc"
   },
   "apps/lyron_app/lib/src/application/planning/budgeted_planning_mutation_store.dart": {
-    "mtime": 1786207189.7391706,
-    "ast_hash": "dfbd8579e687962b74cc9d8edc576e56",
-    "semantic_hash": "dfbd8579e687962b74cc9d8edc576e56"
+    "mtime": 1790838015.6944406,
+    "ast_hash": "9a1d307c04e37057b6eb275cb3989971",
+    "semantic_hash": ""
   },
   "apps/lyron_app/lib/src/application/storage/catalog_storage_accountant.dart": {
     "mtime": 1787432015.915261,
@@ -3380,9 +3380,9 @@
     "semantic_hash": "b12e103cb8137cf6d4ad89928fb61361"
   },
   "apps/lyron_app/test/application/planning/budgeted_planning_mutation_store_test.dart": {
-    "mtime": 1787432015.921403,
-    "ast_hash": "6c854e6b5e3a695784a81169e682ed37",
-    "semantic_hash": "6c854e6b5e3a695784a81169e682ed37"
+    "mtime": 1790838015.7016904,
+    "ast_hash": "fc9ae5ef3563d0d3fed78d021bfff51d",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/application/storage/local_storage_budget_test.dart": {
     "mtime": 1786130453.2283888,
@@ -3405,9 +3405,9 @@
     "semantic_hash": "53f575f750199f717177619247206aa0"
   },
   "apps/lyron_app/test/application/sync/unified_row_recovery_controller_test.dart": {
-    "mtime": 1786130453.2301605,
-    "ast_hash": "bce972ce9797dc110cb0ae788fe56de9",
-    "semantic_hash": "bce972ce9797dc110cb0ae788fe56de9"
+    "mtime": 1790838015.7041914,
+    "ast_hash": "08979319988dcc8eadcbaab7a76b4fe0",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/offline/adversarial/planning_squash_contract_test.dart": {
     "mtime": 1786130453.2329776,
@@ -3735,9 +3735,9 @@
     "semantic_hash": "6a7449f229e15916df83e8c9e086f102"
   },
   "apps/lyron_app/test/offline/adversarial/planning_in_flight_create_cancellation_test.dart": {
-    "mtime": 1786130453.2316716,
-    "ast_hash": "90fe096be3946281a354d055f7dcf464",
-    "semantic_hash": "90fe096be3946281a354d055f7dcf464"
+    "mtime": 1790838015.705548,
+    "ast_hash": "60fd1aa3fa7a6e6f5c9c2270d96d0bba",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/offline/adversarial/planning_vanished_record_sync_test.dart": {
     "mtime": 1786130453.2334182,
@@ -4040,9 +4040,9 @@
     "semantic_hash": "8ecf0908e07f5fa3d28d87dbf4ca991e"
   },
   "apps/lyron_app/test/application/storage/local_data_lifecycle_test.dart": {
-    "mtime": 1787666672.1783853,
-    "ast_hash": "0f766ba0c56596585a0a4aff483de8bc",
-    "semantic_hash": "0f766ba0c56596585a0a4aff483de8bc"
+    "mtime": 1790838015.7038352,
+    "ast_hash": "d051f05d3782cddf49893da0ed11ad1a",
+    "semantic_hash": ""
   },
   "apps/lyron_app/test/architecture/local_data_lifecycle_gate_test.dart": {
     "mtime": 1787666672.179297,
@@ -4284,6 +4284,76 @@
     "ast_hash": "b5eaeb7386581214138a2b61d419876c",
     "semantic_hash": "b5eaeb7386581214138a2b61d419876c"
   },
+  "apps/lyron_app/test/offline/adversarial/planning_cascade_delete_test.dart": {
+    "mtime": 1790838015.7052178,
+    "ast_hash": "f96545d388e202a5e027ecc7a377270f",
+    "semantic_hash": ""
+  },
+  "scripts/tests/planning-cascade-delete-contract-test.sh": {
+    "mtime": 1790838015.711022,
+    "ast_hash": "b267a67f45ddd6964aa74ab7fc349d5c",
+    "semantic_hash": ""
+  },
+  "supabase/migrations/202609290001_plan_content_version_and_cascade_delete.sql": {
+    "mtime": 1790838015.7111344,
+    "ast_hash": "71763d65edbe95af5ab3f1611cb9a854",
+    "semantic_hash": ""
+  },
+  "docs/architecture/decisions/ADR-038-plan-content-version.md": {
+    "mtime": 1790838015.7084024,
+    "ast_hash": "1dfc1af0b70527ef90ea0ae63bbfb771",
+    "semantic_hash": ""
+  },
+  "docs/deferred/2026-09-29-plan-duplicate.md": {
+    "mtime": 1790838015.7086833,
+    "ast_hash": "71e29b4109edb89c95f4e5379492337c",
+    "semantic_hash": ""
+  },
+  "docs/deferred/2026-09-29-session-item-move.md": {
+    "mtime": 1790838015.7087543,
+    "ast_hash": "7ecba832fbf3884208211feb31230939",
+    "semantic_hash": ""
+  },
+  "docs/deferred/2026-09-30-capability-gating-offline-cold-start.md": {
+    "mtime": 1790838015.7088497,
+    "ast_hash": "f96f8722ee2bfabe334b564cd0eb01ff",
+    "semantic_hash": ""
+  },
+  "docs/deferred/2026-09-30-content-version-advance-on-context-switch.md": {
+    "mtime": 1790838015.7089436,
+    "ast_hash": "ba3f41ea2910ef8609f50042b072da4a",
+    "semantic_hash": ""
+  },
+  "docs/deferred/2026-09-30-direct-dml-bypasses-write-rpcs.md": {
+    "mtime": 1790838015.7090402,
+    "ast_hash": "e8cf8b75c8f0c928d25706a584c01326",
+    "semantic_hash": ""
+  },
+  "docs/deferred/2026-09-30-planning-pull-unpaged-reads.md": {
+    "mtime": 1790838015.7091112,
+    "ast_hash": "a6f0bcfa9a6e3fec8151f858d5e6d8ee",
+    "semantic_hash": ""
+  },
+  "docs/deferred/2026-09-30-session-rename-retry-never-rebases.md": {
+    "mtime": 1790838015.7091963,
+    "ast_hash": "a821aaa375c84de22e1e477003824f68",
+    "semantic_hash": ""
+  },
+  "docs/deferred/2026-09-30-stranded-create-tombstones.md": {
+    "mtime": 1790838015.7093074,
+    "ast_hash": "9abc2575106bd20eeb6c230bcd166a5d",
+    "semantic_hash": ""
+  },
+  "docs/plans/2026-09-29-plan-delete-and-session-cascade.md": {
+    "mtime": 1790838015.7102716,
+    "ast_hash": "2550c1871d876ba6ebccc77d92337ff9",
+    "semantic_hash": ""
+  },
+  "docs/specs/2026-09-29-plan-delete-and-session-cascade.md": {
+    "mtime": 1790838015.7107167,
+    "ast_hash": "661af6038e0a68a5a36d0fec7029c254",
+    "semantic_hash": ""
+  },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/android/app/build.gradle.kts": {
     "mtime": 1781512327.1486225,
     "ast_hash": "1c8a034db9cab0e5568a7c7f888bc8af",
@@ -4485,14 +4555,14 @@
     "semantic_hash": "ff51cc45b706be0d3b4aec79d771bbbb"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/application/planning/budgeted_planning_mutation_store.dart": {
-    "mtime": 1786207189.7391706,
-    "ast_hash": "dfbd8579e687962b74cc9d8edc576e56",
-    "semantic_hash": "dfbd8579e687962b74cc9d8edc576e56"
+    "mtime": 1790838015.6944406,
+    "ast_hash": "9a1d307c04e37057b6eb275cb3989971",
+    "semantic_hash": "9a1d307c04e37057b6eb275cb3989971"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/application/planning/drift_planning_mutation_store.dart": {
-    "mtime": 1786207189.739655,
-    "ast_hash": "500deb0ecfc959812eef58229e814fad",
-    "semantic_hash": "500deb0ecfc959812eef58229e814fad"
+    "mtime": 1790838015.6949317,
+    "ast_hash": "e6129db172cc17b57e8712ea4dd0a78d",
+    "semantic_hash": "e6129db172cc17b57e8712ea4dd0a78d"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/application/planning/planning_data_revision.dart": {
     "mtime": 1786207189.739971,
@@ -4500,24 +4570,24 @@
     "semantic_hash": "ac900f147c0626f0d8120dd422a6ef96"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/application/planning/planning_local_read_repository.dart": {
-    "mtime": 1786207189.7402737,
-    "ast_hash": "3c9096f42c257be0af1c806c9c72d351",
-    "semantic_hash": "3c9096f42c257be0af1c806c9c72d351"
+    "mtime": 1790838015.6955028,
+    "ast_hash": "fad40118b8caa74d38ef8cdb1a00630c",
+    "semantic_hash": "fad40118b8caa74d38ef8cdb1a00630c"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/application/planning/planning_mutation_reconciler.dart": {
-    "mtime": 1786207189.740554,
-    "ast_hash": "764f9ed1cdf66bc51abde21367342ea3",
-    "semantic_hash": "764f9ed1cdf66bc51abde21367342ea3"
+    "mtime": 1790838015.6958802,
+    "ast_hash": "5794d872bf1a83aa265a0230fe294aa2",
+    "semantic_hash": "5794d872bf1a83aa265a0230fe294aa2"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/application/planning/planning_mutation_sync_controller.dart": {
-    "mtime": 1787666672.1719968,
-    "ast_hash": "d180ff523d7994573ba9261b47ed9ba8",
-    "semantic_hash": "d180ff523d7994573ba9261b47ed9ba8"
+    "mtime": 1790838015.6962392,
+    "ast_hash": "af3ac35c12041b8b1e82b4464383413e",
+    "semantic_hash": "af3ac35c12041b8b1e82b4464383413e"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/application/planning/planning_mutation_sync_types.dart": {
-    "mtime": 1786130453.210866,
-    "ast_hash": "84edf049f1321227cb415d153cd4c78e",
-    "semantic_hash": "84edf049f1321227cb415d153cd4c78e"
+    "mtime": 1790838015.6965907,
+    "ast_hash": "5cbe559debdc1af1c38bd0eef70873d3",
+    "semantic_hash": "5cbe559debdc1af1c38bd0eef70873d3"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/application/planning/planning_remote_refresh_repository.dart": {
     "mtime": 1775242229.9732199,
@@ -4530,14 +4600,14 @@
     "semantic_hash": "f24c855c291dabf72cbc94db1fa1c9d2"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/application/planning/planning_sync_controller.dart": {
-    "mtime": 1790697604.248846,
-    "ast_hash": "aee55e85e06d0b9a8e6343267a3b6552",
-    "semantic_hash": "aee55e85e06d0b9a8e6343267a3b6552"
+    "mtime": 1790838015.6968114,
+    "ast_hash": "dc45523a54aa9864382ec367d0c60a6b",
+    "semantic_hash": "dc45523a54aa9864382ec367d0c60a6b"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/application/planning/planning_sync_payload.dart": {
-    "mtime": 1775927170.3988783,
-    "ast_hash": "123e183497f08e8fc9aef10b2d43dfca",
-    "semantic_hash": "123e183497f08e8fc9aef10b2d43dfca"
+    "mtime": 1790838015.6970255,
+    "ast_hash": "433f9a95b6f7f759127a40aada354068",
+    "semantic_hash": "433f9a95b6f7f759127a40aada354068"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/application/planning/planning_sync_state.dart": {
     "mtime": 1775242229.9741623,
@@ -4545,9 +4615,9 @@
     "semantic_hash": "519288b21423618c87c95434293efb74"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/application/planning/planning_write_service.dart": {
-    "mtime": 1787507734.99421,
-    "ast_hash": "a98ba04245d3c8c1c64bcc425ba499d4",
-    "semantic_hash": "a98ba04245d3c8c1c64bcc425ba499d4"
+    "mtime": 1790838015.697322,
+    "ast_hash": "16c1a50be62853cb899f0a642e2a5398",
+    "semantic_hash": "16c1a50be62853cb899f0a642e2a5398"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/application/planning_providers.dart": {
     "mtime": 1787666672.172599,
@@ -4735,9 +4805,9 @@
     "semantic_hash": "90277d4aff6e7f47e52c1cd5b819ddd3"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/application/sync/unified_sync_overview.dart": {
-    "mtime": 1786130453.216853,
-    "ast_hash": "f21ba7bc96cef5cd7fa696f8c6707576",
-    "semantic_hash": "f21ba7bc96cef5cd7fa696f8c6707576"
+    "mtime": 1790838015.6975436,
+    "ast_hash": "2326f978a32935185da4272c2a8d3c40",
+    "semantic_hash": "2326f978a32935185da4272c2a8d3c40"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/bootstrap/bootstrap.dart": {
     "mtime": 1790697604.2501574,
@@ -4785,9 +4855,9 @@
     "semantic_hash": "d98ce94be2a76f8c8744ae49086880be"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/domain/planning/plan_summary.dart": {
-    "mtime": 1775927170.4019663,
-    "ast_hash": "55d8b703243f6bd1351751d5e94e5755",
-    "semantic_hash": "55d8b703243f6bd1351751d5e94e5755"
+    "mtime": 1790838015.6977448,
+    "ast_hash": "492edba3752ec945eee7063fbabce6aa",
+    "semantic_hash": "492edba3752ec945eee7063fbabce6aa"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/domain/planning/planning_repository.dart": {
     "mtime": 1775327448.972303,
@@ -4920,14 +4990,14 @@
     "semantic_hash": "d4f0dd1c25d96c0e98413d348a388975"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/infrastructure/planning/supabase_planning_mutation_repository.dart": {
-    "mtime": 1787666672.1736884,
-    "ast_hash": "f3e7b53f97f2876e2dfb8f43a823a35e",
-    "semantic_hash": "f3e7b53f97f2876e2dfb8f43a823a35e"
+    "mtime": 1790838015.6981063,
+    "ast_hash": "c45a9a797945ce4d5c99320e8a39d8d4",
+    "semantic_hash": "c45a9a797945ce4d5c99320e8a39d8d4"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/infrastructure/planning/supabase_planning_repository.dart": {
-    "mtime": 1786207189.7468574,
-    "ast_hash": "fc4e7db66f30dcb10ad9b0ac58a2ffbb",
-    "semantic_hash": "fc4e7db66f30dcb10ad9b0ac58a2ffbb"
+    "mtime": 1790838015.6983497,
+    "ast_hash": "920892049fa4f5d622cbf53ef3879b5d",
+    "semantic_hash": "920892049fa4f5d622cbf53ef3879b5d"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/infrastructure/song_library/asset_song_repository.dart": {
     "mtime": 1775327448.98229,
@@ -5060,14 +5130,14 @@
     "semantic_hash": "896bc7e582b3095c72269b5b5c7074ac"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/offline/planning/planning_local_database.dart": {
-    "mtime": 1786130453.2179627,
-    "ast_hash": "2fd4006570d59afe964a6cd698a4865c",
-    "semantic_hash": "2fd4006570d59afe964a6cd698a4865c"
+    "mtime": 1790838015.6985419,
+    "ast_hash": "d2718c28cd901de79833793b0fa7e312",
+    "semantic_hash": "d2718c28cd901de79833793b0fa7e312"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/offline/planning/planning_local_database.g.dart": {
-    "mtime": 1786130453.218606,
-    "ast_hash": "2911f521a149661ff3caf7bf0195d2a8",
-    "semantic_hash": "2911f521a149661ff3caf7bf0195d2a8"
+    "mtime": 1790838015.698894,
+    "ast_hash": "c30d23c4ef805b8f44d01caa221173af",
+    "semantic_hash": "c30d23c4ef805b8f44d01caa221173af"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/offline/planning/planning_local_database_connection.dart": {
     "mtime": 1775242229.9762263,
@@ -5090,14 +5160,14 @@
     "semantic_hash": "3cc677a9c42b5e779930b6c20a197a48"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/offline/planning/planning_local_store.dart": {
-    "mtime": 1786207189.747829,
-    "ast_hash": "c162121f19934855c4bca77a80fccd44",
-    "semantic_hash": "c162121f19934855c4bca77a80fccd44"
+    "mtime": 1790838015.6991057,
+    "ast_hash": "613b715ddd1fc5aefb502646b40372c5",
+    "semantic_hash": "613b715ddd1fc5aefb502646b40372c5"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/offline/planning/planning_local_tables.dart": {
-    "mtime": 1786130453.2193775,
-    "ast_hash": "118d0307976d9f01cddf9baf06290513",
-    "semantic_hash": "118d0307976d9f01cddf9baf06290513"
+    "mtime": 1790838015.699326,
+    "ast_hash": "a795fb5210e8a7e47ac25a264c915038",
+    "semantic_hash": "a795fb5210e8a7e47ac25a264c915038"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/offline/song_catalog/song_catalog_database.dart": {
     "mtime": 1787432015.9180834,
@@ -5205,9 +5275,9 @@
     "semantic_hash": "dcd06cc7e5ec707052097b5ab75ef1b1"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/presentation/planning/plan_detail_screen.dart": {
-    "mtime": 1786207189.7485895,
-    "ast_hash": "43cca475d49734acdfd1a9dcebd26c11",
-    "semantic_hash": "43cca475d49734acdfd1a9dcebd26c11"
+    "mtime": 1790838015.69973,
+    "ast_hash": "9150708e1f836841a0e31f0bda0302da",
+    "semantic_hash": "9150708e1f836841a0e31f0bda0302da"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/presentation/planning/plan_list_screen.dart": {
     "mtime": 1785300464.1058578,
@@ -5245,9 +5315,9 @@
     "semantic_hash": "3e9fede8a13b263ec976ce81ce307c8b"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/presentation/planning/widgets/plan_session_card.dart": {
-    "mtime": 1786207189.7491477,
-    "ast_hash": "5c4a4c20f1f85a147a79a94820318748",
-    "semantic_hash": "5c4a4c20f1f85a147a79a94820318748"
+    "mtime": 1790838015.7001262,
+    "ast_hash": "069adf7a053b961f428f62e78d3c8769",
+    "semantic_hash": "069adf7a053b961f428f62e78d3c8769"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/presentation/planning/widgets/plan_song_item_row.dart": {
     "mtime": 1785300464.106948,
@@ -5625,9 +5695,9 @@
     "semantic_hash": "7eb85f8472ecfe0a56aa527bbc0aeb3a"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/presentation/sync/unified_sync_providers.dart": {
-    "mtime": 1790697604.2521884,
-    "ast_hash": "3b10c5d53296105c1f957143ec3d6d91",
-    "semantic_hash": "3b10c5d53296105c1f957143ec3d6d91"
+    "mtime": 1790838015.700368,
+    "ast_hash": "899d8aff992bb0ce668a9070cc2161d2",
+    "semantic_hash": "899d8aff992bb0ce668a9070cc2161d2"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/presentation/sync/unified_sync_status_popup.dart": {
     "mtime": 1790697604.2525375,
@@ -5655,9 +5725,9 @@
     "semantic_hash": "c6377a4abc6f16b7bed5c6fd67ff623d"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/shared/app_strings.dart": {
-    "mtime": 1790697604.2529068,
-    "ast_hash": "35d6f8e124755678da2ed4b1ae1e4b27",
-    "semantic_hash": "35d6f8e124755678da2ed4b1ae1e4b27"
+    "mtime": 1790838015.7006156,
+    "ast_hash": "22f13204800862438afaaf63663213f7",
+    "semantic_hash": "22f13204800862438afaaf63663213f7"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/lib/src/shared/connectivity_failure.dart": {
     "mtime": 1775160199.5095043,
@@ -5675,9 +5745,9 @@
     "semantic_hash": "11e46e91128a1f90e8f143f0e7443a32"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/app/lyron_app_test.dart": {
-    "mtime": 1787666672.175782,
-    "ast_hash": "c7d9296c4e0264949ac6a0fecf37dfc8",
-    "semantic_hash": "c7d9296c4e0264949ac6a0fecf37dfc8"
+    "mtime": 1790838015.701356,
+    "ast_hash": "349b2f0027915d1fb817deff3baee7ab",
+    "semantic_hash": "349b2f0027915d1fb817deff3baee7ab"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/app/reader_theme_test.dart": {
     "mtime": 1786972953.1455061,
@@ -5780,34 +5850,34 @@
     "semantic_hash": "5b70cc28b57e54002c6664aa130c612d"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/application/planning/budgeted_planning_mutation_store_test.dart": {
-    "mtime": 1787432015.921403,
-    "ast_hash": "6c854e6b5e3a695784a81169e682ed37",
-    "semantic_hash": "6c854e6b5e3a695784a81169e682ed37"
+    "mtime": 1790838015.7016904,
+    "ast_hash": "fc9ae5ef3563d0d3fed78d021bfff51d",
+    "semantic_hash": "fc9ae5ef3563d0d3fed78d021bfff51d"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/application/planning/planning_invalidation_scope_test.dart": {
-    "mtime": 1786130453.2257497,
-    "ast_hash": "8461f173c1de6bd41c1d0869976c06f1",
-    "semantic_hash": "8461f173c1de6bd41c1d0869976c06f1"
+    "mtime": 1790838015.701913,
+    "ast_hash": "a1323fdfe5684405a0af246d18df03b2",
+    "semantic_hash": "a1323fdfe5684405a0af246d18df03b2"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/application/planning/planning_local_read_repository_test.dart": {
-    "mtime": 1786207189.7532766,
-    "ast_hash": "7ea2234803d05df277edf038ae32d68b",
-    "semantic_hash": "7ea2234803d05df277edf038ae32d68b"
+    "mtime": 1790838015.7021115,
+    "ast_hash": "20e7c7f78400a5ebe598cc75bffddf88",
+    "semantic_hash": "20e7c7f78400a5ebe598cc75bffddf88"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/application/planning/planning_mutation_reconciler_test.dart": {
-    "mtime": 1782669890.4267302,
-    "ast_hash": "224401fc82c3840f4d1cd4f792fce2f2",
-    "semantic_hash": "224401fc82c3840f4d1cd4f792fce2f2"
+    "mtime": 1790838015.7022924,
+    "ast_hash": "c61542d26dafeb32c2b9f97e40cdffa6",
+    "semantic_hash": "c61542d26dafeb32c2b9f97e40cdffa6"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/application/planning/planning_mutation_sync_controller_test.dart": {
-    "mtime": 1787666672.1773007,
-    "ast_hash": "0d48a9d0fc253d58250ce5bf799bd567",
-    "semantic_hash": "0d48a9d0fc253d58250ce5bf799bd567"
+    "mtime": 1790838015.702591,
+    "ast_hash": "740986e3a1833d625e0d0988a3d60fbf",
+    "semantic_hash": "740986e3a1833d625e0d0988a3d60fbf"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/application/planning/planning_mutation_sync_types_test.dart": {
-    "mtime": 1782669890.4271777,
-    "ast_hash": "f4ad6e7e8de18333b8ba494ab94dfdfe",
-    "semantic_hash": "f4ad6e7e8de18333b8ba494ab94dfdfe"
+    "mtime": 1790838015.7027526,
+    "ast_hash": "a532fcf53c3ec98a94bf9de9714e416f",
+    "semantic_hash": "a532fcf53c3ec98a94bf9de9714e416f"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/application/planning/planning_reorder_overlay_test.dart": {
     "mtime": 1785300464.1168442,
@@ -5815,14 +5885,14 @@
     "semantic_hash": "7fb87b8c1c5d67fcbc741092fc5cfd9c"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/application/planning/planning_sync_controller_test.dart": {
-    "mtime": 1790697604.2561324,
-    "ast_hash": "e6e97d997d5fee3eb5b70974961e4feb",
-    "semantic_hash": "e6e97d997d5fee3eb5b70974961e4feb"
+    "mtime": 1790838015.7029624,
+    "ast_hash": "08f86da50156ba1c7b15f55fe2e27732",
+    "semantic_hash": "08f86da50156ba1c7b15f55fe2e27732"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/application/planning/planning_write_service_test.dart": {
-    "mtime": 1787666672.1775973,
-    "ast_hash": "5d85bbb01008b31e7161de3a9209bd0e",
-    "semantic_hash": "5d85bbb01008b31e7161de3a9209bd0e"
+    "mtime": 1790838015.7034395,
+    "ast_hash": "22c39091f0c5b730cc4fcce7636a769d",
+    "semantic_hash": "22c39091f0c5b730cc4fcce7636a769d"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/application/planning_providers_test.dart": {
     "mtime": 1787666672.177689,
@@ -5835,9 +5905,9 @@
     "semantic_hash": "0f8ed24c52702667434b7583fc804f5a"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/application/providers_test.dart": {
-    "mtime": 1790697604.2567148,
-    "ast_hash": "278e34c034513a5d3e38315b5ae7bf08",
-    "semantic_hash": "278e34c034513a5d3e38315b5ae7bf08"
+    "mtime": 1790838015.7036324,
+    "ast_hash": "2d2c09591e15c54c7ec00da6756d6d3a",
+    "semantic_hash": "2d2c09591e15c54c7ec00da6756d6d3a"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/application/song_catalog_providers_test.dart": {
     "mtime": 1786188009.0825987,
@@ -5885,9 +5955,9 @@
     "semantic_hash": "b4d161160cfbf6939ed9670b0d7a742e"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/application/storage/local_data_lifecycle_test.dart": {
-    "mtime": 1787666672.1783853,
-    "ast_hash": "0f766ba0c56596585a0a4aff483de8bc",
-    "semantic_hash": "0f766ba0c56596585a0a4aff483de8bc"
+    "mtime": 1790838015.7038352,
+    "ast_hash": "d051f05d3782cddf49893da0ed11ad1a",
+    "semantic_hash": "d051f05d3782cddf49893da0ed11ad1a"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/application/storage/local_storage_budget_test.dart": {
     "mtime": 1786130453.2283888,
@@ -5930,9 +6000,9 @@
     "semantic_hash": "d5f1e281ef5f213cc287f39c243339a9"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/application/sync/unified_discard_controller_test.dart": {
-    "mtime": 1786130453.229848,
-    "ast_hash": "9557e0953a1d434a33b5705d42eca291",
-    "semantic_hash": "9557e0953a1d434a33b5705d42eca291"
+    "mtime": 1790838015.7040346,
+    "ast_hash": "9773ed9317be4a4bdd4d0bd76fb596d2",
+    "semantic_hash": "9773ed9317be4a4bdd4d0bd76fb596d2"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/application/sync/unified_manual_sync_controller_test.dart": {
     "mtime": 1790697604.2578473,
@@ -5945,9 +6015,9 @@
     "semantic_hash": "7eb931a44c14badf1d45694d5d2cdb62"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/application/sync/unified_row_recovery_controller_test.dart": {
-    "mtime": 1786130453.2301605,
-    "ast_hash": "bce972ce9797dc110cb0ae788fe56de9",
-    "semantic_hash": "bce972ce9797dc110cb0ae788fe56de9"
+    "mtime": 1790838015.7041914,
+    "ast_hash": "08979319988dcc8eadcbaab7a76b4fe0",
+    "semantic_hash": "08979319988dcc8eadcbaab7a76b4fe0"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/application/sync/unified_sync_overview_grouping_test.dart": {
     "mtime": 1780085746.0838413,
@@ -5955,9 +6025,9 @@
     "semantic_hash": "86ed41af52a57f239e8836d4283be808"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/application/sync/unified_sync_overview_test.dart": {
-    "mtime": 1787666672.1790895,
-    "ast_hash": "af114f9a5fc3abf60f6c9b7d9f63a447",
-    "semantic_hash": "af114f9a5fc3abf60f6c9b7d9f63a447"
+    "mtime": 1790838015.7043738,
+    "ast_hash": "4331ade20985fb53d8c3a0985fc36739",
+    "semantic_hash": "4331ade20985fb53d8c3a0985fc36739"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/application/sync/unified_sync_providers_test.dart": {
     "mtime": 1786130453.2307138,
@@ -6060,14 +6130,14 @@
     "semantic_hash": "4a3f3760fa78883e80aea8988824b12b"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/infrastructure/planning/supabase_planning_mutation_repository_test.dart": {
-    "mtime": 1787666672.1794865,
-    "ast_hash": "ef137958400b4c0ab914eb07e8902f08",
-    "semantic_hash": "ef137958400b4c0ab914eb07e8902f08"
+    "mtime": 1790838015.704536,
+    "ast_hash": "76e3d9d34b113638c7d80ab047cb07f4",
+    "semantic_hash": "76e3d9d34b113638c7d80ab047cb07f4"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/infrastructure/planning/supabase_planning_repository_test.dart": {
-    "mtime": 1775242229.9813154,
-    "ast_hash": "d935fcac588954c630c3d25395531968",
-    "semantic_hash": "d935fcac588954c630c3d25395531968"
+    "mtime": 1790838015.704722,
+    "ast_hash": "f2ce148ac87479f22e5bac5d696be649",
+    "semantic_hash": "f2ce148ac87479f22e5bac5d696be649"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/infrastructure/song_library/asset_song_repository_test.dart": {
     "mtime": 1775160199.5160277,
@@ -6170,9 +6240,9 @@
     "semantic_hash": "90b2efb803315072d29562563e9749b4"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/integration/song_list_plan_song_pick_flow_test.dart": {
-    "mtime": 1786130453.2310789,
-    "ast_hash": "7e23ed4494fd3f545b618c814f59fc3a",
-    "semantic_hash": "7e23ed4494fd3f545b618c814f59fc3a"
+    "mtime": 1790838015.7049205,
+    "ast_hash": "653bf94855130382e87aad8b77489058",
+    "semantic_hash": "653bf94855130382e87aad8b77489058"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/integration/song_reader_flow_test.dart": {
     "mtime": 1787315862.222219,
@@ -6180,9 +6250,9 @@
     "semantic_hash": "920703f28e50544bf5ca691d6abebdef"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/integration/two_device_conflict_matrix_test.dart": {
-    "mtime": 1787666672.1819012,
-    "ast_hash": "077593c848d60851bcdbbb2bd8f25343",
-    "semantic_hash": "077593c848d60851bcdbbb2bd8f25343"
+    "mtime": 1790838015.7050982,
+    "ast_hash": "3c5589aebbdff9fc61177e373d6c3109",
+    "semantic_hash": "3c5589aebbdff9fc61177e373d6c3109"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/offline/adversarial/clock_skew_probe_test.dart": {
     "mtime": 1782718654.4563866,
@@ -6194,15 +6264,20 @@
     "ast_hash": "05b27c797aed8c38a15f5db14520ef81",
     "semantic_hash": "05b27c797aed8c38a15f5db14520ef81"
   },
+  "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/offline/adversarial/planning_cascade_delete_test.dart": {
+    "mtime": 1790838015.7052178,
+    "ast_hash": "f96545d388e202a5e027ecc7a377270f",
+    "semantic_hash": "f96545d388e202a5e027ecc7a377270f"
+  },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/offline/adversarial/planning_fault_injection_test.dart": {
-    "mtime": 1786130453.2314227,
-    "ast_hash": "9bbe29a9dc5a9aff9613c45f7d701631",
-    "semantic_hash": "9bbe29a9dc5a9aff9613c45f7d701631"
+    "mtime": 1790838015.7053812,
+    "ast_hash": "9495fe60c717117cc708869222b545db",
+    "semantic_hash": "9495fe60c717117cc708869222b545db"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/offline/adversarial/planning_in_flight_create_cancellation_test.dart": {
-    "mtime": 1786130453.2316716,
-    "ast_hash": "90fe096be3946281a354d055f7dcf464",
-    "semantic_hash": "90fe096be3946281a354d055f7dcf464"
+    "mtime": 1790838015.705548,
+    "ast_hash": "60fd1aa3fa7a6e6f5c9c2270d96d0bba",
+    "semantic_hash": "60fd1aa3fa7a6e6f5c9c2270d96d0bba"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/offline/adversarial/planning_merge_visibility_test.dart": {
     "mtime": 1785300464.1175022,
@@ -6210,14 +6285,14 @@
     "semantic_hash": "902a1ffc7688b1c70dac64ef947d5a33"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/offline/adversarial/planning_migration_test.dart": {
-    "mtime": 1786130453.2321055,
-    "ast_hash": "9ab6660bf579c0092ac2e7aed4605def",
-    "semantic_hash": "9ab6660bf579c0092ac2e7aed4605def"
+    "mtime": 1790838015.705735,
+    "ast_hash": "849a222389f587809bf82058cbebcced",
+    "semantic_hash": "849a222389f587809bf82058cbebcced"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/offline/adversarial/planning_reconcile_failure_isolation_test.dart": {
-    "mtime": 1786130453.2324457,
-    "ast_hash": "49ec376077ac82e94940169496257ac3",
-    "semantic_hash": "49ec376077ac82e94940169496257ac3"
+    "mtime": 1790838015.7058885,
+    "ast_hash": "e91493141c495bd9361ced5c5b8fff20",
+    "semantic_hash": "e91493141c495bd9361ced5c5b8fff20"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/offline/adversarial/planning_reconcile_nullfield_test.dart": {
     "mtime": 1782718654.4581568,
@@ -6300,19 +6375,19 @@
     "semantic_hash": "81231325371d1b9468b04c13a02a9554"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/offline/planning/planning_local_store_test.dart": {
-    "mtime": 1787432015.9299233,
-    "ast_hash": "9b8a056ec502030acef495b0b281841e",
-    "semantic_hash": "9b8a056ec502030acef495b0b281841e"
+    "mtime": 1790838015.706135,
+    "ast_hash": "6c2b00a8a5cf0f44e87a208b9616edc5",
+    "semantic_hash": "6c2b00a8a5cf0f44e87a208b9616edc5"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/offline/planning/planning_mutation_store_test.dart": {
-    "mtime": 1786130453.2370563,
-    "ast_hash": "a076883ea98c98762ec7fca379acb5a5",
-    "semantic_hash": "a076883ea98c98762ec7fca379acb5a5"
+    "mtime": 1790838015.706366,
+    "ast_hash": "48e20c3293223725f8533417b420d22b",
+    "semantic_hash": "48e20c3293223725f8533417b420d22b"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/offline/song_catalog/song_catalog_store_test.dart": {
-    "mtime": 1787666672.182581,
-    "ast_hash": "9c050ce334bc3d6669efe111e499bf64",
-    "semantic_hash": "9c050ce334bc3d6669efe111e499bf64"
+    "mtime": 1790838015.7065842,
+    "ast_hash": "95143cc579832e6c9ad5b41f8a615b87",
+    "semantic_hash": "95143cc579832e6c9ad5b41f8a615b87"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/presentation/account/account_screen_test.dart": {
     "mtime": 1779695501.9180784,
@@ -6350,14 +6425,14 @@
     "semantic_hash": "33fe1884a407b3f56e1c641f7562f46f"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/presentation/planning/plan_detail_screen_test.dart": {
-    "mtime": 1787142672.4616296,
-    "ast_hash": "3785bec192410ca0e4f3f0c8ba7c7fea",
-    "semantic_hash": "3785bec192410ca0e4f3f0c8ba7c7fea"
+    "mtime": 1790838015.707171,
+    "ast_hash": "0ff36a1548d506df9cc889769e7dffbe",
+    "semantic_hash": "0ff36a1548d506df9cc889769e7dffbe"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/presentation/planning/plan_list_screen_test.dart": {
-    "mtime": 1786130453.238893,
-    "ast_hash": "4a8289d6c5090b7924374d13f48ffac5",
-    "semantic_hash": "4a8289d6c5090b7924374d13f48ffac5"
+    "mtime": 1790838015.707452,
+    "ast_hash": "08e1281d5657534c697fc4542aee0982",
+    "semantic_hash": "08e1281d5657534c697fc4542aee0982"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/presentation/planning/session_song_picker_test.dart": {
     "mtime": 1776793002.1673214,
@@ -6370,9 +6445,9 @@
     "semantic_hash": "d847a9a965a941c917fb80d7c8fdd6ae"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/presentation/planning/widgets/plan_song_item_row_test.dart": {
-    "mtime": 1786130453.2391617,
-    "ast_hash": "4c5289bff1b527e25c21b04c0747abec",
-    "semantic_hash": "4c5289bff1b527e25c21b04c0747abec"
+    "mtime": 1790838015.7076352,
+    "ast_hash": "551d5b9905f6e0153ed5fcba944f8926",
+    "semantic_hash": "551d5b9905f6e0153ed5fcba944f8926"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/presentation/planning/widgets/retryable_error_state_test.dart": {
     "mtime": 1785300464.1193352,
@@ -6445,9 +6520,9 @@
     "semantic_hash": "df91520a1b1c29e621bd96aea5306734"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/presentation/song_library/song_list_screen_test.dart": {
-    "mtime": 1790697604.2593262,
-    "ast_hash": "01ce78f13fa8c0a3a7cd0c247c2b2a10",
-    "semantic_hash": "01ce78f13fa8c0a3a7cd0c247c2b2a10"
+    "mtime": 1790838015.7078407,
+    "ast_hash": "d55e3f45d8271bee6f4279c8aa7f86ce",
+    "semantic_hash": "d55e3f45d8271bee6f4279c8aa7f86ce"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/presentation/song_reader/reader_theme_adoption_test.dart": {
     "mtime": 1786972953.149313,
@@ -6645,9 +6720,9 @@
     "semantic_hash": "7c5e266985e5ad213073d1f19c0704ba"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/presentation/sync/unified_sync_status_popup_test.dart": {
-    "mtime": 1790697604.2598383,
-    "ast_hash": "596dc4da2355ccbdb185c3e199b73d45",
-    "semantic_hash": "596dc4da2355ccbdb185c3e199b73d45"
+    "mtime": 1790838015.7080662,
+    "ast_hash": "3e9ba9402926760fb3d2daaa0ae3686f",
+    "semantic_hash": "3e9ba9402926760fb3d2daaa0ae3686f"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/apps/lyron_app/test/router/app_router_test.dart": {
     "mtime": 1787666672.1838381,
@@ -6735,9 +6810,9 @@
     "semantic_hash": "359b34bfc639e7dc071aa6cddeec38a6"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/scripts/backend-write-contracts.sh": {
-    "mtime": 1786220044.232202,
-    "ast_hash": "64b44e592a833a175dae805f21ee2faa",
-    "semantic_hash": "64b44e592a833a175dae805f21ee2faa"
+    "mtime": 1790838015.7109125,
+    "ast_hash": "b6dd0361bb3eb931667a7125146df2b9",
+    "semantic_hash": "b6dd0361bb3eb931667a7125146df2b9"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/scripts/bootstrap-app.sh": {
     "mtime": 1775160199.5528417,
@@ -6908,6 +6983,11 @@
     "mtime": 1786130453.2558944,
     "ast_hash": "d41c83ab740aec7e7af563f4e9f43564",
     "semantic_hash": "d41c83ab740aec7e7af563f4e9f43564"
+  },
+  "/Users/abelbalog/Documents/Development/private/lyrica/scripts/tests/planning-cascade-delete-contract-test.sh": {
+    "mtime": 1790838015.711022,
+    "ast_hash": "b267a67f45ddd6964aa74ab7fc349d5c",
+    "semantic_hash": "b267a67f45ddd6964aa74ab7fc349d5c"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/scripts/tests/planning-write-contract-test.sh": {
     "mtime": 1782760538.5775704,
@@ -7098,6 +7178,11 @@
     "mtime": 1786220044.2328813,
     "ast_hash": "0e98d036060dfd4b02884603853ed6cf",
     "semantic_hash": "0e98d036060dfd4b02884603853ed6cf"
+  },
+  "/Users/abelbalog/Documents/Development/private/lyrica/supabase/migrations/202609290001_plan_content_version_and_cascade_delete.sql": {
+    "mtime": 1790838015.7111344,
+    "ast_hash": "71763d65edbe95af5ab3f1611cb9a854",
+    "semantic_hash": "71763d65edbe95af5ab3f1611cb9a854"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/supabase/seed/seed.sql": {
     "mtime": 1775327449.101489,
@@ -7340,9 +7425,9 @@
     "semantic_hash": "29af3e2b7fc6997d0dbadf9db3fb9c45"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/docs/architecture/architecture.md": {
-    "mtime": 1790697604.2608097,
-    "ast_hash": "eadb36a3040f0aa507552e201df0d383",
-    "semantic_hash": "eadb36a3040f0aa507552e201df0d383"
+    "mtime": 1790838015.7082767,
+    "ast_hash": "01dd2ed1b5f52d0813880dc7997f8d49",
+    "semantic_hash": "01dd2ed1b5f52d0813880dc7997f8d49"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/docs/architecture/decisions/2026-03-25-local-first-authenticated-song-catalog-cache.md": {
     "mtime": 1774560455.9505816,
@@ -7539,15 +7624,20 @@
     "ast_hash": "de83fcf490567895f94e19d080e43178",
     "semantic_hash": "de83fcf490567895f94e19d080e43178"
   },
+  "/Users/abelbalog/Documents/Development/private/lyrica/docs/architecture/decisions/ADR-038-plan-content-version.md": {
+    "mtime": 1790838015.7084024,
+    "ast_hash": "1dfc1af0b70527ef90ea0ae63bbfb771",
+    "semantic_hash": "1dfc1af0b70527ef90ea0ae63bbfb771"
+  },
   "/Users/abelbalog/Documents/Development/private/lyrica/docs/architecture/repository-review-2026-06-22.md": {
     "mtime": 1787142672.4682448,
     "ast_hash": "6aa380dcf8699601218bc6ade7bc2a36",
     "semantic_hash": "6aa380dcf8699601218bc6ade7bc2a36"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/docs/architecture/state-machines.md": {
-    "mtime": 1779695501.921269,
-    "ast_hash": "606a0bc72085d05a753b3ba5742dee2b",
-    "semantic_hash": "606a0bc72085d05a753b3ba5742dee2b"
+    "mtime": 1790838015.7085862,
+    "ast_hash": "421c0efb45cf2936290f8a48de50d0d0",
+    "semantic_hash": "421c0efb45cf2936290f8a48de50d0d0"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/docs/deferred/2026-04-22-song-reader-chordpro-modulation.md": {
     "mtime": 1778345711.1928215,
@@ -7589,15 +7679,55 @@
     "ast_hash": "921bf44c79742b392e75377eb96a887a",
     "semantic_hash": "921bf44c79742b392e75377eb96a887a"
   },
+  "/Users/abelbalog/Documents/Development/private/lyrica/docs/deferred/2026-09-29-plan-duplicate.md": {
+    "mtime": 1790838015.7086833,
+    "ast_hash": "71e29b4109edb89c95f4e5379492337c",
+    "semantic_hash": "71e29b4109edb89c95f4e5379492337c"
+  },
+  "/Users/abelbalog/Documents/Development/private/lyrica/docs/deferred/2026-09-29-session-item-move.md": {
+    "mtime": 1790838015.7087543,
+    "ast_hash": "7ecba832fbf3884208211feb31230939",
+    "semantic_hash": "7ecba832fbf3884208211feb31230939"
+  },
+  "/Users/abelbalog/Documents/Development/private/lyrica/docs/deferred/2026-09-30-capability-gating-offline-cold-start.md": {
+    "mtime": 1790838015.7088497,
+    "ast_hash": "f96f8722ee2bfabe334b564cd0eb01ff",
+    "semantic_hash": "f96f8722ee2bfabe334b564cd0eb01ff"
+  },
+  "/Users/abelbalog/Documents/Development/private/lyrica/docs/deferred/2026-09-30-content-version-advance-on-context-switch.md": {
+    "mtime": 1790838015.7089436,
+    "ast_hash": "ba3f41ea2910ef8609f50042b072da4a",
+    "semantic_hash": "ba3f41ea2910ef8609f50042b072da4a"
+  },
+  "/Users/abelbalog/Documents/Development/private/lyrica/docs/deferred/2026-09-30-direct-dml-bypasses-write-rpcs.md": {
+    "mtime": 1790838015.7090402,
+    "ast_hash": "e8cf8b75c8f0c928d25706a584c01326",
+    "semantic_hash": "e8cf8b75c8f0c928d25706a584c01326"
+  },
+  "/Users/abelbalog/Documents/Development/private/lyrica/docs/deferred/2026-09-30-planning-pull-unpaged-reads.md": {
+    "mtime": 1790838015.7091112,
+    "ast_hash": "a6f0bcfa9a6e3fec8151f858d5e6d8ee",
+    "semantic_hash": "a6f0bcfa9a6e3fec8151f858d5e6d8ee"
+  },
+  "/Users/abelbalog/Documents/Development/private/lyrica/docs/deferred/2026-09-30-session-rename-retry-never-rebases.md": {
+    "mtime": 1790838015.7091963,
+    "ast_hash": "a821aaa375c84de22e1e477003824f68",
+    "semantic_hash": "a821aaa375c84de22e1e477003824f68"
+  },
+  "/Users/abelbalog/Documents/Development/private/lyrica/docs/deferred/2026-09-30-stranded-create-tombstones.md": {
+    "mtime": 1790838015.7093074,
+    "ast_hash": "9abc2575106bd20eeb6c230bcd166a5d",
+    "semantic_hash": "9abc2575106bd20eeb6c230bcd166a5d"
+  },
   "/Users/abelbalog/Documents/Development/private/lyrica/docs/deferred/README.md": {
     "mtime": 1775850855.7562284,
     "ast_hash": "76ecd28749e12aff9ee5be0d772fd680",
     "semantic_hash": "76ecd28749e12aff9ee5be0d772fd680"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/docs/domain/domain-model.md": {
-    "mtime": 1785405729.8344457,
-    "ast_hash": "18fd1375f905158893fbcfd30d3ffdd5",
-    "semantic_hash": "18fd1375f905158893fbcfd30d3ffdd5"
+    "mtime": 1790838015.709516,
+    "ast_hash": "d96e39e48a53b4141a70fb1bdd888e43",
+    "semantic_hash": "d96e39e48a53b4141a70fb1bdd888e43"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/docs/domain/domain-vocabulary.md": {
     "mtime": 1779695501.9224043,
@@ -7988,6 +8118,11 @@
     "mtime": 1790697604.2618513,
     "ast_hash": "2326696815fa77a9aad316cfc9817a07",
     "semantic_hash": "2326696815fa77a9aad316cfc9817a07"
+  },
+  "/Users/abelbalog/Documents/Development/private/lyrica/docs/plans/2026-09-29-plan-delete-and-session-cascade.md": {
+    "mtime": 1790838015.7102716,
+    "ast_hash": "2550c1871d876ba6ebccc77d92337ff9",
+    "semantic_hash": "2550c1871d876ba6ebccc77d92337ff9"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/docs/product/sync-ux-contract.md": {
     "mtime": 1786130453.2449048,
@@ -8398,6 +8533,11 @@
     "mtime": 1790697604.262609,
     "ast_hash": "b5eaeb7386581214138a2b61d419876c",
     "semantic_hash": "b5eaeb7386581214138a2b61d419876c"
+  },
+  "/Users/abelbalog/Documents/Development/private/lyrica/docs/specs/2026-09-29-plan-delete-and-session-cascade.md": {
+    "mtime": 1790838015.7107167,
+    "ast_hash": "661af6038e0a68a5a36d0fec7029c254",
+    "semantic_hash": "661af6038e0a68a5a36d0fec7029c254"
   },
   "/Users/abelbalog/Documents/Development/private/lyrica/docs/testing/testing-strategy.md": {
     "mtime": 1790697604.2631936,
