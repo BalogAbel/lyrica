@@ -290,9 +290,9 @@ TABLE_PROBES = {
 # about the statement under test.
 must("begin;\n" + FIXTURES + PROMOTE_DEMO + "rollback;\n")
 
-# --- G1: no write privilege for anon or authenticated on any public relation.
-g1 = must(
-    dedent(
+# --- G1: no write privilege for anon or authenticated on any public relation,
+# and no privilege at all on a public sequence.
+G1_SQL = dedent(
         """
         select c.oid::regclass::text, r.role, p.privilege
         from pg_class c
@@ -320,12 +320,31 @@ g1 = must(
         where n.nspname = 'public'
           and c.relkind in ('r', 'p', 'v', 'm', 'f')
           and has_any_column_privilege('anon', c.oid, 'SELECT')
+        union all
+        select c.oid::regclass::text, r.role, p.privilege
+        from pg_class c
+        join pg_namespace n on n.oid = c.relnamespace
+        cross join (values ('anon'), ('authenticated')) as r(role)
+        cross join (values ('USAGE'), ('SELECT'), ('UPDATE')) as p(privilege)
+        where n.nspname = 'public'
+          and c.relkind = 'S'
+          and has_sequence_privilege(r.role, c.oid, p.privilege)
         order by 1, 2, 3;
         """
-    )
 )
-for line in g1:
+for line in must(G1_SQL):
     failures.append(f"G1 forbidden privilege (relation, role, privilege): {line}")
+
+g1_control = must(
+    "begin;\ncreate sequence public.s1_sequence_probe;\n"
+    "grant usage, update on sequence public.s1_sequence_probe to authenticated;\n"
+    + G1_SQL
+    + "rollback;\n"
+)
+if not any(line.startswith("s1_sequence_probe\t") for line in g1_control):
+    failures.append(
+        f"G1 negative control: guard did not report a granted sequence, got {g1_control!r}"
+    )
 
 readable = ", ".join(f"'public.{table}'" for table in READABLE_TABLES)
 g1_select = must(
@@ -406,6 +425,9 @@ g3_probe = must(
           r.role, 'public.s1_default_privilege_probe_id_seq', p.privilege
         )
         union all
+        -- Explicit grants only: PUBLIC keeps EXECUTE through the global
+        -- default (grantee OID 0), which a per-schema revoke cannot remove.
+        -- Every function migration revokes it itself; G4 checks the result.
         select 'function', pg_get_userbyid(a.grantee), a.privilege_type
         from pg_proc f
         cross join lateral aclexplode(coalesce(f.proacl, acldefault('f', f.proowner))) as a
@@ -442,6 +464,71 @@ g4_control = must(
 if "delete_account()" not in g4_control:
     failures.append(
         f"G4 negative control: guard did not report a granted function, got {g4_control!r}"
+    )
+
+
+# --- G5: postgres owns every relation and function in public. An object owned
+# by another role takes that role's default privileges, which this suite does
+# not govern: `create extension` without `with schema extensions` puts
+# supabase_admin-owned tables writable by anon into public.
+G5_SQL = dedent(
+    """
+    select 'relation', c.oid::regclass::text, pg_get_userbyid(c.relowner)
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and pg_get_userbyid(c.relowner) <> 'postgres'
+    union all
+    select 'function', p.oid::regprocedure::text, pg_get_userbyid(p.proowner)
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and pg_get_userbyid(p.proowner) <> 'postgres'
+    order by 1, 2;
+    """
+)
+for line in must(G5_SQL):
+    failures.append(f"G5 public object not owned by postgres (kind, name, owner): {line}")
+
+g5_control = must(
+    "begin;\ncreate table public.s1_owner_probe (id bigint primary key);\n"
+    # A new owner needs CREATE on the schema; granted only inside this
+    # rolled-back transaction.
+    "grant create on schema public to service_role;\n"
+    "alter table public.s1_owner_probe owner to service_role;\n"
+    + G5_SQL
+    + "rollback;\n"
+)
+if "relation\ts1_owner_probe\tservice_role" not in g5_control:
+    failures.append(
+        f"G5 negative control: guard did not report a foreign-owned table, got {g5_control!r}"
+    )
+
+# --- G6: every public table has RLS enabled, so B2's second layer exists for
+# every table, not only the six probed below.
+G6_SQL = dedent(
+    """
+    select c.oid::regclass::text
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relkind in ('r', 'p')
+      and not c.relrowsecurity
+    order by 1;
+    """
+)
+for line in must(G6_SQL):
+    failures.append(f"G6 public table without RLS: {line}")
+
+g6_control = must(
+    "begin;\ncreate table public.s1_rls_probe (id bigint primary key);\n"
+    "alter table public.s1_rls_probe disable row level security;\n"
+    + G6_SQL
+    + "rollback;\n"
+)
+if "s1_rls_probe" not in g6_control:
+    failures.append(
+        f"G6 negative control: guard did not report a table without RLS, got {g6_control!r}"
     )
 
 
@@ -536,39 +623,48 @@ for table, probe in TABLE_PROBES.items():
             f"stderr={delete_lines.stderr.strip()[:300]!r}"
         )
 
-# --- B3: every user sees exactly the rows the select policies define.
-EXPECTED_COUNTS = dedent(
-    """
-    with member_orgs as (
-      select organization_id from public.memberships
-      where user_id = '{user}' and status = 'active'
-    ),
-    song_orgs as (
-      select organization_id from public.memberships
-      where user_id = '{user}' and status = 'active' and scope_type = 'organization'
+# --- B3: every user sees exactly the rows the select policies define. Each
+# table is compared as a row-set fingerprint (count and an md5 of the sorted
+# ids), so a visible row swapped for a hidden one is caught, not only a count.
+def fingerprint(table: str, predicate: str) -> str:
+    return (
+        f"(select count(*) || ':' || coalesce(md5(string_agg(id::text, ',' order by id)), '-') "
+        f"from public.{table} {predicate})"
     )
-    select 'expected',
-      (select count(*) from public.organizations
-        where id in (select organization_id from member_orgs)),
-      (select count(*) from public.groups
-        where organization_id in (select organization_id from member_orgs)),
-      (select count(*) from public.memberships
-        where organization_id in (select organization_id from member_orgs)),
-      (select count(*) from public.songs
-        where organization_id in (select organization_id from song_orgs)),
-      (select count(*) from public.attachments
-        where organization_id in (select organization_id from song_orgs)),
-      (select count(*) from public.plans
-        where organization_id in (select organization_id from member_orgs)),
-      (select count(*) from public.sessions
-        where organization_id in (select organization_id from member_orgs)),
-      (select count(*) from public.session_items
-        where organization_id in (select organization_id from member_orgs));
-    """
+
+
+MEMBER_ORGS = "(select organization_id from member_orgs)"
+SONG_ORGS = "(select organization_id from song_orgs)"
+POLICY_PREDICATES = {
+    "organizations": f"where id in {MEMBER_ORGS}",
+    "groups": f"where organization_id in {MEMBER_ORGS}",
+    "memberships": f"where organization_id in {MEMBER_ORGS}",
+    "songs": f"where organization_id in {SONG_ORGS}",
+    "attachments": f"where organization_id in {SONG_ORGS}",
+    "plans": f"where organization_id in {MEMBER_ORGS}",
+    "sessions": f"where organization_id in {MEMBER_ORGS}",
+    "session_items": f"where organization_id in {MEMBER_ORGS}",
+}
+EXPECTED_ROWS = (
+    dedent(
+        """
+        with member_orgs as (
+          select organization_id from public.memberships
+          where user_id = '{user}' and status = 'active'
+        ),
+        song_orgs as (
+          select organization_id from public.memberships
+          where user_id = '{user}' and status = 'active' and scope_type = 'organization'
+        )
+        """
+    )
+    + "select 'expected', "
+    + ", ".join(fingerprint(table, POLICY_PREDICATES[table]) for table in VISIBILITY_TABLES)
+    + ";\n"
 )
-ACTUAL_COUNTS = (
+ACTUAL_ROWS = (
     "select 'actual', "
-    + ", ".join(f"(select count(*) from public.{table})" for table in VISIBILITY_TABLES)
+    + ", ".join(fingerprint(table, "") for table in VISIBILITY_TABLES)
     + ";\n"
 )
 
@@ -582,21 +678,21 @@ for label, user in (
     lines = must(
         "begin;\n"
         + FIXTURES
-        + EXPECTED_COUNTS.replace("{user}", user)
+        + EXPECTED_ROWS.replace("{user}", user)
         + as_user(user)
-        + ACTUAL_COUNTS
+        + ACTUAL_ROWS
         + "reset role;\nrollback;\n"
     )
     expected = row(lines, "expected")
     actual = row(lines, "actual")
     if expected is None or actual is None or expected != actual:
         failures.append(
-            f"B3 {label}: visible counts {dict(zip(VISIBILITY_TABLES, actual or []))} "
-            f"differ from policy counts {dict(zip(VISIBILITY_TABLES, expected or []))}"
+            f"B3 {label}: visible rows {dict(zip(VISIBILITY_TABLES, actual or []))} "
+            f"differ from policy rows {dict(zip(VISIBILITY_TABLES, expected or []))}"
         )
         continue
-    for index, count in enumerate(expected):
-        if int(count) > 0:
+    for index, value in enumerate(expected):
+        if int(value.split(":", 1)[0]) > 0:
             seen_positive[index] = True
 
 for table, positive in zip(VISIBILITY_TABLES, seen_positive):
@@ -636,7 +732,8 @@ if failures:
 print(
     "direct table DML contract passed: anon/authenticated hold no write "
     "privilege and no policy permits a write (G1, G2), new public objects start "
-    "without privileges (G3), no definer function is open to anon (G4), direct "
+    "without explicit API-role grants (G3), no definer function is open to anon "
+    "(G4), postgres owns every public object and every table has RLS (G5, G6), direct "
     "writes are denied by grants and by RLS (B1, B2), reads are unchanged (B3), "
     "and get_my_capabilities/delete_account work as authenticated (B4)."
 )
