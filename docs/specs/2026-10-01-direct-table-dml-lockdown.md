@@ -408,7 +408,12 @@ through their negative controls. B3 must stay green on both sides, which is the 
 - The client is unchanged and never writes tables directly, so the migration
   can deploy before or after any client release.
 - **User action:** in the hosted Data API settings, turn off "Default
-  privileges for new entities".
+  privileges for new entities". The dashboard now labels it "Automatically
+  expose new tables".
+- **Apply the migration by hand** in the hosted SQL editor, wrapped in
+  `begin;` ... `commit;`. Do not use `supabase db push`: the hosted
+  migration history is out of sync (`docs/workflows/development-workflow.md`,
+  "Hosted Migration Deployment").
 - **Post-deploy check:** a read-only query, run in the hosted SQL editor:
 
   ```sql
