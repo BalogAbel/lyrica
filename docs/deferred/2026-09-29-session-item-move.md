@@ -54,3 +54,18 @@ own design for:
   item loss is not acceptable.
 - The D7 contiguity rebase must cover a move's response for any pending
   cascade delete of either session or of the plan.
+
+## Roadmap (2026-10-01)
+
+Scheduled in slice **S7** of `docs/plans/2026-10-01-delivery-roadmap.md`,
+after plan duplicate. The S7 spec confirms or overrides these recommended
+defaults:
+
+- **A server-side move RPC** that meets every backend requirement above.
+- **Online-only in v1**, recorded in an ADR. v1 creates no mutation row.
+- **Disabled while pending changes exist.** While pending local mutations
+  touch either session, the move is unavailable.
+- **Offline support stays deferred.** The mutation-store and D7 requirements
+  above apply to a later, offline-capable version.
+- **No effect on the personal layer.** It keys plan-scoped data by
+  `(plan_id, song_id)`, which a move does not change.

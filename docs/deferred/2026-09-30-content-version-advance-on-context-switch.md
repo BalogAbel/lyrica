@@ -107,3 +107,16 @@ own tests and review instead of a late change in the plan-delete PR.
 - Keep the same-context behavior unchanged: a `planCreate` reconciled at
   content version 1 followed by its accepted child must still reach 2 when
   the refresh fails (spec D7, call sites).
+
+## Roadmap (2026-10-01)
+
+Scheduled in slice **S5b** (`fix/planning-mutation-gaps`) of
+`docs/plans/2026-10-01-delivery-roadmap.md`.
+
+**Recommended default: option (a).** Rule 1a is gated by the same
+same-context predicate that `shouldReconcileAcceptedMutation` uses.
+
+- With (a), a lagging projection costs at most one visible false conflict.
+- Option (b) would create more stranded `accepted` rows.
+
+The S5b spec confirms or overrides this default.

@@ -102,3 +102,42 @@ second must bring its branch up to date with `main` and re-run the full
 - Correct `docs/architecture/architecture.md` and note the correction for
   ADR-026 / ADR-027.
 - Update this entry, or remove it, in the same change.
+
+## Update (2026-10-01, delivery roadmap)
+
+Two findings widen this entry:
+
+- **`memberships` follows the same pattern.** The policy "memberships are
+  manageable by capability" (`202603210001_initial_schema.sql`) is `for all`
+  with `can_manage_membership(...)`. A member who may manage memberships can
+  insert, update, or delete membership rows through the table API. That
+  bypasses the invitation and redemption contracts (ADR-018, ADR-025) and
+  their audit trail. Because it allows role changes, it is the most sensitive
+  table in the list.
+- **Default privileges reopen the gap for every new table.** By default,
+  Supabase grants `select`, `insert`, `update`, and `delete` on new tables in
+  `public` to `anon`, `authenticated`, and `service_role`. Source: Supabase
+  docs, "Securing your API" → "Revoke default privileges", checked via
+  Context7 on 2026-10-01. Revoking the grants on today's tables does not cover
+  tables that a later migration adds, such as the personal-layer tables
+  planned in S3.
+
+Additional requirements for the slice that picks this up:
+
+- Include `memberships` in the red contract test and in the revocation.
+- Add a migration that revokes default privileges, for example:
+
+  ```sql
+  alter default privileges for role postgres in schema public
+    revoke select, insert, update, delete on tables from anon, authenticated;
+  ```
+
+  Add the matching statements for functions and sequences if the slice
+  decides to cover them. After this, every new table needs explicit grants:
+  `select` where reads are needed, never DML.
+- On the hosted project, turn off "Default privileges for new entities" in
+  the Data API settings. This is a user action outside the repository.
+
+**Scheduling:** slice **S1** (`fix/direct-dml-write-rpc-bypass`) in
+`docs/plans/2026-10-01-delivery-roadmap.md`, first in order. S3 depends on it:
+S3's new tables must start without DML grants.

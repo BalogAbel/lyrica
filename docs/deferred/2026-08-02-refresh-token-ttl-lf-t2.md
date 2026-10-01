@@ -181,3 +181,32 @@ Address when either of these holds:
   treats any `null` session, from any cause, as non-destructive — so closing
   this item is purely a backend/project-configuration action plus confirming
   the configured value against the product's stated offline target.
+
+## Re-evaluation (2026-10-01, delivery roadmap)
+
+Supabase's session documentation, checked via Context7 on 2026-10-01, says a
+session lasts indefinitely by default. Refresh tokens never expire; each can
+be used only once. A session ends only when one of these happens:
+
+- the user signs out;
+- the user changes their password or performs another security-sensitive
+  action;
+- a configured **inactivity timeout** passes;
+- a configured **maximum lifetime (time-box)** is reached;
+- the user signs in on another device while **single session per user** is
+  enabled.
+
+The "hard wall" this entry describes therefore exists only if the hosted
+project enables one of those three settings. What remains is a check, not a
+code change:
+
+- In the hosted Supabase dashboard, open Auth → Sessions and record the values
+  of three settings here: time-box user sessions, inactivity timeout, and
+  single session per user.
+- If all three are off, or both time limits are at least one week, the wall is
+  outside ADR-008's offline target, and this entry can be closed.
+- Single session per user should stay off. Beyond the offline concern, it
+  signs the user out of every other device, which would break multi-device use
+  of the personal song layer planned in S3.
+
+`docs/plans/2026-10-01-delivery-roadmap.md` tracks this as a user action.

@@ -58,3 +58,17 @@ Do not silently infer modulation support from the current global-only reader sli
 ## Planning Note
 
 Any future slice that changes ChordPro transpose semantics must update this note in the same change set. The current reader contract is global-only transpose plus reader-local delta controls, not full modulation-aware parsing.
+
+## Roadmap (2026-10-01)
+
+`docs/plans/2026-10-01-delivery-roadmap.md` schedules both items:
+
+- **Base transpose/capo alignment is slice S2** (`fix/chordpro-base-directives`).
+  S3 depends on it: S3 saves per-user transpose and capo and needs one
+  consistent base for them.
+- **In-song modulation is slice S8** (`feat/chordpro-modulation`).
+  - It follows S2.
+  - It must not run in parallel with S3 or S4, because both also change
+    `SongReaderProjection`.
+  - Personal transpose from S3 applies as a global offset on top of any
+    in-song modulation.

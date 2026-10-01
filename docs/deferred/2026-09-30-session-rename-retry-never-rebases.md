@@ -41,3 +41,13 @@ review.
   like `planEdit`) or only after a conflict, and document the choice.
 - Red test first: a conflicted rename retried after a refresh showing a
   newer session version is sent with that version.
+
+## Roadmap (2026-10-01)
+
+Scheduled in slice **S5b** (`fix/planning-mutation-gaps`) of
+`docs/plans/2026-10-01-delivery-roadmap.md`.
+
+**Recommended default:** a rename retry rebases only after a visible
+conflict, in no other status. Plan-delete review gate 3 (F1) showed that a
+retry which rebases in any status silently absorbs a foreign write. The S5b
+spec confirms or overrides this default.

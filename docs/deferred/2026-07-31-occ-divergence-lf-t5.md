@@ -81,3 +81,12 @@ Address when either of these holds:
   independent reason (e.g. bandwidth, latency). At that point finer conflict
   granularity for LF-T5 comes nearly for free as a side effect, rather than justifying
   its own protocol change.
+
+## Re-evaluation (2026-10-01, delivery roadmap)
+
+The trigger is not met, and it is currently not observable: nothing reports
+when the mutation warn threshold (`mutationWarnBytes`) fires for a real user.
+A cheap enabler is a breadcrumb or metric on that event, added in S5b or S6 of
+`docs/plans/2026-10-01-delivery-roadmap.md`. The production Sentry would then
+show whether the first trigger condition is ever met. The protocol change
+itself stays deferred.

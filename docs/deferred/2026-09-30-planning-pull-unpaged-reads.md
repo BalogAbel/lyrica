@@ -54,3 +54,28 @@ Other pulls may share the same shape; the fix slice should check them.
   a failed refresh, or a complete paged result.
 - Remove the "Known limit" notes in the spec (I7) and in
   `supabase_planning_repository.dart` when this is fixed.
+
+## Update (2026-10-01, delivery roadmap)
+
+**The song catalog pull has the same shape.** `listSongsRows` in
+`apps/lyron_app/lib/src/infrastructure/song_library/supabase_song_repository.dart`
+selects every song with `.order('title')` and no `.range()`. Above
+`max_rows = 1000`, PostgREST silently truncates the result, so songs late in
+the alphabet drop out of the song list and the offline catalog. A library of
+more than 1000 songs is far more plausible than a plan with more than 1000
+sessions.
+
+Consequences for the slice that picks this up:
+
+- **The catalog must page.** Failing the refresh on truncation is not an
+  acceptable fail-safe there, because a large library would never refresh
+  again.
+- **The planning reads may page or fail the refresh.** The requirements above
+  still hold. One shared paging helper for both domains is preferred.
+- **Paging must keep the catalog's existing guarantees:** ADR-037 local-first
+  visibility and the rejected-empty-snapshot guard.
+
+**Scheduling:** slice **S5a** (`fix/paged-remote-pulls`) in
+`docs/plans/2026-10-01-delivery-roadmap.md`, second in order. It is not
+urgent: the user confirmed on 2026-10-01 that no organization is close to 1000
+songs. The personal-layer pull planned in S3 reuses the helper.

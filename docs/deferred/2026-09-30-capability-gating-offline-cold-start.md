@@ -109,3 +109,15 @@ inside the plan-delete PR would widen its blast radius.
   session editing, and the song library, editor, and reader gates (they use
   `IfCapability` or read `hasCapabilitySync` directly, with different
   defaults for an unknown answer).
+
+## Roadmap (2026-10-01)
+
+Scheduled in slice **S6** (`fix/capability-and-telemetry`) of
+`docs/plans/2026-10-01-delivery-roadmap.md`.
+
+**Recommended default: (a) and (b) together.** The S6 spec confirms or
+overrides this.
+
+**Sequencing constraint.** The persisted capability store is a new per-user
+local store, so it joins the ADR-035 purge contract. S3 adds another such
+store, so S6 must not run in parallel with S3.
