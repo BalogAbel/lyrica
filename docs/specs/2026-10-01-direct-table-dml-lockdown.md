@@ -249,9 +249,9 @@ Add `scripts/tests/direct-table-dml-contract-test.sh` and run it from
   `MAINTAIN`, and false for `anon` on `SELECT`. `authenticated` has `SELECT`
   on the ten tables of fact 1.
 - **G2, policies.** No policy in `public` has command `ALL`. Every `INSERT`,
-  `UPDATE` or `DELETE` policy in `public` is permissive with a `USING` and
-  `WITH CHECK` expression that is literally `false` (or absent where the
-  command has none).
+  `UPDATE` or `DELETE` policy in `public` has `USING` and `WITH CHECK`
+  expressions that are literally `false` or absent (an insert policy has no
+  `USING`, a delete policy no `WITH CHECK`).
 - **G3, default privileges.** No `pg_default_acl` entry for `postgres` in
   `public` grants anything to `anon`, `authenticated` or `service_role` for
   tables, sequences or functions. A behavioural probe also creates a table
