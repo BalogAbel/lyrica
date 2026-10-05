@@ -271,9 +271,14 @@ With a known organization, a live `verifiedEmpty` does not change the gate.
 D5 runs exactly as ADR-035 specifies: the marker, the 60 s monotonic
 cooldown, the second fresh confirmation, and the pending-work dialog.
 
-When the purge runs, it clears the identity. The known organization becomes
-absent, and the same live `verifiedEmpty` now selects `InviteRequiredScreen`.
-The gate needs no rule of its own for this.
+When the purge runs, it clears the identity, and the known organization
+becomes absent. The gate's own live resolution is not enough at that point.
+It runs only on sign-in edges, so it can still hold an older `selected`: the
+second D5 confirmation usually comes from a catalog or planning refresh. The
+gate therefore registers a purge handler on
+`VerifiedEmptyMembershipCleanupCoordinator`, which fires only after a purge
+genuinely ran. That handler records `verifiedEmpty` for the purged user, and
+the decision table then selects `InviteRequiredScreen`.
 
 **Exceptions:**
 
@@ -414,7 +419,9 @@ startup path keeps the real auth client.
 
 ## Delivery
 
-Two PRs from this branch, in this order:
+Two PRs, in this order. PR 1 comes from this branch. PR 2 starts from `main`
+after PR 1 merges, on `fix/offline-first-affordances` (squash merges make
+reusing this branch conflict-prone).
 
 - **PR 1 (field symptom):** SG1–SG5 and SG8. This ships the fix for the reported
   10–15 s wait by itself.
@@ -483,7 +490,8 @@ Two PRs from this branch, in this order:
     child.
 - A capability write that completes after a purge does not resurrect the set.
 - Offline cold start with a stored set: gated affordances, including the
-  Import item, are available on the first frame.
+  Import item, are available as soon as the local store read completes,
+  without waiting for the network.
 - The popup shows both last-synced times. The header shows non-fresh state
   without opening the popup. No raw identifier appears in any user-visible
   text.
