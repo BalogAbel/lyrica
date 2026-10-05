@@ -1,0 +1,246 @@
+import 'dart:async';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:lyron_app/src/application/active_organization_resolution.dart';
+import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
+import 'package:lyron_app/src/application/auth/auth_repository.dart';
+import 'package:lyron_app/src/application/auth/last_known_identity.dart';
+import 'package:lyron_app/src/application/auth/membership_gate_decision.dart';
+import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
+import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
+import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
+import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
+import 'package:lyron_app/src/offline/auth/drift_last_known_identity_store.dart';
+import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
+import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
+
+import '../../support/drift_test_setup.dart';
+
+const _session = AppAuthSession(userId: 'user-1', email: 'demo@lyron.local');
+
+class _FakeAuthRepository implements AuthRepository {
+  _FakeAuthRepository(this._session);
+
+  final AppAuthSession? _session;
+  final _sessions = StreamController<AppAuthSession?>.broadcast();
+
+  void dispose() => _sessions.close();
+
+  @override
+  Future<AppAuthSession?> restoreSession() async => _session;
+
+  @override
+  Stream<AppAuthSession?> watchSession() => _sessions.stream;
+
+  @override
+  Future<void> signInWithOAuth(
+    SignInMethod method, {
+    required String redirectTo,
+  }) async {}
+
+  @override
+  Future<void> sendMagicLink({
+    required String email,
+    required String redirectTo,
+  }) async {}
+
+  @override
+  Future<void> signOut() async {}
+
+  @override
+  Future<void> deleteAccount() async {}
+}
+
+class _Harness {
+  _Harness(this.container, this.authController);
+
+  final ProviderContainer container;
+  final AppAuthController authController;
+}
+
+Future<_Harness> _harness({
+  required AppAuthSession? session,
+  required ActiveOrganizationResolutionReader resolution,
+  LastKnownIdentity? identity,
+}) async {
+  final identityStore = DriftLastKnownIdentityStore.inMemory();
+  if (identity != null) {
+    await identityStore.write(identity);
+  }
+  final repository = _FakeAuthRepository(session);
+  addTearDown(repository.dispose);
+  final authController = AppAuthController(
+    repository,
+    lastKnownIdentityStore: identityStore,
+  );
+  await authController.restoreSession();
+
+  final songDatabase = SongCatalogDatabase.inMemory();
+  final planningDatabase = PlanningLocalDatabase.inMemory();
+  addTearDown(songDatabase.close);
+  addTearDown(planningDatabase.close);
+
+  final container = ProviderContainer(
+    overrides: [
+      appAuthControllerProvider.overrideWith((_) => authController),
+      lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
+      songCatalogDatabaseProvider.overrideWithValue(songDatabase),
+      planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
+      activeOrganizationResolutionProvider.overrideWithValue(resolution),
+    ],
+  );
+  addTearDown(container.dispose);
+  return _Harness(container, authController);
+}
+
+Future<ActiveOrganizationResolution> _never() =>
+    Completer<ActiveOrganizationResolution>().future;
+
+void main() {
+  suppressDriftMultipleDatabaseWarnings();
+
+  test(
+    'a known organization opens the gate with no network answer (SG1)',
+    () async {
+      final harness = await _harness(
+        session: _session,
+        identity: const LastKnownIdentity(
+          userId: 'user-1',
+          email: 'demo@lyron.local',
+          organizationId: 'org-1',
+        ),
+        resolution: _never,
+      );
+      harness.container.read(membershipRefreshEffectProvider);
+      await pumpEventQueue();
+
+      final controller = harness.container.read(
+        activeMembershipControllerProvider,
+      );
+      expect(
+        controller.viewFor(hasPendingInvite: false),
+        MembershipGateView.home,
+      );
+      expect(controller.allowsAuthenticatedRoutes, isTrue);
+    },
+  );
+
+  test('another user\'s identity is not a known organization (SG1)', () async {
+    final harness = await _harness(
+      session: _session,
+      identity: const LastKnownIdentity(
+        userId: 'user-2',
+        email: 'other@lyron.local',
+        organizationId: 'org-1',
+      ),
+      resolution: _never,
+    );
+    harness.container.read(membershipRefreshEffectProvider);
+    await pumpEventQueue();
+
+    expect(
+      harness.container
+          .read(activeMembershipControllerProvider)
+          .viewFor(hasPendingInvite: false),
+      MembershipGateView.resolving,
+    );
+  });
+
+  test('without a known organization the gate loads, then opens on the '
+      'answer (SG4, G-C)', () async {
+    final answer = Completer<ActiveOrganizationResolution>();
+    final harness = await _harness(
+      session: _session,
+      resolution: () => answer.future,
+    );
+    harness.container.read(membershipRefreshEffectProvider);
+    await pumpEventQueue();
+
+    final controller = harness.container.read(
+      activeMembershipControllerProvider,
+    );
+    expect(
+      controller.viewFor(hasPendingInvite: false),
+      MembershipGateView.resolving,
+    );
+
+    answer.complete(const ActiveOrganizationResolution.selected('org-1'));
+    await pumpEventQueue();
+
+    expect(
+      controller.viewFor(hasPendingInvite: false),
+      MembershipGateView.home,
+    );
+  });
+
+  test(
+    'sessionExpired with a known organization opens the gate (G-B)',
+    () async {
+      final harness = await _harness(
+        session: null,
+        identity: const LastKnownIdentity(
+          userId: 'user-1',
+          email: 'demo@lyron.local',
+          organizationId: 'org-1',
+        ),
+        resolution: _never,
+      );
+      expect(harness.authController.state.status, AppAuthStatus.sessionExpired);
+
+      expect(
+        harness.container
+            .read(activeMembershipControllerProvider)
+            .viewFor(hasPendingInvite: false),
+        MembershipGateView.home,
+      );
+    },
+  );
+
+  test('an identity change notifies the gate', () async {
+    final harness = await _harness(
+      session: _session,
+      identity: const LastKnownIdentity(
+        userId: 'user-1',
+        email: 'demo@lyron.local',
+        organizationId: 'org-1',
+      ),
+      resolution: _never,
+    );
+    final controller = harness.container.read(
+      activeMembershipControllerProvider,
+    );
+    var notifications = 0;
+    controller.addListener(() => notifications++);
+
+    await harness.container
+        .read(localDataLifecycleProvider)
+        .clearIdentity(reason: PurgeReason.userSignOut);
+
+    expect(notifications, greaterThan(0));
+    expect(
+      controller.viewFor(hasPendingInvite: false),
+      isNot(MembershipGateView.home),
+    );
+  });
+
+  test('an explicit sign-out forgets the live resolution (SG3)', () async {
+    final harness = await _harness(
+      session: _session,
+      resolution: () async =>
+          const ActiveOrganizationResolution.selected('org-1'),
+    );
+    harness.container.read(membershipRefreshEffectProvider);
+    await pumpEventQueue();
+    final controller = harness.container.read(
+      activeMembershipControllerProvider,
+    );
+    expect(controller.last, isA<ActiveOrganizationSelected>());
+
+    await harness.authController.signOut();
+    await pumpEventQueue();
+
+    expect(controller.last, isNull);
+  });
+}

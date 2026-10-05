@@ -117,6 +117,11 @@ final localDataLifecycleProvider = Provider<LocalDataLifecycle>((ref) {
     identityStore: ref.watch(lastKnownIdentityStoreProvider),
     noteLastKnownIdentity: (identity) {
       ref.read(appAuthControllerProvider).noteLastKnownIdentity(identity);
+      // SG1: the gate reads the identity through a reader; a purge or a
+      // first write must re-run its decision. Deliberately not through
+      // AppAuthController.notifyListeners: capabilityResolverProvider
+      // invalidates on every notification from that controller.
+      ref.read(activeMembershipControllerProvider).noteInputsChanged();
     },
     eventsRecorder: ref.watch(localDataEventsRecorderProvider),
   );
@@ -719,10 +724,34 @@ final deepLinkListenerProvider = Provider<DeepLinkListener>((ref) {
   return listener;
 });
 
+/// SG1 (docs/specs/2026-10-05-offline-first-startup-gate.md): the gate
+/// decides from the current user's last known organization first. The
+/// readers are evaluated on every decision; the listeners below re-run it
+/// when an input changes.
 final activeMembershipControllerProvider =
-    ChangeNotifierProvider<ActiveMembershipController>(
-      (_) => ActiveMembershipController(),
-    );
+    ChangeNotifierProvider<ActiveMembershipController>((ref) {
+      final authController = ref.read(appAuthControllerProvider);
+      final pendingInvites = ref.read(pendingInviteTokenControllerProvider);
+      final controller = ActiveMembershipController(
+        currentUserIdReader: () => authController.state.currentUserId,
+        knownOrganizationIdReader: () {
+          final userId = authController.state.currentUserId;
+          final identity = authController.lastKnownIdentity;
+          if (userId == null || identity == null || identity.userId != userId) {
+            return null;
+          }
+          return identity.organizationId;
+        },
+        hasPendingInviteReader: () => pendingInvites.current != null,
+      );
+      authController.addListener(controller.noteInputsChanged);
+      pendingInvites.addListener(controller.noteInputsChanged);
+      ref.onDispose(() {
+        authController.removeListener(controller.noteInputsChanged);
+        pendingInvites.removeListener(controller.noteInputsChanged);
+      });
+      return controller;
+    });
 
 final activeOrganizationResolverProvider = Provider<ActiveOrganizationResolver>(
   (ref) {
@@ -766,18 +795,39 @@ final membershipResolutionDetailedProvider =
 
 final membershipRefreshEffectProvider = Provider<void>((ref) {
   final membershipController = ref.read(activeMembershipControllerProvider);
+  final authController = ref.read(appAuthControllerProvider);
 
   Future<void> refreshMembership() async {
+    final userId = authController.state.session?.userId;
+    if (userId == null) {
+      return;
+    }
+    membershipController.beginResolution(userId: userId);
     final reader = ref.read(membershipResolutionProvider);
     final result = await reader();
-    membershipController.update(result);
+    membershipController.update(result, userId: userId);
+  }
+
+  // Always on a microtask: the status listener below fires immediately
+  // while this provider is still building, and beginResolution notifies the
+  // membership controller's listeners. A microtask still runs before the
+  // next frame, so the gate never renders the pre-resolution state (G-C).
+  void scheduleRefresh() {
+    scheduleMicrotask(() => unawaited(refreshMembership()));
   }
 
   ref.listen<AppAuthStatus>(
     appAuthControllerProvider.select((c) => c.state.status),
     (prev, next) {
       if (next == AppAuthStatus.signedIn && prev != AppAuthStatus.signedIn) {
-        unawaited(refreshMembership());
+        scheduleRefresh();
+      }
+      // SG3: an explicit sign-out forgets the live resolution. prev is null
+      // only for the immediate first call, where there is nothing to forget.
+      if (next == AppAuthStatus.signedOut &&
+          prev != null &&
+          prev != AppAuthStatus.signedOut) {
+        membershipController.reset();
       }
     },
     fireImmediately: true,
@@ -788,9 +838,27 @@ final membershipRefreshEffectProvider = Provider<void>((ref) {
     next,
   ) {
     if (next is RedeemStateSuccess && prev is! RedeemStateSuccess) {
-      unawaited(refreshMembership());
+      scheduleRefresh();
     }
   });
+
+  // SG2: a D5 purge clears the identity, but the live resolution held here
+  // refreshes only on sign-in edges, so it can still be an older `selected`
+  // (the second D5 confirmation usually comes from a catalog or planning
+  // refresh). The coordinator calls this only after a purge genuinely ran,
+  // which itself took two fresh verified-empty resolutions.
+  final coordinator = ref.read(
+    verifiedEmptyMembershipCleanupCoordinatorProvider,
+  );
+  Future<void> recordPurge({required String userId}) async {
+    membershipController.update(
+      const ActiveOrganizationResolution.verifiedEmpty(),
+      userId: userId,
+    );
+  }
+
+  coordinator.addHandler(recordPurge);
+  ref.onDispose(() => coordinator.removeHandler(recordPurge));
 });
 
 /// Attaches/clears pseudonymized identity on the Observability scope as
