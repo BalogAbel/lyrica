@@ -25,7 +25,7 @@ Also run `flutter analyze` (CI fails on info-level lints) and `dart format lib t
 
 - **Root cause (G-A).** `SupabaseClient._getAccessToken` (`supabase-2.16.2/lib/src/supabase_client.dart:277-294`) awaits `auth.getSession()` before every PostgREST/RPC call. With an expired session that waits for gotrue's refresh retry loop: measured 10.0–12.4 s offline. The gate showed its failure screen for that whole time.
 - **Widget-test fake time and gotrue.** gotrue's retry predicate measures elapsed time with the real `DateTime.now()`, while its back-off delays are fake timers. In a `testWidgets` test a failing HTTP client therefore makes the refresh loop effectively endless, and it keeps scheduling timers. Use an HTTP client whose requests **never complete**: no retry timers, deterministic. Teardown must call `client.auth.stopAutoRefresh()`, unmount the tree, then close databases. **Never** call `client.dispose()` in the test: it completes the hung refresh with an error, and app code resumes after its providers are disposed (`UnmountedRefException`). A planning spike (2026-10-05) proved this harness against the pre-fix code: after 31 s of fake time the gate still showed "Could not verify access. Check your network." and no song.
-- **Provider build-time notifications.** `membershipRefreshEffectProvider` listens with `fireImmediately: true`. When the app is already signed in at the moment the effect is first read (common in tests), its callback runs while the provider is still building. Never call a method that notifies a `ChangeNotifier` provider synchronously from there. The plan schedules the refresh on a microtask, which still runs before the next frame.
+- **Provider build-time notifications.** `membershipRefreshEffectProvider` listens with `fireImmediately: true`. When the app is already signed in at the moment the effect is first read (common in tests), its callback runs while the provider is still building. Never call a method that notifies a `ChangeNotifier` provider synchronously from there. The plan schedules the refresh on a microtask, which still runs before the next frame. The same hazard exists for the two planning listeners in `planning_providers.dart`: the planning provider's `ref.listen` on the `autoDispose` `activeCatalogContextProvider` was observed firing while the widget tree was building (stack: `songMutationEntriesProvider` watching `activeCatalogContextProvider`, read from `unifiedSyncOverviewProvider`), and its callback notified `ActivePlanningContextController` synchronously ("Tried to modify a provider while the widget tree was building"). Task 6b defers both planning listeners (`syncToCatalogContext`, `handleActiveContextChanged`) to a microtask guarded by `ref.mounted`. The 10-15 s network-first gate wait and test overrides used to hide this; with the local-first gate, home builds while the catalog controller is still transitioning.
 - **Backward compatibility.** 13 existing tests construct `ActiveMembershipController()` and call `update(const ActiveOrganizationSelected('org-1'))` with no user id. That must keep opening the gate.
 - **`SongCatalogStore`, `PlanningLocalStore` and `LastKnownIdentityStore` have 25 hand-written test fakes** that implement the full interface. Do not add methods to those interfaces. PR 2 adds a separate `CapabilitySnapshotStore` interface and a separate `SyncFreshnessReader` class instead.
 
@@ -1955,6 +1955,39 @@ current user (SG1, SG4, G-C).
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 EOF
 )"
+```
+
+---
+
+### Task 6b: Planning listeners notify on a microtask (build-time notification)
+
+**Problem.** Task 7 opens the gate in the first frames, so home builds while the catalog controller is still transitioning. A widget build reads `activeCatalogContextProvider` (`autoDispose`) through `songMutationEntriesProvider` -> `unifiedSyncOverviewProvider`, and the `ref.listen<ActiveCatalogContext?>(activeCatalogContextProvider, ...)` callback in `activePlanningContextControllerProvider` was observed firing in that build. It calls `controller.syncToCatalogContext(next)`, which notifies a `ChangeNotifier` synchronously: "Tried to modify a provider while the widget tree was building" (`ActivePlanningContextController._setState`). The listener on `activePlanningContextProvider` in `planningSyncControllerProvider` has the same hazard: `handleActiveContextChanged(null)` calls `_setState` before its first await.
+
+**Files:**
+- Modify: `apps/lyron_app/lib/src/application/planning_providers.dart` (both `ref.listen` callbacks)
+
+- [ ] **Step 1: Red test = the two SG8 acceptance tests**
+
+With Task 7's working-tree changes present (the two `skip` lines removed), run `cd apps/lyron_app && flutter test test/integration/offline_first_startup_gate_test.dart`. Expected before the fix: G-A and G-B fail with "Tried to modify a provider while the widget tree was building" at `ActivePlanningContextController._setState`. SG8 is the only test that keeps the real providers and the real first-frame timing, so it is the regression test; a synthetic build-race unit test was judged not worth the harness cost.
+
+- [ ] **Step 2: Defer both listener callbacks**
+
+Wrap each callback body in `scheduleMicrotask(() { if (!ref.mounted) return; ... })`, passing the captured `next`. `ref.mounted` is part of `Ref` in riverpod 3.4.3 (the locked version). Do **not** subscribe directly to `songCatalogController` instead: the `autoDispose` rebuild would leave a dead instance subscribed.
+
+- [ ] **Step 3: Adjust the one test that encoded synchronous propagation**
+
+`test/application/providers_test.dart`, "propagates active catalog context changes into the planning context controller": its old assertion encoded the synchronous propagation that 6b deliberately removes, so the test was adjusted. After setting the catalog context it now triggers the listener with an explicit `container.read(activeCatalogContextProvider)` and awaits one microtask before the unchanged `expect`.
+
+- [ ] **Step 4: Verify**
+
+Run: `cd apps/lyron_app && dart format lib test && flutter analyze && flutter test`
+Expected: no analyzer issues; the full suite passes, SG8 included; the output contains none of "Tried to modify a provider", "markNeedsBuild", "UnmountedRef", "pending timer".
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add apps/lyron_app/lib/src/application/planning_providers.dart apps/lyron_app/test/application/providers_test.dart docs/plans/2026-10-05-offline-first-startup-gate.md docs/specs/2026-10-05-offline-first-startup-gate.md
+git commit -m "fix(planning): notify planning listeners on a microtask (S0 6b)"
 ```
 
 ---

@@ -296,11 +296,19 @@ final activePlanningContextControllerProvider =
         handleAuthStateChanged(authController.state);
       }
 
+      // This callback was observed firing while the widget tree was building
+      // (a build read activeCatalogContextProvider). Notifying the
+      // ChangeNotifier there throws "Tried to modify a provider while the
+      // widget tree was building"; defer to a microtask (cf. the membership
+      // refresh effect in auth_providers.dart).
       ref.listen<ActiveCatalogContext?>(activeCatalogContextProvider, (
         _,
         next,
       ) {
-        controller.syncToCatalogContext(next);
+        scheduleMicrotask(() {
+          if (!ref.mounted) return;
+          controller.syncToCatalogContext(next);
+        });
       });
 
       authController.addListener(authListener);
@@ -361,11 +369,17 @@ final planningSyncControllerProvider =
         }
       }
 
+      // Same build-time notification hazard as the catalog listener above:
+      // handleActiveContextChanged(null) calls _setState synchronously, so it
+      // runs on a microtask and never against a disposed controller.
       ref.listen<ActivePlanningReadContext?>(activePlanningContextProvider, (
         _,
         next,
       ) {
-        unawaited(controller.handleActiveContextChanged(next));
+        scheduleMicrotask(() {
+          if (!ref.mounted) return;
+          unawaited(controller.handleActiveContextChanged(next));
+        });
       });
 
       void authListener() {

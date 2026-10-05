@@ -181,6 +181,18 @@ looking at old data without any sign of it.
 
 No test exercises the real gate together with gotrue's real refresh latency.
 
+A second consequence: the 10-15 s gate wait and the test overrides also hid
+provider build-time notifications. Once the gate opens in the first frames
+(SG1), home builds while the catalog controller is still transitioning, and
+a widget build reads the autoDispose `activeCatalogContextProvider` (observed
+via `songMutationEntriesProvider` in the sync overview). The planning
+providers' `ref.listen` callbacks
+(`syncToCatalogContext`, `handleActiveContextChanged`) then notified a
+`ChangeNotifier` synchronously during build ("Tried to modify a provider
+while the widget tree was building"). Those listeners notify on a microtask,
+guarded by `ref.mounted`; SG8 is the regression test because it keeps the
+real providers and first-frame timing.
+
 ## Invariant
 
 ADR-037's invariant is extended from the read contexts to everything the
