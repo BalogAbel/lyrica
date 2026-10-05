@@ -816,17 +816,28 @@ final membershipRefreshEffectProvider = Provider<void>((ref) {
     scheduleMicrotask(() => unawaited(refreshMembership()));
   }
 
-  ref.listen<AppAuthStatus>(
-    appAuthControllerProvider.select((c) => c.state.status),
+  // The pair, not the status alone: a direct session switch (magic link or
+  // OAuth for another account, without a sign-out in between) is signedIn to
+  // signedIn and only the user changes. One edge starts one resolution, even
+  // when status and user change together.
+  ref.listen<(AppAuthStatus, String?)>(
+    appAuthControllerProvider.select(
+      (c) => (c.state.status, c.state.currentUserId),
+    ),
     (prev, next) {
-      if (next == AppAuthStatus.signedIn && prev != AppAuthStatus.signedIn) {
-        scheduleRefresh();
+      final (status, userId) = next;
+      if (status == AppAuthStatus.signedIn) {
+        final becameSignedIn = prev?.$1 != AppAuthStatus.signedIn;
+        final userChanged = prev != null && prev.$2 != userId;
+        if (becameSignedIn || userChanged) {
+          scheduleRefresh();
+        }
       }
       // SG3: an explicit sign-out forgets the live resolution. prev is null
       // only for the immediate first call, where there is nothing to forget.
-      if (next == AppAuthStatus.signedOut &&
+      if (status == AppAuthStatus.signedOut &&
           prev != null &&
-          prev != AppAuthStatus.signedOut) {
+          prev.$1 != AppAuthStatus.signedOut) {
         membershipController.reset();
       }
     },

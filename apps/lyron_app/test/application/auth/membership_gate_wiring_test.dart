@@ -28,6 +28,8 @@ class _FakeAuthRepository implements AuthRepository {
 
   void dispose() => _sessions.close();
 
+  void emit(AppAuthSession? session) => _sessions.add(session);
+
   @override
   Future<AppAuthSession?> restoreSession() async => _session;
 
@@ -54,10 +56,11 @@ class _FakeAuthRepository implements AuthRepository {
 }
 
 class _Harness {
-  _Harness(this.container, this.authController);
+  _Harness(this.container, this.authController, this.repository);
 
   final ProviderContainer container;
   final AppAuthController authController;
+  final _FakeAuthRepository repository;
 }
 
 Future<_Harness> _harness({
@@ -92,7 +95,7 @@ Future<_Harness> _harness({
     ],
   );
   addTearDown(container.dispose);
-  return _Harness(container, authController);
+  return _Harness(container, authController, repository);
 }
 
 Future<ActiveOrganizationResolution> _never() =>
@@ -242,5 +245,65 @@ void main() {
     await pumpEventQueue();
 
     expect(controller.last, isNull);
+  });
+
+  test(
+    'the initial signedIn edge starts exactly one resolution (F1)',
+    () async {
+      var calls = 0;
+      final harness = await _harness(
+        session: _session,
+        resolution: () async {
+          calls++;
+          return const ActiveOrganizationResolution.selected('org-1');
+        },
+      );
+      harness.container.read(membershipRefreshEffectProvider);
+      await pumpEventQueue();
+
+      expect(calls, 1);
+    },
+  );
+
+  test('a direct session switch A to B resolves B, once (F1)', () async {
+    final answers = <Completer<ActiveOrganizationResolution>>[];
+    final harness = await _harness(
+      session: _session,
+      resolution: () {
+        final answer = Completer<ActiveOrganizationResolution>();
+        answers.add(answer);
+        return answer.future;
+      },
+    );
+    harness.container.read(membershipRefreshEffectProvider);
+    await pumpEventQueue();
+    final controller = harness.container.read(
+      activeMembershipControllerProvider,
+    );
+    answers.single.complete(const ActiveOrganizationResolution.selected('a'));
+    await pumpEventQueue();
+    expect(controller.last, const ActiveOrganizationResolution.selected('a'));
+
+    harness.repository.emit(
+      const AppAuthSession(userId: 'user-2', email: 'other@lyron.local'),
+    );
+    await pumpEventQueue();
+
+    expect(harness.authController.state.currentUserId, 'user-2');
+    expect(answers, hasLength(2), reason: 'one resolution for B, not zero');
+    expect(
+      controller.viewFor(hasPendingInvite: false),
+      MembershipGateView.resolving,
+    );
+
+    answers.last.complete(const ActiveOrganizationResolution.selected('b'));
+    await pumpEventQueue();
+
+    expect(answers, hasLength(2));
+    expect(
+      controller.viewFor(hasPendingInvite: false),
+      MembershipGateView.home,
+    );
+    expect(controller.last, const ActiveOrganizationResolution.selected('b'));
   });
 }
