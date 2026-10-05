@@ -51,6 +51,13 @@ class MembershipGate extends ConsumerWidget {
           ),
         ),
       ),
+      null => const Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: Text(AppStrings.membershipConnectivityFailureMessage),
+          ),
+        ),
+      ),
     };
   }
 }
