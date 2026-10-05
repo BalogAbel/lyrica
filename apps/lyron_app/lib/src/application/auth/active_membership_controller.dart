@@ -93,8 +93,10 @@ class ActiveMembershipController extends ChangeNotifier {
   /// resolution was started for; omit it only where no user is known.
   void update(ActiveOrganizationResolution next, {String? userId}) {
     final current = _currentUserIdReader();
-    if (userId != null && current != null && userId != current) {
-      // Resolved for a user who is no longer current: never show it.
+    if (userId != null && userId != current) {
+      // Resolved for a user who is no longer current (including nobody, after
+      // an explicit sign-out): never keep it, or the same user signing in
+      // again would start from a stale result.
       return;
     }
     final sameUser =

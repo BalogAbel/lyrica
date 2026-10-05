@@ -123,6 +123,25 @@ void main() {
     expect(viewOf(controller), MembershipGateView.resolving);
   });
 
+  test('a late result after an explicit sign-out is dropped, so the same '
+      'user signing in again starts clean (SG3, F3)', () {
+    String? current = 'user-1';
+    final controller = ActiveMembershipController(
+      currentUserIdReader: () => current,
+    );
+    addTearDown(controller.dispose);
+
+    controller.beginResolution(userId: 'user-1');
+    controller.reset();
+    current = null;
+    controller.update(empty, userId: 'user-1');
+    expect(controller.last, isNull);
+
+    current = 'user-1';
+    controller.beginResolution(userId: 'user-1');
+    expect(viewOf(controller), MembershipGateView.resolving);
+  });
+
   test('reset forgets the live resolution', () {
     final controller = ActiveMembershipController(
       currentUserIdReader: () => 'user-1',
