@@ -37,6 +37,8 @@ class ActiveMembershipController extends ChangeNotifier {
   ActiveOrganizationResolution? _last;
   String? _lastUserId;
   bool _resolving = false;
+  // The user the running resolution (and its first-run timer) belongs to.
+  String? _resolvingUserId;
   bool _firstRunTimedOut = false;
   Timer? _firstRunTimer;
   bool _disposed = false;
@@ -62,7 +64,13 @@ class ActiveMembershipController extends ChangeNotifier {
       knownOrganizationId: _knownOrganizationIdReader(),
       liveResolution: last,
       hasPendingInvite: hasPendingInvite,
-      awaitingFirstResolution: _resolving && !_firstRunTimedOut,
+      // A resolution running for someone else is not progress for the
+      // current user: showing "loading" for it would hide the failure screen
+      // (and its Retry) until the timer elapses.
+      awaitingFirstResolution:
+          _resolving &&
+          !_firstRunTimedOut &&
+          _resolvingUserId == _currentUserIdReader(),
     );
   }
 
@@ -79,6 +87,7 @@ class ActiveMembershipController extends ChangeNotifier {
     }
     _lastUserId = userId;
     _resolving = true;
+    _resolvingUserId = userId;
     _firstRunTimedOut = false;
     _firstRunTimer?.cancel();
     _firstRunTimer = Timer(firstRunTimeout, () {
@@ -97,6 +106,12 @@ class ActiveMembershipController extends ChangeNotifier {
       // Resolved for a user who is no longer current (including nobody, after
       // an explicit sign-out): never keep it, or the same user signing in
       // again would start from a stale result.
+      if (userId == _resolvingUserId) {
+        // That user's resolution is the one running: it is over. Never stop
+        // a resolution running for anyone else (the current user's, say).
+        _stopResolving();
+        _notify();
+      }
       return;
     }
     final sameUser =
@@ -130,6 +145,7 @@ class ActiveMembershipController extends ChangeNotifier {
 
   void _stopResolving() {
     _resolving = false;
+    _resolvingUserId = null;
     _firstRunTimedOut = false;
     _firstRunTimer?.cancel();
     _firstRunTimer = null;

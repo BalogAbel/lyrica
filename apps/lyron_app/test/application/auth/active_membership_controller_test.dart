@@ -142,6 +142,56 @@ void main() {
     expect(viewOf(controller), MembershipGateView.resolving);
   });
 
+  test('a dropped result for the user whose resolution was running stops it, '
+      'so the new current user is not left loading (SG3, F4)', () {
+    fakeAsync((async) {
+      var current = 'user-b';
+      final controller = ActiveMembershipController(
+        currentUserIdReader: () => current,
+      );
+      controller.beginResolution(userId: 'user-b');
+      current = 'user-a';
+
+      controller.update(selected, userId: 'user-b');
+
+      expect(controller.last, isNull);
+      expect(viewOf(controller), MembershipGateView.connectivityFailure);
+      expect(async.pendingTimers, isEmpty);
+      controller.dispose();
+    });
+  });
+
+  test('a dropped result for another user never stops the current user '
+      'resolution (SG3, F4)', () {
+    fakeAsync((async) {
+      final controller = ActiveMembershipController(
+        currentUserIdReader: () => 'user-a',
+      );
+      controller.beginResolution(userId: 'user-a');
+
+      controller.update(selected, userId: 'user-b');
+
+      expect(viewOf(controller), MembershipGateView.resolving);
+      expect(async.pendingTimers, hasLength(1));
+      async.elapse(const Duration(seconds: 15));
+      expect(viewOf(controller), MembershipGateView.connectivityFailure);
+      controller.dispose();
+    });
+  });
+
+  test('a resolution running for a user who is not current does not '
+      'count as loading for the current user (SG4, F4)', () {
+    fakeAsync((async) {
+      final controller = ActiveMembershipController(
+        currentUserIdReader: () => 'user-a',
+      );
+      controller.beginResolution(userId: 'user-b');
+
+      expect(viewOf(controller), MembershipGateView.connectivityFailure);
+      controller.dispose();
+    });
+  });
+
   test('reset forgets the live resolution', () {
     final controller = ActiveMembershipController(
       currentUserIdReader: () => 'user-1',
