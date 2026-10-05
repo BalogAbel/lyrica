@@ -8,6 +8,8 @@ import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
 import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'
+    show AuthRetryableFetchException;
 
 class _FakeAuthRepository implements AuthRepository {
   final _controller = StreamController<AppAuthSession?>.broadcast();
@@ -72,6 +74,8 @@ class _FakeAuthRepository implements AuthRepository {
   }
 
   void emit(AppAuthSession? session) => _controller.add(session);
+
+  void emitError(Object error) => _controller.addError(error);
 }
 
 class _FakeLastKnownIdentityStore implements LastKnownIdentityStore {
@@ -793,5 +797,44 @@ void main() {
     await Future<void>.delayed(Duration.zero);
 
     expect(controller.state.status, AppAuthStatus.signedOut);
+  });
+
+  test('a connectivity error on the auth stream changes nothing and is not '
+      'reported (SG5)', () async {
+    final repo = _FakeAuthRepository()
+      ..currentSession = const AppAuthSession(userId: 'u1', email: 'e@x');
+    final controller = AppAuthController(repo);
+    await controller.restoreSession();
+    final reported = <Object>[];
+    final originalOnError = FlutterError.onError;
+    FlutterError.onError = (details) => reported.add(details.exception);
+    addTearDown(() => FlutterError.onError = originalOnError);
+
+    repo.emitError(AuthRetryableFetchException(message: 'offline'));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(controller.state.status, AppAuthStatus.signedIn);
+    expect(reported, isEmpty);
+  });
+
+  test('any other auth-stream error is reported once and the stream keeps '
+      'working (SG5)', () async {
+    final repo = _FakeAuthRepository()
+      ..currentSession = const AppAuthSession(userId: 'u1', email: 'e@x');
+    final controller = AppAuthController(repo);
+    await controller.restoreSession();
+    final reported = <Object>[];
+    final originalOnError = FlutterError.onError;
+    FlutterError.onError = (details) => reported.add(details.exception);
+    addTearDown(() => FlutterError.onError = originalOnError);
+
+    repo.emitError(StateError('unexpected'));
+    await Future<void>.delayed(Duration.zero);
+    expect(reported.single, isA<StateError>());
+    expect(controller.state.status, AppAuthStatus.signedIn);
+
+    repo.emit(const AppAuthSession(userId: 'u1', email: 'new@x'));
+    await Future<void>.delayed(Duration.zero);
+    expect(controller.state.session?.email, 'new@x');
   });
 }
