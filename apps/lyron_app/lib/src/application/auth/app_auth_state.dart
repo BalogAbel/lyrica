@@ -13,6 +13,15 @@ class AppAuthState {
   final AppAuthSession? session;
   final AppAuthSession? lastKnownSession;
 
+  /// The user the app is acting for: the live session's user when signed
+  /// in, the last known session's user when offline-authenticated
+  /// (ADR-020), otherwise nobody.
+  String? get currentUserId => switch (status) {
+    AppAuthStatus.signedIn => session?.userId,
+    AppAuthStatus.sessionExpired => lastKnownSession?.userId,
+    AppAuthStatus.initializing || AppAuthStatus.signedOut => null,
+  };
+
   @override
   bool operator ==(Object other) {
     return other is AppAuthState &&
