@@ -156,7 +156,6 @@ void main() {
 
       await fixture.tearDown(tester);
     },
-    skip: true, // S0 Task 7 removes this
   );
 
   testWidgets(
@@ -176,6 +175,5 @@ void main() {
 
       await fixture.tearDown(tester);
     },
-    skip: true, // S0 Task 7 removes this
   );
 }

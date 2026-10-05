@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:lyron_app/src/application/active_organization_resolution.dart';
 import 'package:lyron_app/src/application/auth/active_membership_controller.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/providers.dart';
@@ -73,7 +72,7 @@ GoRouter createAppRouter({
         if (membershipController != null &&
             !isPublicRoute &&
             !isMembershipFlowRoute &&
-            membershipController.last is! ActiveOrganizationSelected) {
+            !membershipController.allowsAuthenticatedRoutes) {
           return AppRoutes.home.path;
         }
         return null;
@@ -90,7 +89,7 @@ GoRouter createAppRouter({
         if (membershipController != null &&
             !isPublicRoute &&
             !isMembershipFlowRoute &&
-            membershipController.last is! ActiveOrganizationSelected) {
+            !membershipController.allowsAuthenticatedRoutes) {
           return AppRoutes.home.path;
         }
         return null;

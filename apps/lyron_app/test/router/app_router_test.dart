@@ -442,6 +442,74 @@ void main() {
     },
   );
 
+  testWidgets('a known organization keeps protected routes open while the live '
+      'membership resolution fails (SG1)', (WidgetTester tester) async {
+    final repository = _TestAuthRepository(
+      restoredSession: const AppAuthSession(
+        userId: 'user-1',
+        email: 'demo@lyron.local',
+      ),
+    );
+    final controller = AppAuthController(repository);
+    await controller.restoreSession();
+    ActiveMembershipController membership() =>
+        ActiveMembershipController(
+          currentUserIdReader: () => controller.state.currentUserId,
+          knownOrganizationIdReader: () => 'org-1',
+        )..update(
+          const ActiveOrganizationResolution.unknownConnectivityFailure(),
+          userId: 'user-1',
+        );
+
+    final router = createAppRouter(
+      authController: controller,
+      membershipController: membership(),
+      refreshListenable: controller,
+      initialLocation: AppRoutes.planList.path,
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      isolatedSongCatalogProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(repository),
+          appAuthControllerProvider.overrideWith((_) => controller),
+          appAuthListenableProvider.overrideWithValue(controller),
+          activeMembershipControllerProvider.overrideWith((_) => membership()),
+          catalogSnapshotStateProvider.overrideWithValue(
+            const CatalogSnapshotState(
+              context: ActiveCatalogContext(
+                userId: 'user-1',
+                organizationId: 'org-1',
+              ),
+              connectionStatus: CatalogConnectionStatus.offlineCached,
+              refreshStatus: CatalogRefreshStatus.idle,
+              sessionStatus: CatalogSessionStatus.verified,
+              hasCachedCatalog: false,
+            ),
+          ),
+          songLibraryListProvider.overrideWith((ref) async => const []),
+          planningPlanListProvider.overrideWith(
+            (ref) async => [
+              PlanSummary(
+                id: 'plan-1',
+                slug: 'sunday-morning',
+                name: 'Sunday Morning',
+                description: 'Single-session Sunday fixture',
+                scheduledFor: DateTime(2026, 4, 5, 8, 30),
+                updatedAt: DateTime(2026, 3, 31, 8),
+              ),
+            ],
+          ),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.planListTitle), findsOneWidget);
+  });
+
   testWidgets(
     'session-expired users can still reach the sign-in route for re-auth',
     (WidgetTester tester) async {
