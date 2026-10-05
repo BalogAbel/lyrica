@@ -17,10 +17,12 @@ class ActiveMembershipController extends ChangeNotifier {
     String? Function()? currentUserIdReader,
     String? Function()? knownOrganizationIdReader,
     bool Function()? hasPendingInviteReader,
+    bool Function()? sessionExpiredReader,
     this.firstRunTimeout = const Duration(seconds: 15),
   }) : _currentUserIdReader = currentUserIdReader ?? _nobody,
        _knownOrganizationIdReader = knownOrganizationIdReader ?? _nobody,
-       _hasPendingInviteReader = hasPendingInviteReader ?? _noPendingInvite;
+       _hasPendingInviteReader = hasPendingInviteReader ?? _noPendingInvite,
+       _sessionExpiredReader = sessionExpiredReader ?? _noPendingInvite;
 
   static String? _nobody() => null;
   static bool _noPendingInvite() => false;
@@ -28,6 +30,7 @@ class ActiveMembershipController extends ChangeNotifier {
   final String? Function() _currentUserIdReader;
   final String? Function() _knownOrganizationIdReader;
   final bool Function() _hasPendingInviteReader;
+  final bool Function() _sessionExpiredReader;
 
   /// SG4: how long the gate shows its loading state before the connectivity
   /// message (with Retry) replaces it. Above the 10 s native connect
@@ -58,6 +61,11 @@ class ActiveMembershipController extends ChangeNotifier {
   }
 
   String? get currentUserId => _currentUserIdReader();
+
+  /// Whether the app runs offline-authenticated (ADR-020): the current user
+  /// is the last known one and there is no live session, so nothing that
+  /// needs the network under that user's identity can succeed.
+  bool get isSessionExpired => _sessionExpiredReader();
 
   MembershipGateView viewFor({required bool hasPendingInvite}) {
     return decideMembershipGate(

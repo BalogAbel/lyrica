@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyron_app/src/application/auth/membership_gate_decision.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/presentation/auth/invite_required_screen.dart';
+import 'package:lyron_app/src/presentation/auth/reauth_banner.dart';
 import 'package:lyron_app/src/presentation/auth/redeem_progress_screen.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
@@ -31,42 +32,64 @@ class MembershipGate extends ConsumerWidget {
           child: Center(child: Text(AppStrings.membershipResolvingMessage)),
         ),
       ),
-      MembershipGateView.connectivityFailure => Scaffold(
-        body: SafeArea(
-          child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(AppStrings.membershipConnectivityFailureMessage),
-                const SizedBox(height: 16),
-                FilledButton(
-                  key: const ValueKey('membership-gate-retry'),
-                  onPressed: () => unawaited(_retry(ref)),
-                  child: const Text(AppStrings.retryAction),
-                ),
-              ],
-            ),
-          ),
-        ),
+      MembershipGateView.connectivityFailure => _FailureView(
+        message: AppStrings.membershipConnectivityFailureMessage,
+        onRetry: () => unawaited(_retry(ref)),
+        onSignIn: membership.isSessionExpired
+            ? () => goToReauthSignIn(context)
+            : null,
       ),
-      MembershipGateView.nonConnectivityFailure => const Scaffold(
-        body: SafeArea(
-          child: Center(
-            child: Text(AppStrings.membershipNonConnectivityFailureMessage),
-          ),
-        ),
+      MembershipGateView.nonConnectivityFailure => _FailureView(
+        message: AppStrings.membershipNonConnectivityFailureMessage,
+        onSignIn: membership.isSessionExpired
+            ? () => goToReauthSignIn(context)
+            : null,
       ),
     };
   }
 
-  Future<void> _retry(WidgetRef ref) async {
-    final controller = ref.read(activeMembershipControllerProvider);
-    final reader = ref.read(membershipResolutionProvider);
-    final userId = controller.currentUserId;
-    if (userId != null) {
-      controller.beginResolution(userId: userId);
-    }
-    final resolution = await reader();
-    controller.update(resolution, userId: userId);
+  Future<void> _retry(WidgetRef ref) => ref.read(membershipRetryProvider)();
+}
+
+/// A failure screen. With no live session (sessionExpired) the app's
+/// re-auth banner sits behind this gate, so the way to a session has to be
+/// here: [onSignIn] is non-null only then.
+class _FailureView extends StatelessWidget {
+  const _FailureView({required this.message, this.onRetry, this.onSignIn});
+
+  final String message;
+  final VoidCallback? onRetry;
+  final VoidCallback? onSignIn;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(message),
+              if (onRetry != null) ...[
+                const SizedBox(height: 16),
+                FilledButton(
+                  key: const ValueKey('membership-gate-retry'),
+                  onPressed: onRetry,
+                  child: const Text(AppStrings.retryAction),
+                ),
+              ],
+              if (onSignIn != null) ...[
+                const SizedBox(height: 8),
+                TextButton(
+                  key: const ValueKey('membership-gate-sign-in'),
+                  onPressed: onSignIn,
+                  child: const Text(AppStrings.reauthSignInAction),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

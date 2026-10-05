@@ -31,6 +31,20 @@ final class ActiveOrganizationResolver {
     return (await resolveWithCachedFallbackDetailed()).resolution;
   }
 
+  /// Local-only resolution for a state with no live session (sessionExpired,
+  /// ADR-020): a network lookup would run without credentials and could only
+  /// fail. Feeds the cached-fallback rule a connectivity failure that was not
+  /// attempted, so the answer is the user's cached organization or, when there
+  /// is none, the same connectivity failure the gate already shows.
+  Future<ActiveOrganizationResolution> resolveFromCacheOnly() {
+    return resolveMembershipWithCachedFallback(
+      resolution:
+          const ActiveOrganizationResolution.unknownConnectivityFailure(),
+      userId: _readUserId(),
+      readCachedOrganizationId: _readCachedOrganizationId,
+    );
+  }
+
   /// YELLOW 4 (final whole-branch review, D5.2): [resolveWithCachedFallback]
   /// collapses a cached-fallback [ActiveOrganizationSelected] into the exact
   /// same shape as a genuine, fresh, online [ActiveOrganizationSelected] --

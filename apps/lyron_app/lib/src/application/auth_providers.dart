@@ -743,6 +743,8 @@ final activeMembershipControllerProvider =
           return identity.organizationId;
         },
         hasPendingInviteReader: () => pendingInvites.current != null,
+        sessionExpiredReader: () =>
+            authController.state.status == AppAuthStatus.sessionExpired,
       );
       authController.addListener(controller.noteInputsChanged);
       pendingInvites.addListener(controller.noteInputsChanged);
@@ -757,8 +759,10 @@ final activeOrganizationResolverProvider = Provider<ActiveOrganizationResolver>(
   (ref) {
     return ActiveOrganizationResolver(
       resolveRawReader: ref.watch(activeOrganizationResolutionProvider),
-      readUserId: () =>
-          ref.read(appAuthControllerProvider).state.session?.userId,
+      // The current user, not the live session's: in sessionExpired there is
+      // no session but the cached fallback still belongs to the last known
+      // user. In signedIn the two are the same.
+      readUserId: () => ref.read(appAuthControllerProvider).state.currentUserId,
       readCachedOrganizationId: ref
           .read(songCatalogStoreProvider)
           .readLatestCachedOrganizationId,
@@ -771,6 +775,12 @@ final membershipResolutionProvider =
       return ref
           .watch(activeOrganizationResolverProvider)
           .resolveWithCachedFallback;
+    });
+
+/// Resolution without the network, for a gate that has no live session.
+final membershipCachedResolutionProvider =
+    Provider<ActiveOrganizationResolutionReader>((ref) {
+      return ref.watch(activeOrganizationResolverProvider).resolveFromCacheOnly;
     });
 
 // YELLOW 4 (final whole-branch review, D5.2): the detailed variant of
@@ -792,6 +802,25 @@ final membershipResolutionDetailedProvider =
           .watch(activeOrganizationResolverProvider)
           .resolveWithCachedFallbackDetailed;
     });
+
+/// What the gate's Retry runs: resolve for the current user and record the
+/// result under that user. With no live session (sessionExpired) the lookup
+/// is local only: online it would run as the anonymous role and fail with a
+/// permission error that hides the real state.
+final membershipRetryProvider = Provider<Future<void> Function()>((ref) {
+  return () async {
+    final controller = ref.read(activeMembershipControllerProvider);
+    final reader = controller.isSessionExpired
+        ? ref.read(membershipCachedResolutionProvider)
+        : ref.read(membershipResolutionProvider);
+    final userId = controller.currentUserId;
+    if (userId != null) {
+      controller.beginResolution(userId: userId);
+    }
+    final resolution = await reader();
+    controller.update(resolution, userId: userId);
+  };
+});
 
 final membershipRefreshEffectProvider = Provider<void>((ref) {
   final membershipController = ref.read(activeMembershipControllerProvider);

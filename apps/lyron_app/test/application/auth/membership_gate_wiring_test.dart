@@ -15,6 +15,7 @@ import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 import 'package:lyron_app/src/offline/auth/drift_last_known_identity_store.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
+import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 
 import '../../support/drift_test_setup.dart';
 
@@ -67,6 +68,7 @@ Future<_Harness> _harness({
   required AppAuthSession? session,
   required ActiveOrganizationResolutionReader resolution,
   LastKnownIdentity? identity,
+  ({String userId, String organizationId})? cachedSnapshot,
 }) async {
   final identityStore = DriftLastKnownIdentityStore.inMemory();
   if (identity != null) {
@@ -84,6 +86,15 @@ Future<_Harness> _harness({
   final planningDatabase = PlanningLocalDatabase.inMemory();
   addTearDown(songDatabase.close);
   addTearDown(planningDatabase.close);
+  if (cachedSnapshot != null) {
+    await DriftSongCatalogStore(songDatabase).replaceActiveSnapshot(
+      userId: cachedSnapshot.userId,
+      organizationId: cachedSnapshot.organizationId,
+      summaries: const [],
+      sources: const [],
+      refreshedAt: DateTime.utc(2026, 10, 1),
+    );
+  }
 
   final container = ProviderContainer(
     overrides: [
@@ -305,5 +316,93 @@ void main() {
       MembershipGateView.home,
     );
     expect(controller.last, const ActiveOrganizationResolution.selected('b'));
+  });
+
+  test('sessionExpired without a known organization: Retry reads the local '
+      'cache and never calls the network (F2)', () async {
+    var calls = 0;
+    final harness = await _harness(
+      session: null,
+      identity: const LastKnownIdentity(
+        userId: 'user-1',
+        email: 'demo@lyron.local',
+        organizationId: null,
+      ),
+      cachedSnapshot: (userId: 'user-1', organizationId: 'org-x'),
+      resolution: () async {
+        calls++;
+        return const ActiveOrganizationResolution.unknownNonConnectivityFailure();
+      },
+    );
+    expect(harness.authController.state.status, AppAuthStatus.sessionExpired);
+    harness.container.read(membershipRefreshEffectProvider);
+    await pumpEventQueue();
+    final controller = harness.container.read(
+      activeMembershipControllerProvider,
+    );
+    expect(
+      controller.viewFor(hasPendingInvite: false),
+      MembershipGateView.connectivityFailure,
+    );
+
+    await harness.container.read(membershipRetryProvider)();
+
+    expect(calls, 0, reason: 'sessionExpired has no live session to ask with');
+    expect(
+      controller.viewFor(hasPendingInvite: false),
+      MembershipGateView.home,
+    );
+    expect(
+      controller.last,
+      const ActiveOrganizationResolution.selected('org-x'),
+    );
+  });
+
+  test('sessionExpired without a cached organization: Retry stays on the '
+      'connectivity failure and never calls the network (F2)', () async {
+    var calls = 0;
+    final harness = await _harness(
+      session: null,
+      identity: const LastKnownIdentity(
+        userId: 'user-1',
+        email: 'demo@lyron.local',
+        organizationId: null,
+      ),
+      resolution: () async {
+        calls++;
+        return const ActiveOrganizationResolution.selected('org-1');
+      },
+    );
+
+    await harness.container.read(membershipRetryProvider)();
+
+    expect(calls, 0);
+    expect(
+      harness.container
+          .read(activeMembershipControllerProvider)
+          .viewFor(hasPendingInvite: false),
+      MembershipGateView.connectivityFailure,
+    );
+  });
+
+  test('signedIn: Retry still asks the network (F2)', () async {
+    var calls = 0;
+    final harness = await _harness(
+      session: _session,
+      resolution: () async {
+        calls++;
+        return const ActiveOrganizationResolution.selected('org-1');
+      },
+    );
+
+    await harness.container.read(membershipRetryProvider)();
+
+    expect(calls, 1);
+    expect(
+      harness.container
+          .read(activeMembershipControllerProvider)
+          .viewFor(hasPendingInvite: false),
+      MembershipGateView.home,
+    );
   });
 }
