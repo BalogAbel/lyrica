@@ -5,10 +5,14 @@
 > `docs/plans/`. Update this note, the slice table and the order whenever a
 > slice merges or the order changes.
 >
-> **S1: implemented** on `fix/direct-dml-write-rpc-bypass` (spec
-> `docs/specs/2026-10-01-direct-table-dml-lockdown.md`, plan
-> `docs/plans/2026-10-01-direct-table-dml-lockdown.md`, ADR-039), PR
-> https://github.com/BalogAbel/lyrica/pull/84, awaiting merge. Next: S5a.
+> **S1: merged** (PR https://github.com/BalogAbel/lyrica/pull/84, `1a9e7bb`;
+> spec `docs/specs/2026-10-01-direct-table-dml-lockdown.md`, plan
+> `docs/plans/2026-10-01-direct-table-dml-lockdown.md`, ADR-039).
+>
+> **2026-10-05: S0 inserted ahead of S5a.** It is a field-reported bug: after
+> a long idle period the app waits 10–15 s offline before it shows anything.
+> Spec: `docs/specs/2026-10-05-offline-first-startup-gate.md`. S0 also pulls
+> S6 option (a) (persisted capabilities) forward. Next: S0, then S5a.
 
 ## Purpose
 
@@ -140,14 +144,15 @@ Size legend:
 
 | ID | Branch | Scope | Deferred sources | Size | Risk |
 |---|---|---|---|---|---|
-| S1 | `fix/direct-dml-write-rpc-bypass` | **Implemented, awaiting merge.** Revoke every table privilege except `SELECT` from `anon`/`authenticated` on all ten `public` tables. Drop the six `for all` policies (each is covered by a select policy, so dropping replaces the planned narrowing). Revoke `postgres`'s default privileges in `public` from `anon`, `authenticated` and `service_role`. Contract suites impersonate the real role; fixtures moved to `postgres`. ADR-039, plus correction notes in `architecture.md`, ADR-026, ADR-027 and ADR-038 | `2026-09-30-direct-dml-bypasses-write-rpcs.md` (resolved, removed) | M | medium |
+| S1 | `fix/direct-dml-write-rpc-bypass` | **Merged (PR #84).** Revoke every table privilege except `SELECT` from `anon`/`authenticated` on all ten `public` tables. Drop the six `for all` policies (each is covered by a select policy, so dropping replaces the planned narrowing). Revoke `postgres`'s default privileges in `public` from `anon`, `authenticated` and `service_role`. Contract suites impersonate the real role; fixtures moved to `postgres`. ADR-039, plus correction notes in `architecture.md`, ADR-026, ADR-027 and ADR-038 | `2026-09-30-direct-dml-bypasses-write-rpcs.md` (resolved, removed) | M | medium |
+| S0 | `fix/offline-first-startup-gate` | Field-reported bug, 2 PRs. (1) The membership gate decides from the last known identity; `verifiedEmpty` closes it only after the D5 purge; first run shows a loading state; auth-stream errors are handled; an integration test uses the real gotrue client. (2) Persist the last known capabilities (S6 option (a), pulled forward) and show a visible "last synced" indicator | `2026-09-30-capability-gating-offline-cold-start.md` (option (a) only) | M | medium |
 | S5a | `fix/paged-remote-pulls` | A shared paging helper: `.range()` pages ordered by a unique key, de-duplication by id, and a `count=exact` completeness check. Applied to the planning plan and session pulls and to the song catalog list | `2026-09-30-planning-pull-unpaged-reads.md` | S–M | low–medium |
 | S2 | `fix/chordpro-base-directives` | Read base `{transpose}` and `{capo}` consistently before the first lyric or chord line. `{comment}` no longer closes that base boundary. The editor uses the parser-derived base values. Update the parser tests | `2026-04-22-song-reader-chordpro-modulation.md`, item 1 | S | low |
 | S3 | `feat/personal-song-settings` | Personal song layer foundation, plus per-user transpose and capo at song and plan scope, in 3 PRs: (1) backend tables, RPCs, RLS and contract tests; (2) local Drift store, outbox and pull-cursor sync, integrated with the purge lifecycle, storage budget and sync overview; (3) reader resolution and UX | — (new) | L | medium |
 | S4 | `feat/song-annotations` | Annotations on the personal layer. Starts with a prototype in `docs/prototypes/`, then 2–3 PRs: (1) anchor model, overlay renderer and typed notes; (2) gesture marks (circle, underline, highlight) snapped to content; (3) free ink anchored to words, if the spec keeps it. Native (tablet and phone) first; web is best-effort | — (new) | XL | high |
 | S5b | `fix/planning-mutation-gaps` | Stranded create tombstones, session-rename retry rebase, content-version advance on context switch. Verify and decide the organization-switch finding | `2026-09-30-stranded-create-tombstones.md`, `2026-09-30-session-rename-retry-never-rebases.md`, `2026-09-30-content-version-advance-on-context-switch.md`, `2026-10-01-org-switch-drops-pending-planning-mutations.md` | M–L | high |
 | S7 | `feat/plan-duplicate`, then `feat/session-item-move` | Each is one server RPC; v1 is online-only, recorded in an ADR | `2026-09-29-plan-duplicate.md`, `2026-09-29-session-item-move.md` | 2×M (offline-capable: 2×L) | medium |
-| S6 | `fix/capability-and-telemetry` | Persist resolved capabilities (option a) and reword the copy for a rejected delete (option b). Fix the org-id telemetry leak and add the `sessionExpired` test. Centralize PII scrubbing in `beforeSend`, `beforeSendTransaction` and `beforeBreadcrumb` | `2026-09-30-capability-gating-offline-cold-start.md`, `2026-08-28-observability-remaining-use-cases.md` | M | low–medium |
+| S6 | `fix/capability-and-telemetry` | Reword the copy for a rejected delete (option b); option (a) moved to S0. Fix the org-id telemetry leak and add the `sessionExpired` test. Centralize PII scrubbing in `beforeSend`, `beforeSendTransaction` and `beforeBreadcrumb` | `2026-09-30-capability-gating-offline-cold-start.md`, `2026-08-28-observability-remaining-use-cases.md` | M | low–medium |
 | S8 | `feat/chordpro-modulation` | In-song `{transpose}` modulation | `2026-04-22-song-reader-chordpro-modulation.md`, item 2 | M | medium |
 | S9 | — | The trigger-gated items, re-evaluated below | see "S9 Re-Evaluation" | varies | — |
 
@@ -159,6 +164,12 @@ Size legend:
   - Every fixture path that writes as `authenticated`.
   - The red contract test comes first: it impersonates a capable member and
     expects each direct `insert`, `update` and `delete` to be denied.
+- **S0:**
+  - The gate, the router redirect, and the D5 purge gate meet in one
+    decision. A wrong row in the decision table either hides data or skips
+    onboarding.
+  - Capabilities live and die with the identity record. Writing them must not
+    resurrect a set after a purge.
 - **S5a:**
   - The catalog refresh path is sensitive: ADR-037 local-first visibility and
     the rejected-empty-snapshot guard.
@@ -190,8 +201,8 @@ Size legend:
     two-aggregate mutation row (move).
   - Online-only v1 removes both.
 - **S6:**
-  - A new per-user local store that the purge contract has to cover.
-  - Moving the scrub tests to hook level.
+  - Moving the scrub tests to hook level. (The per-user capability store
+    moved to S0.)
 - **S8:**
   - Per-line effective transpose in the projection, and the UI that shows
     where it changes.
@@ -219,8 +230,9 @@ Size legend:
 
 **Hotspots (never run in parallel):**
 
-- **S3 ↔ S6:** `LocalDataLifecycle`, a new `PurgeTarget`, and the
-  pending-local-work count.
+- **S3 ↔ S0 (PR 2):** `LocalDataLifecycle.clearIdentity` and the
+  `LastKnownIdentity` database. S0 adds no new `PurgeTarget`: its capability
+  store is cleared together with the identity.
 - **S3/S4 ↔ S8:** `SongReaderProjection`.
 - **S5b ↔ S7:** `drift_planning_mutation_store.dart` and
   `planning_mutation_sync_controller.dart`.
@@ -233,17 +245,19 @@ deferred item.
 
 For a single executor:
 
-1. **S1:** DML bypass, `memberships`, default privileges.
-2. **S5a:** paged pulls, including the song catalog. Small and independent,
+1. **S1:** DML bypass, `memberships`, default privileges. Merged.
+2. **S0:** offline-first startup gate, then persisted capabilities and the
+   "last synced" indicator. A field-reported bug, so it goes first.
+3. **S5a:** paged pulls, including the song catalog. Small and independent,
    and S3 reuses its helper. Not urgent: no organization is near 1000 songs.
-3. **S2:** base directives.
-4. **S3:** personal song settings, in 3 PRs.
-5. **S4:** annotations, as a prototype followed by 2–3 PRs.
-6. **S5b:** planning mutation gaps.
-7. **S7:** plan duplicate, then session-item move.
-8. **S6:** capability persistence and telemetry.
-9. **S8:** ChordPro modulation.
-10. **S9 remainder:** re-check each trigger before deciding.
+4. **S2:** base directives.
+5. **S3:** personal song settings, in 3 PRs.
+6. **S4:** annotations, as a prototype followed by 2–3 PRs.
+7. **S5b:** planning mutation gaps.
+8. **S7:** plan duplicate, then session-item move.
+9. **S6:** rejected-delete copy and telemetry.
+10. **S8:** ChordPro modulation.
+11. **S9 remainder:** re-check each trigger before deciding.
 
 **User actions:** the S1 hosted actions and the LF-T2 dashboard check are done
 (2026-10-01; see "User Actions Outside the Repository").
@@ -252,10 +266,10 @@ For a single executor:
 
 - **Two tracks can run in parallel:**
   - Track A (reader and personal layer): S2 → S3 → S4 → S8.
-  - Track B (backend and planning): S1 → S5a → S5b → S7.
+  - Track B (backend and planning): S1 → S0 → S5a → S5b → S7.
 - **Constraints:**
   - S3's backend migration waits for S1 to merge.
-  - S6 never runs at the same time as S3.
+  - S0's PR 2 never runs at the same time as S3's PR 2.
   - The hotspots above stay serialized.
 
 ## Recommended Defaults
@@ -288,7 +302,8 @@ or overrides it with a stated reason.
 
 ### S6
 
-- Persist the resolved capabilities per user and organization (option a).
+- Option (a), persisted capabilities, moved to S0 on 2026-10-05
+  (`docs/specs/2026-10-05-offline-first-startup-gate.md`, SG6).
 - Use generic copy for a delete the backend rejects (option b).
 - Add the centralized scrub hooks in the same slice: S6 is the next slice
   that touches observability, which meets that item's trigger.
