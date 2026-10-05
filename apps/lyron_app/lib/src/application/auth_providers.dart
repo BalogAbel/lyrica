@@ -878,6 +878,10 @@ final membershipRefreshEffectProvider = Provider<void>((ref) {
     next,
   ) {
     if (next is RedeemStateSuccess && prev is! RedeemStateSuccess) {
+      // The stored verifiedEmpty is stale now; keeping it would show the
+      // invite-required screen once the pending invite clears, until the
+      // refresh below answers.
+      membershipController.reset();
       scheduleRefresh();
     }
   });

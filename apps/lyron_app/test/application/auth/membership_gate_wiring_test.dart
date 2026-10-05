@@ -1,16 +1,19 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/active_organization_resolution.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
+import 'package:lyron_app/src/application/auth/invitation_repository.dart';
 import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/auth/membership_gate_decision.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
+import 'package:lyron_app/src/domain/auth/redeem_result.dart';
 import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 import 'package:lyron_app/src/offline/auth/drift_last_known_identity_store.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
@@ -69,6 +72,7 @@ Future<_Harness> _harness({
   required ActiveOrganizationResolutionReader resolution,
   LastKnownIdentity? identity,
   ({String userId, String organizationId})? cachedSnapshot,
+  List<Override> extraOverrides = const [],
 }) async {
   final identityStore = DriftLastKnownIdentityStore.inMemory();
   if (identity != null) {
@@ -103,10 +107,17 @@ Future<_Harness> _harness({
       songCatalogDatabaseProvider.overrideWithValue(songDatabase),
       planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
       activeOrganizationResolutionProvider.overrideWithValue(resolution),
+      ...extraOverrides,
     ],
   );
   addTearDown(container.dispose);
   return _Harness(container, authController, repository);
+}
+
+class _SucceedingInvitations implements InvitationRepository {
+  @override
+  Future<RedeemResult> redeem(String token) async =>
+      const RedeemSuccess('org-1');
 }
 
 Future<ActiveOrganizationResolution> _never() =>
@@ -402,6 +413,66 @@ void main() {
       harness.container
           .read(activeMembershipControllerProvider)
           .viewFor(hasPendingInvite: false),
+      MembershipGateView.home,
+    );
+  });
+
+  test('a successful redemption never flashes the invite-required screen '
+      'while the refresh runs (F5)', () async {
+    final answers = <Completer<ActiveOrganizationResolution>>[];
+    final harness = await _harness(
+      session: _session,
+      resolution: () {
+        if (answers.isEmpty) {
+          answers.add(Completer());
+          return Future.value(
+            const ActiveOrganizationResolution.verifiedEmpty(),
+          );
+        }
+        final answer = Completer<ActiveOrganizationResolution>();
+        answers.add(answer);
+        return answer.future;
+      },
+      extraOverrides: [
+        invitationRepositoryProvider.overrideWithValue(
+          _SucceedingInvitations(),
+        ),
+      ],
+    );
+    harness.container.read(membershipRefreshEffectProvider);
+    await pumpEventQueue();
+    final controller = harness.container.read(
+      activeMembershipControllerProvider,
+    );
+    final pending = harness.container.read(pendingInviteTokenControllerProvider)
+      ..capture('invite-token');
+    expect(
+      controller.viewFor(hasPendingInvite: true),
+      MembershipGateView.redeem,
+    );
+
+    final seen = <MembershipGateView>[];
+    void record() =>
+        seen.add(controller.viewFor(hasPendingInvite: pending.current != null));
+    controller.addListener(record);
+    pending.addListener(record);
+
+    // What RedeemEffect.tryConsumePending does.
+    final redeem = harness.container.read(redeemControllerProvider);
+    await redeem.redeem('invite-token');
+    pending.clear();
+    await pumpEventQueue();
+
+    expect(seen, isNot(contains(MembershipGateView.inviteRequired)));
+    expect(
+      controller.viewFor(hasPendingInvite: false),
+      MembershipGateView.resolving,
+    );
+
+    answers.last.complete(const ActiveOrganizationResolution.selected('org-1'));
+    await pumpEventQueue();
+    expect(
+      controller.viewFor(hasPendingInvite: false),
       MembershipGateView.home,
     );
   });
