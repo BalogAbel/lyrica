@@ -327,7 +327,22 @@ its normal refresh paths.
   user. Failures are status, per the invariant.
 - A result for a user other than the current one is dropped. That covers a
   resolution started under one user that completes after another has signed
-  in.
+  in, and one that completes after an explicit sign-out (nobody is current).
+- The loading state and the first-run timer belong to the user their
+  resolution runs for. Only that user's dropped result ends them, and a
+  resolution running for someone else never counts as loading for the
+  current user.
+- A resolution starts on every edge that changes who the app acts for while
+  signed in: becoming `signedIn`, and a direct switch to another user
+  (`signedIn` to `signedIn`). One edge starts one resolution.
+- A successful invite redemption forgets the stored live result before the
+  refresh starts, so a stale `verifiedEmpty` never shows the invite-required
+  screen while the refresh runs.
+- With no live session (`sessionExpired`) Retry resolves from the local
+  cache only. Online it would run as the anonymous role and fail with a
+  permission error. Both failure screens then offer sign-in, with the same
+  route and `from` parameter as the re-auth banner, because the banner sits
+  behind the gate.
 - The resolution keeps running in the background exactly as today, and the
   cached fallback (ADR-016) stays as the absent-organization path. Neither
   the fallback nor this bookkeeping may set or clear `membershipRevokedAt`

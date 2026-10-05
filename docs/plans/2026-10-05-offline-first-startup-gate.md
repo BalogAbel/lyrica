@@ -2268,6 +2268,53 @@ EOF
 
 ---
 
+### Task 8b: Review fixes (F1-F5)
+
+An adversarial review of PR 1 found five gate bugs. Each has its own red test and its own commit. The two cross-user leaks it also found (F6, F7) are pre-existing and are recorded in `docs/deferred/2026-10-05-gate-cross-user-leaks.md`.
+
+**Files (all findings):** `apps/lyron_app/lib/src/application/auth/active_membership_controller.dart`, `apps/lyron_app/lib/src/application/auth_providers.dart`, `apps/lyron_app/lib/src/application/active_organization_resolver.dart`, `apps/lyron_app/lib/src/presentation/auth/membership_gate.dart`, `apps/lyron_app/lib/src/presentation/auth/reauth_banner.dart`; tests in `test/application/auth/active_membership_controller_test.dart`, `membership_gate_wiring_test.dart`, `test/presentation/auth/membership_gate_test.dart`.
+
+#### F3 (low): a late result after sign-out was stored
+
+- **Problem.** `update` dropped a result only when a current user existed. After an explicit sign-out (`reset`, no current user) a late result for A was stored; when A signed in again, `beginResolution(A)` kept that same-user result, so a stale `verifiedEmpty` showed the invite-required screen while the fresh RPC ran.
+- **Fix.** The drop condition is `userId != null && userId != current`, so it also drops when nobody is current.
+- **Red test.** `active_membership_controller_test.dart`: begin(A), reset, current = null, update(`verifiedEmpty`, A) leaves `last` null; after A is current again, begin(A) shows `resolving`.
+
+#### F4 (low): a dropped result left the wrong user loading
+
+- **Problem.** The early return in `update` skipped `_stopResolving`. With B's resolution in flight and the user switched to A (reauth cancel gives `sessionExpired(A)`), B's dropped result left `_resolving` true and the timer running, so A (no known organization) saw "Checking access..." for up to 15 s.
+- **Fix.** `_resolvingUserId` (set by `beginResolution`, cleared by `_stopResolving`). A dropped result ends the resolving state, cancels the timer and notifies only when its user equals `_resolvingUserId`; the current user's running resolution and timer are never stopped. `viewFor` passes `awaitingFirstResolution` only when `_resolvingUserId` is the current user: a resolution running for someone else is not progress for the current user, and counting it would hide the failure screen and its Retry until the timer elapsed.
+- **Red tests.** begin(B), current becomes A, dropped update(B): A's view is `connectivityFailure` and no timer is pending (fakeAsync). begin(A) for current A, dropped update(B): A is still `resolving`, one timer pending, firing at 15 s. begin(B) with A current: `connectivityFailure`, not `resolving`.
+
+#### F1 (medium): a direct user switch never started a resolution
+
+- **Problem.** `membershipRefreshEffectProvider` listened to the auth status only. A direct switch from A to B (magic link or OAuth with no sign-out) is `signedIn` to `signedIn`, so B's resolution never started and B saw the connectivity failure while online.
+- **Fix.** The listener watches the record `(status, currentUserId)`. When the next status is `signedIn` it starts a resolution if the status just became `signedIn` or the user changed, with `||`, so one edge starts exactly one resolution. The signedOut reset keeps its semantics.
+- **Red test.** `membership_gate_wiring_test.dart`: signed in as A and resolved; the fake repository emits session B; the gate shows `resolving`, exactly two raw reader calls have run (one for B), and B's answer opens the gate on B's organization. A second test pins that the initial `signedIn` edge starts exactly one call.
+
+#### F2 (medium): `sessionExpired` without a known organization was a dead end
+
+- **Problem.** With no known organization for the current user, no refresh runs in `sessionExpired`. Retry called the resolver, whose `readUserId` was `session?.userId` (null), so there was no cached fallback; online the RPC ran as the anonymous role, failed with 42501 and showed a screen without a button. The re-auth banner sits behind the gate.
+- **Fix.**
+  - `activeOrganizationResolverProvider.readUserId` is `state.currentUserId`.
+  - `ActiveOrganizationResolver.resolveFromCacheOnly()` feeds `resolveMembershipWithCachedFallback` an unattempted connectivity failure, so the answer is the user's cached organization or the same connectivity failure. `membershipCachedResolutionProvider` exposes it. Chosen over a status check inside `resolveWithCachedFallback` because that method also serves the persistence provider, and over passing the status into the resolver because the controller already is the one place that knows the state.
+  - `membershipRetryProvider` holds what Retry runs (moved out of the widget so it is testable without widgets) and picks the cache-only reader when `ActiveMembershipController.isSessionExpired` (new `sessionExpiredReader`). It still scopes by user.
+  - Both failure screens show a sign-in action only while the session is expired. It calls `goToReauthSignIn(context)`, extracted from `ReauthBanner` so both use the same route and `from` parameter.
+  - `lastKnownIdentityPersistenceProvider` checked: it calls the resolver only in its `signedIn` case, where `currentUserId == session.userId`; a status change during its await is discarded by its own `isCurrent` check. Behaviour on the signedIn edge is unchanged.
+- **Red tests.** Wiring: `sessionExpired`, identity (A, no organization), catalog snapshot cached for (A, X), a raw reader that counts calls: Retry reaches home on X with zero reader calls. Without a cached organization Retry stays on `connectivityFailure`, zero calls. `signedIn` Retry still asks the network once. Widget: with `sessionExpired` both failure screens show the sign-in action and tapping it goes to `/sign-in?from=<current uri>`; with `signedIn` neither does.
+
+#### F5 (low, pre-existing): flash of the invite-required screen after a redemption
+
+- **Problem.** No known organization, live `verifiedEmpty`, pending invite. After a successful redeem the listener scheduled a refresh, but `beginResolution` kept the same-user `verifiedEmpty`, and `RedeemEffect` cleared the pending invite, so the invite-required screen showed until the RPC returned.
+- **Fix (one line).** The redeem-success listener calls `membershipController.reset()` before `scheduleRefresh()`. Reset and the refresh microtask both run before the next frame, so the gate goes from `redeem` to `resolving`.
+- **Red test.** Wiring: live `verifiedEmpty` plus a pending invite, then redeem success and clearing the pending invite; no view recorded is `inviteRequired`, the final view is `resolving`, and the answer opens the gate.
+
+- [ ] **Verify and commit per finding**
+
+Run: `cd apps/lyron_app && dart format lib test && flutter analyze && flutter test`. Expected: no analyzer issues; the full suite passes; none of "Tried to modify a provider", "markNeedsBuild", "UnmountedRef", "pending timer" in the output. Commits: `fix(auth): drop late membership results after sign-out (S0 8b F3)`, `... bind the gate's resolving state to the user it runs for (S0 8b F4)`, `... resolve membership on a direct user switch (S0 8b F1)`, `... no dead end for an expired session without a known org (S0 8b F2)`, `... drop the stale verifiedEmpty when a redemption succeeds (S0 8b F5)`.
+
+---
+
 ### Task 9: PR 1 documentation, verification, pull request
 
 **Files:**
