@@ -7,6 +7,7 @@ import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
 import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
+import 'package:lyron_app/src/shared/connectivity_failure.dart';
 
 class AppAuthController extends ChangeNotifier {
   AppAuthController(this._repository, {this._lastKnownIdentityStore})
@@ -16,7 +17,10 @@ class AppAuthController extends ChangeNotifier {
     // (see _handleSessionUpdate) instead of being evaluated against an
     // unknown identity.
     _identityLoadFuture = _loadIdentity();
-    _subscription = _repository.watchSession().listen(_handleSessionUpdate);
+    _subscription = _repository.watchSession().listen(
+      _handleSessionUpdate,
+      onError: _handleSessionStreamError,
+    );
   }
 
   final AuthRepository _repository;
@@ -239,6 +243,28 @@ class AppAuthController extends ChangeNotifier {
     } finally {
       _isSigningOut = false;
     }
+  }
+
+  // SG5 (docs/specs/2026-10-05-offline-first-startup-gate.md): gotrue adds
+  // every failed token-refresh loop to the auth stream as an error -- every
+  // ~20 s while offline in the foreground. Without this handler each one was
+  // an uncaught error, which Sentry records as an unhandled fatal event. A
+  // connectivity failure is expected offline and changes nothing; anything
+  // else is reported once as a handled error. Auth state never changes here.
+  void _handleSessionStreamError(Object error, StackTrace stackTrace) {
+    if (isConnectivityFailure(error)) {
+      return;
+    }
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stackTrace,
+        library: 'AppAuthController',
+        context: ErrorDescription(
+          'the auth session stream reported an error; auth state unchanged',
+        ),
+      ),
+    );
   }
 
   void _handleSessionUpdate(AppAuthSession? session) {

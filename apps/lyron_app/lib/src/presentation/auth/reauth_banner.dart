@@ -32,6 +32,19 @@ class ReauthBanner extends StatelessWidget {
   }
 }
 
+/// Sends the offline-authenticated user to sign-in, remembering where they
+/// were so a successful sign-in returns there. Shared by every re-auth
+/// affordance (the banner, the membership gate's failure screens).
+void goToReauthSignIn(BuildContext context) {
+  final from = GoRouterState.of(context).uri.toString();
+  context.go(
+    Uri(
+      path: AppRoutes.signIn.path,
+      queryParameters: {'from': from},
+    ).toString(),
+  );
+}
+
 class _ReauthBannerBody extends ConsumerWidget {
   const _ReauthBannerBody();
 
@@ -62,15 +75,7 @@ class _ReauthBannerBody extends ConsumerWidget {
           const SizedBox(width: 8),
           TextButton(
             key: const Key('reauth-banner-action'),
-            onPressed: () {
-              final from = GoRouterState.of(context).uri.toString();
-              context.go(
-                Uri(
-                  path: AppRoutes.signIn.path,
-                  queryParameters: {'from': from},
-                ).toString(),
-              );
-            },
+            onPressed: () => goToReauthSignIn(context),
             child: const Text(AppStrings.reauthSignInAction),
           ),
         ],

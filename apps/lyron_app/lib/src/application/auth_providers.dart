@@ -117,6 +117,11 @@ final localDataLifecycleProvider = Provider<LocalDataLifecycle>((ref) {
     identityStore: ref.watch(lastKnownIdentityStoreProvider),
     noteLastKnownIdentity: (identity) {
       ref.read(appAuthControllerProvider).noteLastKnownIdentity(identity);
+      // SG1: the gate reads the identity through a reader; a purge or a
+      // first write must re-run its decision. Deliberately not through
+      // AppAuthController.notifyListeners: capabilityResolverProvider
+      // invalidates on every notification from that controller.
+      ref.read(activeMembershipControllerProvider).noteInputsChanged();
     },
     eventsRecorder: ref.watch(localDataEventsRecorderProvider),
   );
@@ -719,17 +724,45 @@ final deepLinkListenerProvider = Provider<DeepLinkListener>((ref) {
   return listener;
 });
 
+/// SG1 (docs/specs/2026-10-05-offline-first-startup-gate.md): the gate
+/// decides from the current user's last known organization first. The
+/// readers are evaluated on every decision; the listeners below re-run it
+/// when an input changes.
 final activeMembershipControllerProvider =
-    ChangeNotifierProvider<ActiveMembershipController>(
-      (_) => ActiveMembershipController(),
-    );
+    ChangeNotifierProvider<ActiveMembershipController>((ref) {
+      final authController = ref.read(appAuthControllerProvider);
+      final pendingInvites = ref.read(pendingInviteTokenControllerProvider);
+      final controller = ActiveMembershipController(
+        currentUserIdReader: () => authController.state.currentUserId,
+        knownOrganizationIdReader: () {
+          final userId = authController.state.currentUserId;
+          final identity = authController.lastKnownIdentity;
+          if (userId == null || identity == null || identity.userId != userId) {
+            return null;
+          }
+          return identity.organizationId;
+        },
+        hasPendingInviteReader: () => pendingInvites.current != null,
+        sessionExpiredReader: () =>
+            authController.state.status == AppAuthStatus.sessionExpired,
+      );
+      authController.addListener(controller.noteInputsChanged);
+      pendingInvites.addListener(controller.noteInputsChanged);
+      ref.onDispose(() {
+        authController.removeListener(controller.noteInputsChanged);
+        pendingInvites.removeListener(controller.noteInputsChanged);
+      });
+      return controller;
+    });
 
 final activeOrganizationResolverProvider = Provider<ActiveOrganizationResolver>(
   (ref) {
     return ActiveOrganizationResolver(
       resolveRawReader: ref.watch(activeOrganizationResolutionProvider),
-      readUserId: () =>
-          ref.read(appAuthControllerProvider).state.session?.userId,
+      // The current user, not the live session's: in sessionExpired there is
+      // no session but the cached fallback still belongs to the last known
+      // user. In signedIn the two are the same.
+      readUserId: () => ref.read(appAuthControllerProvider).state.currentUserId,
       readCachedOrganizationId: ref
           .read(songCatalogStoreProvider)
           .readLatestCachedOrganizationId,
@@ -742,6 +775,12 @@ final membershipResolutionProvider =
       return ref
           .watch(activeOrganizationResolverProvider)
           .resolveWithCachedFallback;
+    });
+
+/// Resolution without the network, for a gate that has no live session.
+final membershipCachedResolutionProvider =
+    Provider<ActiveOrganizationResolutionReader>((ref) {
+      return ref.watch(activeOrganizationResolverProvider).resolveFromCacheOnly;
     });
 
 // YELLOW 4 (final whole-branch review, D5.2): the detailed variant of
@@ -764,20 +803,71 @@ final membershipResolutionDetailedProvider =
           .resolveWithCachedFallbackDetailed;
     });
 
+/// What the gate's Retry runs: resolve for the current user and record the
+/// result under that user. With no live session (sessionExpired) the lookup
+/// is local only: online it would run as the anonymous role and fail with a
+/// permission error that hides the real state.
+final membershipRetryProvider = Provider<Future<void> Function()>((ref) {
+  return () async {
+    final controller = ref.read(activeMembershipControllerProvider);
+    final reader = controller.isSessionExpired
+        ? ref.read(membershipCachedResolutionProvider)
+        : ref.read(membershipResolutionProvider);
+    final userId = controller.currentUserId;
+    final token = userId == null
+        ? null
+        : controller.beginResolution(userId: userId);
+    final resolution = await reader();
+    controller.update(resolution, userId: userId, token: token);
+  };
+});
+
 final membershipRefreshEffectProvider = Provider<void>((ref) {
   final membershipController = ref.read(activeMembershipControllerProvider);
+  final authController = ref.read(appAuthControllerProvider);
 
   Future<void> refreshMembership() async {
+    final userId = authController.state.session?.userId;
+    if (userId == null) {
+      return;
+    }
+    final token = membershipController.beginResolution(userId: userId);
     final reader = ref.read(membershipResolutionProvider);
     final result = await reader();
-    membershipController.update(result);
+    membershipController.update(result, userId: userId, token: token);
   }
 
-  ref.listen<AppAuthStatus>(
-    appAuthControllerProvider.select((c) => c.state.status),
+  // Always on a microtask: the status listener below fires immediately
+  // while this provider is still building, and beginResolution notifies the
+  // membership controller's listeners. A microtask still runs before the
+  // next frame, so the gate never renders the pre-resolution state (G-C).
+  void scheduleRefresh() {
+    scheduleMicrotask(() => unawaited(refreshMembership()));
+  }
+
+  // The pair, not the status alone: a direct session switch (magic link or
+  // OAuth for another account, without a sign-out in between) is signedIn to
+  // signedIn and only the user changes. One edge starts one resolution, even
+  // when status and user change together.
+  ref.listen<(AppAuthStatus, String?)>(
+    appAuthControllerProvider.select(
+      (c) => (c.state.status, c.state.currentUserId),
+    ),
     (prev, next) {
-      if (next == AppAuthStatus.signedIn && prev != AppAuthStatus.signedIn) {
-        unawaited(refreshMembership());
+      final (status, userId) = next;
+      if (status == AppAuthStatus.signedIn) {
+        final becameSignedIn = prev?.$1 != AppAuthStatus.signedIn;
+        final userChanged = prev != null && prev.$2 != userId;
+        if (becameSignedIn || userChanged) {
+          scheduleRefresh();
+        }
+      }
+      // SG3: an explicit sign-out forgets the live resolution. prev is null
+      // only for the immediate first call, where there is nothing to forget.
+      if (status == AppAuthStatus.signedOut &&
+          prev != null &&
+          prev.$1 != AppAuthStatus.signedOut) {
+        membershipController.reset();
       }
     },
     fireImmediately: true,
@@ -788,9 +878,24 @@ final membershipRefreshEffectProvider = Provider<void>((ref) {
     next,
   ) {
     if (next is RedeemStateSuccess && prev is! RedeemStateSuccess) {
-      unawaited(refreshMembership());
+      scheduleRefresh();
     }
   });
+
+  // SG2: a D5 purge clears the identity, but the live resolution held here
+  // refreshes only on sign-in edges, so it can still be an older `selected`
+  // (the second D5 confirmation usually comes from a catalog or planning
+  // refresh). The coordinator calls this only after a purge genuinely ran,
+  // which itself took two fresh verified-empty resolutions.
+  final coordinator = ref.read(
+    verifiedEmptyMembershipCleanupCoordinatorProvider,
+  );
+  Future<void> recordPurge({required String userId}) async {
+    membershipController.recordPurgeResult(userId: userId);
+  }
+
+  coordinator.addHandler(recordPurge);
+  ref.onDispose(() => coordinator.removeHandler(recordPurge));
 });
 
 /// Attaches/clears pseudonymized identity on the Observability scope as

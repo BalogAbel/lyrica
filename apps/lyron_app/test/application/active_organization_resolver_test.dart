@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -102,6 +103,40 @@ void main() {
           const ActiveOrganizationResolution.unknownConnectivityFailure(),
         );
         expect(failedResult.wasCachedFallback, isFalse);
+      },
+    );
+
+    test(
+      'the cached fallback belongs to the user the resolution started for, '
+      'not to whoever is current when the raw answer arrives (S0 8c C1)',
+      () async {
+        // A starts a resolution; the user switches to B while the raw lookup
+        // is in flight, so a user read after the await would answer for B.
+        String? currentUser = 'user-a';
+        final raw = Completer<ActiveOrganizationResolution>();
+        final cacheReadsFor = <String>[];
+        final resolver = ActiveOrganizationResolver(
+          resolveRawReader: () => raw.future,
+          readUserId: () => currentUser,
+          readCachedOrganizationId: ({required userId}) async {
+            cacheReadsFor.add(userId);
+            return 'org-of-$userId';
+          },
+        );
+
+        final pending = resolver.resolveWithCachedFallbackDetailed();
+        currentUser = 'user-b';
+        raw.complete(
+          const ActiveOrganizationResolution.unknownConnectivityFailure(),
+        );
+        final result = await pending;
+
+        expect(cacheReadsFor, ['user-a']);
+        expect(
+          result.resolution,
+          const ActiveOrganizationResolution.selected('org-of-user-a'),
+        );
+        expect(result.wasCachedFallback, isTrue);
       },
     );
 

@@ -1,5 +1,9 @@
 # Offline Membership Gate: Cached Organization Fallback
 
+> **Superseded in part (2026-10-05):** the cached fallback is no longer the
+> gate's offline path; the gate decides from the last known identity first
+> (ADR-040).
+
 - Status: Proposed
 - Date: 2026-06-03
 - Scope: Mobile (`apps/lyron_app`) application layer — membership resolution feeding `MembershipGate`.

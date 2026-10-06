@@ -121,3 +121,10 @@ overrides this.
 **Sequencing constraint.** The persisted capability store is a new per-user
 local store, so it joins the ADR-035 purge contract. S3 adds another such
 store, so S6 must not run in parallel with S3.
+
+**Update (2026-10-05):** option (a) moved to slice **S0**
+(`fix/offline-first-startup-gate`, PR 2), decision SG6 in
+`docs/specs/2026-10-05-offline-first-startup-gate.md`. There the set is stored
+in the `LastKnownIdentity` database and cleared with the identity, so no new
+`PurgeTarget` is added. S6 keeps option (b). This entry narrows to option (b)
+when S0's PR 2 merges.

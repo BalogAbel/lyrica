@@ -342,6 +342,7 @@ class AppStrings {
   static const cancelAction = 'Cancel';
   static const magicLinkSendFailureMessage =
       'Could not send magic link. Please try again.';
+  static const membershipResolvingMessage = 'Checking access...';
   static const membershipConnectivityFailureMessage =
       'Could not verify access. Check your network.';
   static const membershipNonConnectivityFailureMessage =

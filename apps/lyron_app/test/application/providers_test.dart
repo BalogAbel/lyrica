@@ -592,6 +592,9 @@ void main() {
       container.read(activePlanningContextControllerProvider);
       container.read(catalogContextProvider.notifier).state =
           const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-2');
+      // 6b defers the planning sync by one microtask: reading the catalog
+      // context flushes its listener, the await runs the deferred sync.
+      container.read(activeCatalogContextProvider);
       await Future<void>.delayed(Duration.zero);
 
       expect(
