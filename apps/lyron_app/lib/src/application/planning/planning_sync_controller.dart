@@ -86,7 +86,19 @@ class PlanningSyncController extends ChangeNotifier {
   Future<void> handleActiveContextChanged(
     ActivePlanningReadContext? context, {
     bool refresh = true,
+    String? previousOwnerUserId,
   }) async {
+    if (context == null &&
+        previousOwnerUserId != null &&
+        !_ownership.allows(previousOwnerUserId)) {
+      // XU6 (docs/specs/2026-10-06-cross-user-local-first-ownership.md): the
+      // active context of a user who is no longer current was released
+      // (XU2). handleCurrentUser has already released this holder's state
+      // for that user. Resetting again here would cancel the current user's
+      // local-first establishment and, with no live session, mark planning
+      // signed out, hiding the current user's own plans.
+      return;
+    }
     if (context != null && !_ownership.allows(context.userId)) {
       // XU2: a mirrored boundary owned by a user who is no longer current (a
       // notification queued before the user changed) is never adopted, and

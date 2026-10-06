@@ -408,7 +408,7 @@ void main() {
         ),
         isFalse,
       );
-    }, skip: 'red until Task 6b (XU6); spec 2026-10-06 cross-user ownership');
+    });
   });
 
   group('the prior user\'s own access is unchanged', () {

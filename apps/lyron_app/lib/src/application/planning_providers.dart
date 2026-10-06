@@ -387,12 +387,17 @@ final planningSyncControllerProvider =
       // handleActiveContextChanged(null) calls _setState synchronously, so it
       // runs on a microtask and never against a disposed controller.
       ref.listen<ActivePlanningReadContext?>(activePlanningContextProvider, (
-        _,
+        previous,
         next,
       ) {
         scheduleMicrotask(() {
           if (!ref.mounted) return;
-          unawaited(controller.handleActiveContextChanged(next));
+          unawaited(
+            controller.handleActiveContextChanged(
+              next,
+              previousOwnerUserId: previous?.userId,
+            ),
+          );
         });
       });
 
