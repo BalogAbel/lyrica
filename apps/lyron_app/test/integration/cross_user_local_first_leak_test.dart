@@ -340,7 +340,7 @@ void main() {
         0,
         reason: 'explicit sign-out still deletes the signing-out user\'s data',
       );
-    }, skip: 'red until Task 6 (XU5); spec 2026-10-06 cross-user ownership');
+    });
 
     test('B signing out after A\'s planning context was held leaves A\'s '
         'plans and pending work (AC9, stale fallback)', () async {
@@ -369,7 +369,7 @@ void main() {
         isTrue,
       );
       expect(await fixture.pendingPlanningMutationCount(_userB), 0);
-    }, skip: 'red until Task 6 (XU5); spec 2026-10-06 cross-user ownership');
+    });
 
     test('after a cancelled reauth A sees none of B\'s songs, and A\'s '
         'sign-out deletes A\'s data and leaves B\'s (AC10)', () async {
@@ -408,7 +408,7 @@ void main() {
         ),
         isFalse,
       );
-    }, skip: 'red until Task 6 (XU5); spec 2026-10-06 cross-user ownership');
+    }, skip: 'red until Task 6b (XU6); spec 2026-10-06 cross-user ownership');
   });
 
   group('the prior user\'s own access is unchanged', () {

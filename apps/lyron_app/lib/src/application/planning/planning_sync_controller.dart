@@ -345,7 +345,16 @@ class PlanningSyncController extends ChangeNotifier {
   Future<void> handleExplicitSignOut() async {
     final generation = _advanceAuthGeneration();
     _advanceBoundaryGeneration();
+    // XU5 (docs/specs/2026-10-06-cross-user-local-first-ownership.md): the
+    // purge user is the user who signed out -- the last current user this
+    // holder observed -- not whatever it last held. Held state and the stale
+    // _lastAuthenticatedUserId made one user's sign-out purge another user's
+    // planning data, and once XU2 released foreign state the chain could
+    // fall through to nobody and keep the signing-out user's own data (F9).
+    // The old chain is only the fallback for a holder that never observed a
+    // current user.
     final userId =
+        _ownership.userId ??
         _state.userId ??
         _authSessionReader()?.userId ??
         _lastAuthenticatedUserId;

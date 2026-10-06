@@ -687,7 +687,15 @@ class SongCatalogController extends ChangeNotifier {
 
   Future<void> handleExplicitSignOut() async {
     _resetSessionLifecycle();
+    // XU5 (docs/specs/2026-10-06-cross-user-local-first-ownership.md): the
+    // purge user is the user who signed out -- the last current user this
+    // holder observed. _lastAuthenticatedUserId is only set on a live
+    // session, so after a cancelled reauth it still named the cancelled
+    // user, and the prior user's sign-out purged that user's catalog (F9).
+    // The old chain is only the fallback for a holder that never observed a
+    // current user.
     final userId =
+        _ownership.userId ??
         _state.context?.userId ??
         _authSessionReader()?.userId ??
         _lastAuthenticatedUserId;
