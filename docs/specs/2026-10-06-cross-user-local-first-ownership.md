@@ -8,7 +8,8 @@
 PR 2 in `docs/plans/2026-10-01-delivery-roadmap.md`
 **Resolves:** F6 and F7 of `docs/deferred/2026-10-05-gate-cross-user-leaks.md`,
 plus the paths of the same class found while reproducing and designing them
-(R-A, R-B, R-C, F8, F9 below). C4, F5, N1 and N2 stay deferred.
+(R-A, R-B, R-C, F8, F9 below, and XU6 found during execution). C4, F5, N1
+and N2 stay deferred.
 **Builds on:** ADR-020, ADR-029, ADR-035 (unchanged), ADR-037 (amended here),
 ADR-040
 **Plan:** `docs/plans/2026-10-06-cross-user-local-first-ownership.md`
@@ -321,6 +322,31 @@ deletes A's local data. Before, the target could fall through to nobody. This
 is ADR-020's and ADR-035's rule for explicit sign-out applied to a case the
 old chain missed.
 
+### XU6 — a released foreign active context does not reset the current user's planning (found in Task 6)
+
+Found while executing Task 6: AC10 failed before its sign-out step. After B
+cancelled back to A, A (plans cached, no songs) saw no plans at all. XU2 is
+the cause. On the `sessionExpired(A)` edge, `ActivePlanningContextController`
+releases B's context (B → null). The planning sync listener receives that
+null as an ordinary mirror change, and `handleActiveContextChanged(null)`
+does what it does for every null mirror. It advances the boundary
+generation, which cancels the local-first establishment
+`handleOfflineAuthenticated` had just started for A, and with no live session
+it resets to `initial()` with `accessStatus: signedOut`. From then on
+`_refreshPlanning` returns early and the plan list throws "Planning is
+unavailable without an authenticated session". Before XU2, A saw B's planning
+context instead (R-C). With A's songs cached the catalog re-establishes A and
+its mirror repairs planning, which is why AC7's cancel test stayed green.
+
+Decision: the planning sync listener passes the previous active context's
+owner (`previousOwnerUserId`) to `handleActiveContextChanged`. A null whose
+previous owner is not the current user (`!CurrentUserOwnership.allows`) is
+the release of a foreign context. `handleCurrentUser` has already released
+this holder's state for that user, so the change is ignored. Every other null
+mirror keeps its current meaning: a sign-out, a purge, or the catalog
+clearing its own context. Tests that drive the controller directly never pass
+the new optional parameter.
+
 ## Consequences
 
 - No new purge, no `PurgeReason`, no new store write or delete. F8's and F9's
@@ -382,9 +408,10 @@ and green after.
   (b) B's own local data (a pending planning mutation without a cached
   projection) is deleted, because an explicit sign-out still deletes the
   signing-out user's data.
-- **AC10 (R-C, F9 after a cancelled reauth):** after B (with cached songs)
-  cancels back to A, A's catalog shows none of B's songs; A's explicit
-  sign-out then deletes A's plans and pending work and leaves B's songs.
+- **AC10 (R-C, XU6, F9 after a cancelled reauth):** after B (with cached
+  songs) cancels back to A, A's catalog shows none of B's songs and A's own
+  plans are visible (A has no songs cached, XU6); A's explicit sign-out then
+  deletes A's plans and pending work and leaves B's songs.
 
 ## Review exit criterion
 

@@ -8,7 +8,7 @@
 
 **Tech Stack:** Flutter, Dart 3, Riverpod 3 (legacy `ChangeNotifierProvider`), Drift, flutter_test. No new Riverpod or Supabase API is used: the change adds plain `ChangeNotifier` methods called from the existing auth listeners.
 
-**Spec:** `docs/specs/2026-10-06-cross-user-local-first-ownership.md` (decisions XU1–XU5, findings F6, F7, R-A, R-B, R-C, F8, F9, acceptance AC1–AC10; approved 2026-10-06)
+**Spec:** `docs/specs/2026-10-06-cross-user-local-first-ownership.md` (decisions XU1–XU6, findings F6, F7, R-A, R-B, R-C, F8, F9, acceptance AC1–AC10; approved 2026-10-06; XU6 and Task 6b added during execution)
 **Branch:** `fix/cross-user-local-first-leaks` (from `main` at `6e82118`)
 **Discipline:** TDD. Every task starts with a red test that is run and seen failing for the stated reason. Never edit an existing test to make it pass. If an existing test fails and the plan does not name it as an intentional behaviour change: STOP and report. The only intentional behaviour change named in this plan is XU5's (Task 6): an explicit sign-out from `sessionExpired` with no context held for that user now purges that user's data. If an existing test asserts the opposite, STOP and report it anyway, quoting the test, before changing it.
 **Verification after every task:** the FULL suite and the analyzer, never a subset:
@@ -208,7 +208,7 @@ with
 cd apps/lyron_app && flutter test test/application/auth/app_auth_controller_test.dart
 ```
 
-Expected: all pass. Then run the full `flutter test` and `flutter analyze` (see the header). Expected: green; the seven reproduction tests are still skipped.
+Expected: all pass. Then run the full `flutter test` and `flutter analyze` (see the header). Expected: green; the twelve reproduction tests are still skipped.
 
 - [ ] **Step 6: Commit.**
 
@@ -911,7 +911,7 @@ git commit -m "fix(catalog): catalog context follows the current user"
 - Modify: `apps/lyron_app/lib/src/application/song_library/song_catalog_controller.dart`
 - Test: `apps/lyron_app/test/integration/cross_user_local_first_leak_test.dart`
 
-- [ ] **Step 1: Unskip.** In the group `explicit sign-out deletes only the signing-out user's data (AC9, AC10)`, delete `skip: 'red until Task 6 (XU5); spec 2026-10-06 cross-user ownership'` from all three tests.
+- [ ] **Step 1: Unskip.** In the group `explicit sign-out deletes only the signing-out user's data (AC9, AC10)`, delete `skip: 'red until Task 6 (XU5); spec 2026-10-06 cross-user ownership'` from the two AC9 tests. On the AC10 test ("after a cancelled reauth …") change the skip reason to `'red until Task 6b (XU6); spec 2026-10-06 cross-user ownership'` (found during execution: its precondition needs XU6, Task 6b).
 
 - [ ] **Step 2: Run, expect red.**
 
@@ -922,8 +922,7 @@ cd apps/lyron_app && flutter test test/integration/cross_user_local_first_leak_t
 Expected (after Tasks 1–5):
 - "B signing out in the F7 state …" fails on `pendingPlanningMutationCount(_userB)`: `Expected: <0>  Actual: <1>` (the sign-out target fell through to nobody, so B's own pending work survived).
 - "B signing out after A's planning context was held …" fails on `pendingPlanningMutationCount(_userA)`: `Expected: <1>  Actual: <0>` (the stale `_lastAuthenticatedUserId` made B's sign-out purge A).
-- "after a cancelled reauth …" fails on `cachedSongTitles(userId: _userB, …)` not containing `'B own song'` (A's sign-out purged B's catalog through the catalog's stale `_lastAuthenticatedUserId`).
-- Twelve pass.
+- Twelve pass, one skipped (AC10, Task 6b).
 
 - [ ] **Step 3: Planning sign-out target.** In `planning_sync_controller.dart`, replace
 
@@ -994,19 +993,120 @@ with
 cd apps/lyron_app && flutter test test/integration/cross_user_local_first_leak_test.dart
 ```
 
-Expected: all fifteen pass, none skipped. Confirm there is no skip left:
-
-```bash
-grep -c "skip" apps/lyron_app/test/integration/cross_user_local_first_leak_test.dart
-```
-
-Expected: `0`. Then the full `flutter test` and `flutter analyze`: green. If an existing sign-out test now fails because it expected no purge after a sign-out from `sessionExpired` with no held context, that is XU5's named behaviour change: STOP and report it (quote the test) before changing it.
+Expected: fourteen pass, one skipped (AC10). Then the full `flutter test` and `flutter analyze`: green. If an existing sign-out test now fails because it expected no purge after a sign-out from `sessionExpired` with no held context, that is XU5's named behaviour change: STOP and report it (quote the test) before changing it.
 
 - [ ] **Step 6: Commit.**
 
 ```bash
 git add apps/lyron_app/lib/src/application/planning/planning_sync_controller.dart apps/lyron_app/lib/src/application/song_library/song_catalog_controller.dart apps/lyron_app/test/integration/cross_user_local_first_leak_test.dart
 git commit -m "fix(local-first): explicit sign-out purges the signing-out user (F9)"
+```
+
+---
+
+### Task 6b: A released foreign active context does not reset the current user's planning (XU6; AC10)
+
+Added during execution (spec XU6). With Task 6 applied, AC10 failed before its sign-out step: after B cancelled back to A, A (plans cached, no songs) saw no plans (`readPlanNames()` returned `[]`, the plan list threw "Planning is unavailable without an authenticated session"). The active planning context's release of B's context (XU2) reaches `PlanningSyncController.handleActiveContextChanged(null)`, which cancels A's local-first establishment and, with no live session, resets to `accessStatus: signedOut`. Running the AC10 test with only that assertion removed proved Task 6's sign-out part green.
+
+**Files:**
+- Modify: `apps/lyron_app/lib/src/application/planning/planning_sync_controller.dart`
+- Modify: `apps/lyron_app/lib/src/application/planning_providers.dart`
+- Test: `apps/lyron_app/test/integration/cross_user_local_first_leak_test.dart`
+
+- [ ] **Step 1: Unskip.** Delete `skip: 'red until Task 6b (XU6); spec 2026-10-06 cross-user ownership'` from the AC10 test.
+
+- [ ] **Step 2: Run, expect red.**
+
+```bash
+cd apps/lyron_app && flutter test test/integration/cross_user_local_first_leak_test.dart
+```
+
+Expected: the AC10 test fails on `expect(await fixture.readPlanNames(), contains('A secret plan'))` with `Actual: []`; fourteen pass.
+
+- [ ] **Step 3: The guard.** In `planning_sync_controller.dart`, replace
+
+```dart
+  Future<void> handleActiveContextChanged(
+    ActivePlanningReadContext? context, {
+    bool refresh = true,
+  }) async {
+    if (context != null && !_ownership.allows(context.userId)) {
+```
+
+with
+
+```dart
+  Future<void> handleActiveContextChanged(
+    ActivePlanningReadContext? context, {
+    bool refresh = true,
+    String? previousOwnerUserId,
+  }) async {
+    if (context == null &&
+        previousOwnerUserId != null &&
+        !_ownership.allows(previousOwnerUserId)) {
+      // XU6 (docs/specs/2026-10-06-cross-user-local-first-ownership.md): the
+      // active context of a user who is no longer current was released
+      // (XU2). handleCurrentUser has already released this holder's state
+      // for that user. Resetting again here would cancel the current user's
+      // local-first establishment and, with no live session, mark planning
+      // signed out, hiding the current user's own plans.
+      return;
+    }
+    if (context != null && !_ownership.allows(context.userId)) {
+```
+
+- [ ] **Step 4: Pass the previous owner.** In `planning_providers.dart`, inside `planningSyncControllerProvider`, replace
+
+```dart
+      ref.listen<ActivePlanningReadContext?>(activePlanningContextProvider, (
+        _,
+        next,
+      ) {
+        scheduleMicrotask(() {
+          if (!ref.mounted) return;
+          unawaited(controller.handleActiveContextChanged(next));
+        });
+      });
+```
+
+with
+
+```dart
+      ref.listen<ActivePlanningReadContext?>(activePlanningContextProvider, (
+        previous,
+        next,
+      ) {
+        scheduleMicrotask(() {
+          if (!ref.mounted) return;
+          unawaited(
+            controller.handleActiveContextChanged(
+              next,
+              previousOwnerUserId: previous?.userId,
+            ),
+          );
+        });
+      });
+```
+
+- [ ] **Step 5: Run the file, then the full suite and the analyzer.**
+
+```bash
+cd apps/lyron_app && flutter test test/integration/cross_user_local_first_leak_test.dart
+```
+
+Expected: all fifteen pass, none skipped. Confirm there is no skip left:
+
+```bash
+grep -c "skip" apps/lyron_app/test/integration/cross_user_local_first_leak_test.dart
+```
+
+Expected: `0`. Then the full `flutter test` and `flutter analyze`: green.
+
+- [ ] **Step 6: Commit.**
+
+```bash
+git add apps/lyron_app/lib/src/application/planning/planning_sync_controller.dart apps/lyron_app/lib/src/application/planning_providers.dart apps/lyron_app/test/integration/cross_user_local_first_leak_test.dart
+git commit -m "fix(planning): a released context keeps the current user's plans (XU6)"
 ```
 
 ---
@@ -1050,7 +1150,9 @@ Narrowed rule: a local-first read context may belong only to
   `CurrentUserOwnership`. It invalidates work started for the previous user,
   drops a context owned by anyone else, and never adopts one. This happens on
   the auth edge, not only inside a refresh that may never run. The I3 guards
-  stay as a second line.
+  stay as a second line. Planning ignores the null mirror that a release of a
+  foreign active context produces (XU6), so the release cannot reset the
+  current user's own offline planning state.
 - **Explicit sign-out (XU5).** The existing `userSignOut` purge takes its
   user from `CurrentUserOwnership.userId`, the user who signed out, instead
   of from held state or a stale `_lastAuthenticatedUserId`. Before, one
