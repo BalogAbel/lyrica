@@ -228,6 +228,183 @@ void main() {
     expect(controller.allowsAuthenticatedRoutes, isTrue);
   });
 
+  group('per-resolution token (S0 8c)', () {
+    test('a result from a resolution started before reset is ignored, so the '
+        'resolution after it keeps running and decides (C2)', () {
+      fakeAsync((async) {
+        final controller = ActiveMembershipController(
+          currentUserIdReader: () => 'user-a',
+        );
+        final r1 = controller.beginResolution(userId: 'user-a');
+        controller.reset();
+        final r2 = controller.beginResolution(userId: 'user-a');
+
+        controller.update(empty, userId: 'user-a', token: r1);
+
+        expect(controller.last, isNull);
+        expect(viewOf(controller), MembershipGateView.resolving);
+        expect(async.pendingTimers, hasLength(1));
+
+        controller.update(selected, userId: 'user-a', token: r2);
+
+        expect(controller.last, selected);
+        expect(viewOf(controller), MembershipGateView.home);
+        expect(async.pendingTimers, isEmpty);
+        controller.dispose();
+      });
+    });
+
+    test('a later resolution supersedes an earlier one for the same user, '
+        'whichever answers first (Retry over a slow refresh)', () {
+      fakeAsync((async) {
+        final controller = ActiveMembershipController(
+          currentUserIdReader: () => 'user-a',
+        );
+        final r1 = controller.beginResolution(userId: 'user-a');
+        final r2 = controller.beginResolution(userId: 'user-a');
+
+        controller.update(empty, userId: 'user-a', token: r1);
+        expect(controller.last, isNull);
+        expect(viewOf(controller), MembershipGateView.resolving);
+
+        controller.update(selected, userId: 'user-a', token: r2);
+        expect(controller.last, selected);
+        controller.dispose();
+      });
+    });
+
+    test('a user change invalidates the resolution running before it, even '
+        'when the same user comes back (A to B to A)', () {
+      fakeAsync((async) {
+        var current = 'user-a';
+        final controller = ActiveMembershipController(
+          currentUserIdReader: () => current,
+        );
+        final r1 = controller.beginResolution(userId: 'user-a');
+        current = 'user-b';
+        controller.noteInputsChanged();
+        current = 'user-a';
+        controller.noteInputsChanged();
+
+        controller.update(empty, userId: 'user-a', token: r1);
+
+        expect(controller.last, isNull);
+        expect(async.pendingTimers, isEmpty);
+        controller.dispose();
+      });
+    });
+
+    test('a user change is noticed at the next update even when nothing '
+        'called noteInputsChanged', () {
+      fakeAsync((async) {
+        var current = 'user-a';
+        final controller = ActiveMembershipController(
+          currentUserIdReader: () => current,
+        );
+        final r1 = controller.beginResolution(userId: 'user-a');
+        current = 'user-b';
+
+        controller.update(selected, userId: 'user-a', token: r1);
+
+        expect(controller.last, isNull);
+        expect(viewOf(controller), MembershipGateView.connectivityFailure);
+        expect(async.pendingTimers, isEmpty);
+        controller.dispose();
+      });
+    });
+
+    test('the latest resolution of a user who is not current ends the '
+        'running state when it answers (F4 with tokens)', () {
+      fakeAsync((async) {
+        final controller = ActiveMembershipController(
+          currentUserIdReader: () => 'user-a',
+        );
+        final token = controller.beginResolution(userId: 'user-b');
+
+        controller.update(selected, userId: 'user-b', token: token);
+
+        expect(controller.last, isNull);
+        expect(async.pendingTimers, isEmpty);
+        controller.dispose();
+      });
+    });
+
+    test('a purge for the current user is authoritative: it ends the running '
+        'resolution and a late result of that resolution is ignored', () {
+      fakeAsync((async) {
+        final controller = ActiveMembershipController(
+          currentUserIdReader: () => 'user-a',
+        );
+        final r1 = controller.beginResolution(userId: 'user-a');
+
+        controller.recordPurgeResult(userId: 'user-a');
+
+        expect(controller.last, empty);
+        expect(async.pendingTimers, isEmpty);
+
+        controller.update(selected, userId: 'user-a', token: r1);
+        expect(controller.last, empty);
+        controller.dispose();
+      });
+    });
+
+    test('a purge for a user who is not current changes nothing', () {
+      fakeAsync((async) {
+        final controller = ActiveMembershipController(
+          currentUserIdReader: () => 'user-a',
+        );
+        final r1 = controller.beginResolution(userId: 'user-a');
+
+        controller.recordPurgeResult(userId: 'user-b');
+
+        expect(controller.last, isNull);
+        expect(viewOf(controller), MembershipGateView.resolving);
+        expect(async.pendingTimers, hasLength(1));
+
+        controller.update(selected, userId: 'user-a', token: r1);
+        expect(controller.last, selected);
+        controller.dispose();
+      });
+    });
+
+    test('a result begun before a purge never overrides a result that a later '
+        'resolution recorded after it', () {
+      final controller = ActiveMembershipController(
+        currentUserIdReader: () => 'user-a',
+      );
+      addTearDown(controller.dispose);
+      final r1 = controller.beginResolution(userId: 'user-a');
+      controller.recordPurgeResult(userId: 'user-a');
+      final r2 = controller.beginResolution(userId: 'user-a');
+      controller.update(selected, userId: 'user-a', token: r2);
+
+      controller.update(empty, userId: 'user-a', token: r1);
+
+      expect(controller.last, selected);
+    });
+
+    test('an unknown result still never replaces selected, with tokens', () {
+      final controller = ActiveMembershipController(
+        currentUserIdReader: () => 'user-a',
+      );
+      addTearDown(controller.dispose);
+      controller.update(
+        selected,
+        userId: 'user-a',
+        token: controller.beginResolution(userId: 'user-a'),
+      );
+
+      controller.update(
+        offline,
+        userId: 'user-a',
+        token: controller.beginResolution(userId: 'user-a'),
+      );
+
+      expect(controller.last, selected);
+      expect(viewOf(controller), MembershipGateView.home);
+    });
+  });
+
   test('the first-run timer does nothing after dispose', () {
     fakeAsync((async) {
       final controller = ActiveMembershipController(

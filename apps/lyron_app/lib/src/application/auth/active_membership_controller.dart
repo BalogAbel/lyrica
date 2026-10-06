@@ -45,6 +45,11 @@ class ActiveMembershipController extends ChangeNotifier {
   bool _firstRunTimedOut = false;
   Timer? _firstRunTimer;
   bool _disposed = false;
+  // Token of the most recently started resolution. Bumped by every begin,
+  // reset, purge and user change, so a result carrying an older token is stale.
+  int _gen = 0;
+  // The current user as of the last bump check (see _syncUser).
+  String? _epochUserId;
 
   /// The latest live resolution for the current user, or null when none has
   /// completed for them.
@@ -88,8 +93,13 @@ class ActiveMembershipController extends ChangeNotifier {
       viewFor(hasPendingInvite: _hasPendingInviteReader()) ==
       MembershipGateView.home;
 
-  /// A resolution for [userId] started. Starts the SG4 first-run timer.
-  void beginResolution({required String userId}) {
+  /// A resolution for [userId] started. Starts the SG4 first-run timer and
+  /// returns its token: pass it back to [update]. Only the token of the most
+  /// recently started resolution is current, so a result from an earlier one
+  /// (superseded by Retry or a redemption refresh, or invalidated by [reset]
+  /// or a user change) is ignored (S0 8c C2/C3).
+  int beginResolution({required String userId}) {
+    _syncUser();
     if (_lastUserId != null && _lastUserId != userId) {
       _last = null;
     }
@@ -103,21 +113,40 @@ class ActiveMembershipController extends ChangeNotifier {
       _firstRunTimedOut = true;
       _notify();
     });
+    final token = ++_gen;
     _notify();
+    return token;
   }
 
   /// Records a finished resolution (SG3). [userId] is the user the
   /// resolution was started for; omit it only where no user is known.
-  void update(ActiveOrganizationResolution next, {String? userId}) {
+  ///
+  /// With a [token] the result is applied only when the token is the latest
+  /// one issued: a stale token changes nothing, neither the stored result nor
+  /// the running state. Without a token (legacy callers) the userId checks
+  /// alone decide.
+  void update(ActiveOrganizationResolution next, {String? userId, int? token}) {
+    final userChanged = _syncUser();
+    if (token != null && token != _gen) {
+      if (userChanged) {
+        _notify();
+      }
+      return;
+    }
     final current = _currentUserIdReader();
     if (userId != null && userId != current) {
       // Resolved for a user who is no longer current (including nobody, after
       // an explicit sign-out): never keep it, or the same user signing in
       // again would start from a stale result.
-      if (userId == _resolvingUserId) {
-        // That user's resolution is the one running: it is over. Never stop
-        // a resolution running for anyone else (the current user's, say).
+      //
+      // Whether that result ends the running state: with a token it is the
+      // latest resolution, so yes; without one, only the resolution of the
+      // user it ran for. Never stop a resolution running for anyone else
+      // (the current user's, say).
+      if (token != null || userId == _resolvingUserId) {
         _stopResolving();
+        _notify();
+      } else if (userChanged) {
         _notify();
       }
       return;
@@ -139,8 +168,29 @@ class ActiveMembershipController extends ChangeNotifier {
     _notify();
   }
 
-  /// Explicit sign-out: forget the live resolution entirely.
+  /// A D5 purge ran for [userId] (SG2). The purge is authoritative for the
+  /// current user: whatever resolution is running is superseded and the live
+  /// result becomes `verifiedEmpty`. A purge for anyone else changes nothing.
+  void recordPurgeResult({required String userId}) {
+    final userChanged = _syncUser();
+    if (userId != _currentUserIdReader()) {
+      if (userChanged) {
+        _notify();
+      }
+      return;
+    }
+    _gen++;
+    _stopResolving();
+    _last = const ActiveOrganizationResolution.verifiedEmpty();
+    _lastUserId = userId;
+    _notify();
+  }
+
+  /// Explicit sign-out: forget the live resolution entirely. Also supersedes
+  /// every resolution started before it.
   void reset() {
+    _gen++;
+    _epochUserId = _currentUserIdReader();
     _last = null;
     _lastUserId = null;
     _stopResolving();
@@ -149,7 +199,28 @@ class ActiveMembershipController extends ChangeNotifier {
 
   /// An input behind one of the readers changed (auth state, last known
   /// identity, pending invite). Lets the gate and the router re-evaluate.
-  void noteInputsChanged() => _notify();
+  void noteInputsChanged() {
+    _syncUser();
+    _notify();
+  }
+
+  /// A change of the current user invalidates every resolution started
+  /// before it: it was asked for a user who may no longer be the one the
+  /// result would be applied to (A to B to A included), and its running state
+  /// belongs to nobody now. Checked wherever a resolution is begun, answered
+  /// or noted, and whenever an input changes (the auth controller notifies on
+  /// every user change). Nothing is cleared here: the stored result is
+  /// already scoped by user. Returns whether the user changed.
+  bool _syncUser() {
+    final current = _currentUserIdReader();
+    if (current == _epochUserId) {
+      return false;
+    }
+    _epochUserId = current;
+    _gen++;
+    _stopResolving();
+    return true;
+  }
 
   void _stopResolving() {
     _resolving = false;

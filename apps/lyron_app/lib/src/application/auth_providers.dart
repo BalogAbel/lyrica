@@ -814,11 +814,11 @@ final membershipRetryProvider = Provider<Future<void> Function()>((ref) {
         ? ref.read(membershipCachedResolutionProvider)
         : ref.read(membershipResolutionProvider);
     final userId = controller.currentUserId;
-    if (userId != null) {
-      controller.beginResolution(userId: userId);
-    }
+    final token = userId == null
+        ? null
+        : controller.beginResolution(userId: userId);
     final resolution = await reader();
-    controller.update(resolution, userId: userId);
+    controller.update(resolution, userId: userId, token: token);
   };
 });
 
@@ -831,10 +831,10 @@ final membershipRefreshEffectProvider = Provider<void>((ref) {
     if (userId == null) {
       return;
     }
-    membershipController.beginResolution(userId: userId);
+    final token = membershipController.beginResolution(userId: userId);
     final reader = ref.read(membershipResolutionProvider);
     final result = await reader();
-    membershipController.update(result, userId: userId);
+    membershipController.update(result, userId: userId, token: token);
   }
 
   // Always on a microtask: the status listener below fires immediately
@@ -891,10 +891,7 @@ final membershipRefreshEffectProvider = Provider<void>((ref) {
     verifiedEmptyMembershipCleanupCoordinatorProvider,
   );
   Future<void> recordPurge({required String userId}) async {
-    membershipController.update(
-      const ActiveOrganizationResolution.verifiedEmpty(),
-      userId: userId,
-    );
+    membershipController.recordPurgeResult(userId: userId);
   }
 
   coordinator.addHandler(recordPurge);
