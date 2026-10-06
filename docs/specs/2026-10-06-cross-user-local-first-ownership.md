@@ -1,7 +1,7 @@
 # Cross-User Local-First Ownership
 
-> Status: approved 2026-10-06 (design gate, with AC1 extended and AC9/AC10
-> added); implementation in progress
+> Status: approved 2026-10-06; implemented on
+> `fix/cross-user-local-first-leaks` (Tasks 1–6b)
 
 **Branch:** `fix/cross-user-local-first-leaks`
 **Roadmap:** the cross-user fix PR between S0 PR 1 (merged as #85) and S0
