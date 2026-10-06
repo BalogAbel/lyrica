@@ -837,4 +837,79 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(controller.state.session?.email, 'new@x');
   });
+
+  group('currentUserLastKnownIdentity (XU1)', () {
+    test('is the identity while its user is current', () async {
+      final repo = _FakeAuthRepository();
+      final identityStore = _FakeLastKnownIdentityStore()
+        ..value = const LastKnownIdentity(
+          userId: 'u1',
+          email: 'u1@x',
+          organizationId: 'org-1',
+        );
+      final controller = AppAuthController(
+        repo,
+        lastKnownIdentityStore: identityStore,
+      );
+
+      await controller.restoreSession();
+      expect(controller.state.status, AppAuthStatus.sessionExpired);
+      expect(controller.currentUserLastKnownIdentity?.organizationId, 'org-1');
+
+      repo.emit(const AppAuthSession(userId: 'u1', email: 'u1@x'));
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.state.status, AppAuthStatus.signedIn);
+      expect(controller.currentUserLastKnownIdentity?.userId, 'u1');
+    });
+
+    test('is null while another user is current, with or without a live '
+        'session (F6)', () async {
+      final repo = _FakeAuthRepository();
+      final identityStore = _FakeLastKnownIdentityStore()
+        ..value = const LastKnownIdentity(
+          userId: 'u1',
+          email: 'u1@x',
+          organizationId: 'org-1',
+        );
+      final controller = AppAuthController(
+        repo,
+        lastKnownIdentityStore: identityStore,
+      );
+      await controller.restoreSession();
+
+      repo.emit(const AppAuthSession(userId: 'u2', email: 'u2@x'));
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.state.currentUserId, 'u2');
+      expect(controller.currentUserLastKnownIdentity, isNull);
+
+      // u2's session is lost while u1's identity is still on file.
+      repo.emit(null);
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.state.status, AppAuthStatus.sessionExpired);
+      expect(controller.state.currentUserId, 'u2');
+      expect(controller.lastKnownIdentity?.userId, 'u1');
+      expect(controller.currentUserLastKnownIdentity, isNull);
+    });
+
+    test('is null when nobody is current', () async {
+      final repo = _FakeAuthRepository();
+      final identityStore = _FakeLastKnownIdentityStore()
+        ..value = const LastKnownIdentity(
+          userId: 'u1',
+          email: 'u1@x',
+          organizationId: 'org-1',
+        );
+      final controller = AppAuthController(
+        repo,
+        lastKnownIdentityStore: identityStore,
+      );
+      expect(controller.state.status, AppAuthStatus.initializing);
+      expect(controller.currentUserLastKnownIdentity, isNull);
+
+      await controller.restoreSession();
+      await controller.signOut();
+      expect(controller.state.status, AppAuthStatus.signedOut);
+      expect(controller.currentUserLastKnownIdentity, isNull);
+    });
+  });
 }
