@@ -14,7 +14,7 @@
 > Spec: `docs/specs/2026-10-05-offline-first-startup-gate.md`. S0 also pulls
 > S6 option (a) (persisted capabilities) forward. S0 PR 1 merged as #85
 > (2026-10-06).
-> Sequencing: the F6/F7 cross-user-leak fix PR (`fix/cross-user-local-first-leaks`,
+> Sequencing: the F6/F7 cross-user-leak fix PR (#86, `fix/cross-user-local-first-leaks`,
 > `docs/specs/2026-10-06-cross-user-local-first-ownership.md`, which also
 > closes three related paths and a planning data-loss case, F8), then S0 PR 2,
 > then S5a.
