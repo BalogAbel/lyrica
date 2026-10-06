@@ -57,10 +57,14 @@ final class ActiveOrganizationResolver {
   /// fallback substituted a cached organization id for it.
   Future<({ActiveOrganizationResolution resolution, bool wasCachedFallback})>
   resolveWithCachedFallbackDetailed() async {
+    // Read the user BEFORE the await: if the current user changes while the
+    // raw lookup runs, the cached organization must still be the one of the
+    // user this resolution was started for (S0 8c C1).
+    final userId = _readUserId();
     final resolution = await resolveRaw();
     final withFallback = await resolveMembershipWithCachedFallback(
       resolution: resolution,
-      userId: _readUserId(),
+      userId: userId,
       readCachedOrganizationId: _readCachedOrganizationId,
     );
     final wasCachedFallback =
