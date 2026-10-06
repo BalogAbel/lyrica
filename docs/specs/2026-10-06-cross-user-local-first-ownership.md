@@ -1,13 +1,14 @@
 # Cross-User Local-First Ownership
 
-> Status: spec and plan awaiting approval (design gate); no production code yet
+> Status: approved 2026-10-06 (design gate, with AC1 extended and AC9/AC10
+> added); implementation in progress
 
 **Branch:** `fix/cross-user-local-first-leaks`
 **Roadmap:** the cross-user fix PR between S0 PR 1 (merged as #85) and S0
 PR 2 in `docs/plans/2026-10-01-delivery-roadmap.md`
 **Resolves:** F6 and F7 of `docs/deferred/2026-10-05-gate-cross-user-leaks.md`,
-plus three paths of the same class found while reproducing them (R-A, R-B,
-F8 below). C4, F5, N1 and N2 stay deferred.
+plus the paths of the same class found while reproducing and designing them
+(R-A, R-B, R-C, F8, F9 below). C4, F5, N1 and N2 stay deferred.
 **Builds on:** ADR-020, ADR-029, ADR-035 (unchanged), ADR-037 (amended here),
 ADR-040
 **Plan:** `docs/plans/2026-10-06-cross-user-local-first-ownership.md`
@@ -18,8 +19,9 @@ ADR-040
 
 A local-first read context (the song catalog `context`, the active planning
 context, the planning sync state's `(userId, organizationId)`) can belong to
-a user who is not the user the app is acting for. Then that user sees, and in
-one case loses, another user's songs or plans.
+a user who is not the user the app is acting for. Then that user sees another
+user's songs or plans. In some cases another user's plans and pending work
+are lost.
 
 Every finding below is reproduced by a test in the reproduction suite. It
 uses a real `AppAuthController`, a real `LocalDataLifecycle`, Drift in-memory
@@ -36,8 +38,8 @@ null") is true only when A has no cached songs (see F7).
 Common setup: A's identity (organization `org-a`) is on the device, A has a
 pending planning mutation (so a different-user sign-in asks before wiping,
 ADR-029 D3), the app cold-starts offline into `sessionExpired(A)`, and B then
-signs in. B's membership RPC answers (`selected(org-b)`), so the gate opens
-for B.
+signs in. Unless stated otherwise, B's membership RPC answers
+(`selected(org-b)`), so the gate opens for B.
 
 ### F6 — establishment from another user's identity (reproduced)
 
@@ -53,7 +55,9 @@ With no live session they establish the identity's user: A.
 
 Observed: state `sessionExpired(B)`, gate `home`, song list
 `[A secret song]`, plan list `[A secret plan]`. The deferred entry described
-only the catalog half; the planning half has the same cause.
+only the catalog half; the planning half has the same cause. When B's
+membership RPC did not answer, the gate shows its failure screen, and A's
+catalog context is still established behind it.
 
 ### F7 — planning state held for A survives B's sign-in (reproduced)
 
@@ -98,6 +102,15 @@ read until after B's edge. The real window is two local reads long; the
 realistic trigger is a foreground resume (the OAuth redirect returning) that
 starts a refresh just as B's session arrives.
 
+### R-C — after a cancelled reauth the prior user sees the new user's songs (reproduced)
+
+B signs in and B's songs are in the local cache (cached during B's session,
+while the prompt was pending), so the catalog context is `(B, org-b)`. B
+cancels the different-user prompt and the app returns to `sessionExpired(A)`.
+The catalog's `handleSessionExpired` keeps an existing context (status only)
+and `handleOfflineAuthenticated` returns early when a context exists. Observed:
+the catalog context is still `(B, org-b)` with A as the current user.
+
 ### F8 — B's planning boundary deletes A's plans and pending work (reproduced, data loss)
 
 Same as F7, but B's planning lookup answers `org-b`. The active planning
@@ -114,12 +127,35 @@ not a `LocalDataLifecycle` purge (no `PurgeReason`), but it is a cross-user
 effect with the same cause as F7: the previous user's boundary is still held
 when the next user's boundary arrives.
 
+### F9 — one user's explicit sign-out purges another user's data (reproduced, data loss)
+
+`handleExplicitSignOut` picks the purge user from what the holder last held:
+`_state.userId` (planning) or `_state.context?.userId` (catalog), then the
+live session (null at `signedOut`), then `_lastAuthenticatedUserId`. Three
+sequences purge the wrong user:
+
+- **F7 state.** Planning still holds A's state when B signs out, so B's
+  sign-out runs `purgePlanningData(A)`. Observed: A's pending mutation 1 → 0.
+- **Stale fallback.** A re-authenticated earlier in the process, so planning's
+  `_lastAuthenticatedUserId` is A. After B's sign-in releases A's state (XU2),
+  B's sign-out still falls through to A. Observed: A's pending mutation 1 → 0.
+- **Cancelled reauth.** The catalog's `_lastAuthenticatedUserId` is B (set on
+  B's sign-in). After the cancel A is current but holds no catalog context
+  (no songs), so A's sign-out runs `purgeSongCatalog(B)`.
+
+The mirror defect is a sign-out that purges nobody. Once XU2 releases A's
+state, B's sign-out in the F7 state finds no held state and no fallback, so
+B's own local data (here a pending planning mutation whose projection is not
+cached) would survive B's explicit sign-out.
+
 ### Why the existing tests did not see these
 
 The I3 and R2 regression tests (PR #79) drive one controller at a time with a
 live session for B. None of them goes through `sessionExpired(B)` with A's
-identity, through the planning sync listener's `signedIn` no-op, or through
-two holders that disagree (catalog empty, planning not).
+identity, through the planning sync listener's `signedIn` no-op, through a
+cancelled reauth, or through two holders that disagree (catalog empty,
+planning not). No sign-out test signs out a user other than the one whose
+data is held.
 
 ## Invariant
 
@@ -128,7 +164,8 @@ two holders that disagree (catalog empty, planning not).
 > signed in and the last known session's user when `sessionExpired`. It is
 > never established from another user's identity, a context held for an
 > earlier user is released when the current user changes, and no holder
-> adopts a context owned by anyone else.
+> adopts a context owned by anyone else. An explicit sign-out deletes the
+> signing-out user's local data and no other user's.
 
 This narrows ADR-037's ownership rule. That rule said "`identity.userId`
 alone when `sessionExpired` (no live session to compare against)". There
@@ -139,10 +176,13 @@ cancelled reauth that returns to the prior user.
 
 ## Constraints (from the task, all kept)
 
-- The fix starts no purge and adds no `PurgeReason`. ADR-035 does not change.
-- Only in-memory state and the establishment of contexts change. Nothing
-  writes to or deletes from a local store. The only store-level effect is
-  that F8's existing delete no longer happens.
+- The fix starts no new purge and adds no `PurgeReason`. ADR-035 does not
+  change. XU5 changes only which user the existing `userSignOut` purge
+  targets: the user who signed out, which is what ADR-035's definition of
+  `userSignOut` ("the user activated the sign-out control") already says.
+- Apart from XU5's target, only in-memory state and the establishment of
+  contexts change. Nothing new writes to or deletes from a local store. F8's
+  and F9's wrong-user deletes no longer happen.
 - The existing I3 guards (`SongCatalogController._refreshCatalogBody`,
   `PlanningSyncController._refreshPlanning`) and the R2 ownership rule in both
   `_tryEstablishLocalFirstContext` methods stay as they are.
@@ -166,9 +206,10 @@ The effect on the controllers: with a live session they already ignored a
 different user's identity (R2), so nothing changes there. With no live
 session the identity is now visible only when it belongs to
 `lastKnownSession`'s user. In `sessionExpired(B)` with A's identity, nothing
-is established. B sees the empty catalog state with the re-auth banner, which
-is not a dead end (the banner opens sign-in, as in every `sessionExpired`
-state).
+is established. B has a way out in both gate states (AC1). If B's membership
+answered, home shows the empty catalog with the re-auth banner and its
+sign-in action. If it did not, the gate shows its failure screen, which in
+`sessionExpired` carries the sign-in action next to Retry.
 
 A non-matching identity yields null rather than `(B, organization: null)`.
 That keeps one rule for the three readers, and it keeps the
@@ -185,7 +226,7 @@ also reads `lastKnownIdentity`. That leak is in telemetry, not the UI, and
 is already scheduled in S6. It is not changed here, though S6 can reuse this
 getter.
 
-### XU2 — every context holder follows the current user (closes F7, R-A, R-B, F8)
+### XU2 — every context holder follows the current user (closes F7, R-A, R-B, R-C, F8)
 
 A small value class, `CurrentUserOwnership`
 (`application/auth/current_user_ownership.dart`), holds the rule once:
@@ -198,6 +239,7 @@ A small value class, `CurrentUserOwnership`
 - `allows(ownerUserId)` says whether a context owned by that user may be held
   or adopted. Before the first observation it allows everything (the holders'
   existing guards apply).
+- `userId` is the last observed current user (XU5 reads it).
 
 Each of the three in-memory holders owns one `CurrentUserOwnership` and a
 `handleCurrentUser(String currentUserId)` method. The provider that owns the
@@ -211,9 +253,10 @@ whose `currentUserId` is non-null (`signedIn` and `sessionExpired`):
 | `ActivePlanningContextController` | (no generation) | reset to null | `refresh()` applies no outcome after its awaits once the user changed; `syncToCatalogContext` ignores another user's catalog context |
 
 Why on the auth edge and not only inside a refresh: the I3 guards run only
-when a refresh runs. Planning skips the refresh when it has local data (F7).
-The catalog's refresh can be queued behind the previous user's in-flight
-refresh, which may be awaiting a network call for up to 60 s.
+when a refresh runs. Planning skips the refresh when it has local data (F7),
+`sessionExpired` handlers keep an existing context (R-C), and the catalog's
+refresh can be queued behind the previous user's in-flight refresh, which
+may be awaiting a network call for up to 60 s.
 
 F8 closes as a consequence. The planning state is released on B's sign-in
 edge, so when B's boundary arrives `handleActiveContextChanged` has no
@@ -223,9 +266,7 @@ on a boundary switch is not changed: a same-user organization switch still
 drops the previous organization's planning data, as
 `docs/architecture/architecture.md` documents.
 
-`signedOut` is not fed to `handleCurrentUser`. The existing explicit sign-out
-handlers reset all three holders and choose the purge target. That code is
-unchanged.
+`signedOut` is not fed to `handleCurrentUser`; XU5 covers that edge.
 
 ### XU3 — single source, per-holder application
 
@@ -233,8 +274,8 @@ The rule has one source: `AppAuthState.currentUserId`. It is encoded in two
 places that cannot drift apart, because both compare against that one value:
 `AppAuthController.currentUserLastKnownIdentity` decides which identity is
 visible (XU1), and `CurrentUserOwnership` decides which held context is
-allowed (XU2). Each holder applies it from its own provider's existing auth
-switch.
+allowed (XU2) and who signed out (XU5). Each holder applies it from its own
+provider's existing auth switch.
 
 Rejected: one effect provider that calls all three holders. It would add a
 fourth listener on the auth controller with no ordering guarantee against the
@@ -255,22 +296,40 @@ effect would also create and dispose it outside its real lifetime.
   sync, write, and choose a sign-out purge target with a foreign context.
   It would also need a filter at every read site instead of at the holders.
 - **Reset only in the planning `signedIn` listener (the deferred entry's F7
-  sketch).** Closes F7 alone; R-A, R-B and F8 stay open.
+  sketch).** Closes F7 alone; R-A, R-B, R-C, F8 and F9 stay open.
+
+### XU5 — the explicit sign-out purges the user who signed out (closes F9)
+
+Both `handleExplicitSignOut` methods (catalog and planning) take the purge
+user from `CurrentUserOwnership.userId` first: the last current user the
+holder observed, which is the user who just signed out. The old chain
+(held state, live session, `_lastAuthenticatedUserId`) stays only as the
+fallback for a holder that never observed a current user (a holder created
+while signed out, and unit tests that drive the controller directly). The
+purge itself (`LocalDataLifecycle.purgeSongCatalog` /
+`purgePlanningData`, `PurgeReason.userSignOut`, user-wide) is unchanged.
+
+This makes a sign-out that purges nobody impossible once a user was observed.
+A sign-out in the F7 state deletes B's own data, including pending work whose
+projection is not cached. The "nobody" branch therefore cannot leave the
+signing-out user's data behind (AC9).
+
+Intentional behaviour change: an explicit sign-out from `sessionExpired(A)`
+when the holder never established a context for A (for example A has pending
+work but no cached projection, or the process never saw A signed in) now
+deletes A's local data. Before, the target could fall through to nobody. This
+is ADR-020's and ADR-035's rule for explicit sign-out applied to a case the
+old chain missed.
 
 ## Consequences
 
-- No purge, no `PurgeReason`, no store write or delete is added. F8's delete
-  of A's planning data no longer happens before confirmation.
-- Explicit sign-out code is unchanged. Before this fix, a foreign context held
-  at an explicit sign-out made the sign-out purge pick the foreign user
-  (`handleExplicitSignOut` takes `_state.context?.userId` /
-  `_state.userId` first). For example, B signing out in the F7 state purged
-  A's planning data and pending work. After XU2 a foreign context is never
-  held at a sign-out, so the purge target falls through to the signing-out
-  user (or to nobody), as ADR-035 intends. This narrows an existing purge's
-  target; it does not add one.
+- No new purge, no `PurgeReason`, no new store write or delete. F8's and F9's
+  wrong-user deletes no longer happen.
+- An explicit sign-out always purges the signing-out user's local data (XU5),
+  and never another user's.
 - `sessionExpired(B)` with A's identity shows B an empty catalog and the
-  re-auth banner instead of A's data.
+  re-auth banner, or the gate's failure screen with sign-in, instead of A's
+  data.
 - A refresh started for the previous user stops when the current user
   changes. The next user's refresh may still queue behind it (existing
   coalescing), but nothing of the previous user is shown meanwhile.
@@ -279,8 +338,8 @@ effect would also create and dispose it outside its real lifetime.
 
 - B's explicit sign-out while A's different-user prompt is pending clears A's
   identity (`persistIdentity`'s `signedOut` case clears whatever identity is
-  on file). A's data stays on disk and reappears for A on A's next sign-in.
-  Not a cross-user view.
+  on file). A's plans and pending work stay on disk (AC9) and reappear for A
+  on A's next sign-in. Not a cross-user view.
 - `_verifiedEmptyMembershipSeen` in the catalog and active planning
   controllers is not reset on a direct user switch. Its effect is on the
   connectivity fallback for the next user's own data only.
@@ -292,9 +351,13 @@ effect would also create and dispose it outside its real lifetime.
 Each criterion is a test in the reproduction suite. It is red before its task
 and green after.
 
-- **AC1 (F6, catalog):** B loses the session while A's identity is on file;
-  no catalog context of A's is established; the song list does not contain
-  A's song.
+- **AC1 (F6, catalog, with the way out):** B loses the session while A's
+  identity is on file; no catalog context of A's is established; the song
+  list does not contain A's song. The way out is checked with the real gate
+  and banner widgets in both variants: when B's membership answered, the
+  gate shows home and the re-auth banner's sign-in action is present; when
+  it did not, the gate shows its connectivity failure screen with the
+  sign-in action. Neither variant holds a context of A's.
 - **AC2 (F6, planning):** the same sequence establishes no planning state of
   A's; the plan list does not contain A's plan.
 - **AC3 (F7):** planning established for A from a `sessionExpired` cold start
@@ -312,20 +375,38 @@ and green after.
   of A's survives B's sign-in. These are green today and stay green.
 - **AC8:** `flutter test` (full suite) and `flutter analyze` are green after
   every task; no existing test changes unless the plan names it as an
-  intentional behaviour change of this spec.
+  intentional behaviour change of this spec (XU5's is the only one named).
+- **AC9 (F9, B's sign-out in the F7 state):** (a) A's planning projection and
+  pending mutation are untouched by B's explicit sign-out, both in the plain
+  F7 state and when planning had recorded A as its last authenticated user;
+  (b) B's own local data (a pending planning mutation without a cached
+  projection) is deleted, because an explicit sign-out still deletes the
+  signing-out user's data.
+- **AC10 (R-C, F9 after a cancelled reauth):** after B (with cached songs)
+  cancels back to A, A's catalog shows none of B's songs; A's explicit
+  sign-out then deletes A's plans and pending work and leaves B's songs.
+
+## Review exit criterion
+
+The adversarial Opus review blocks only on a cross-user view, a cross-user
+data loss, or a view with no way out. Everything else goes to the deferred
+entry.
 
 ## Documentation updates (in the implementation PR)
 
 - ADR-037: amendment "current-user ownership" (the narrowed ownership rule,
-  cause 4 generalised, XU1–XU2, in memory only).
+  cause 4 generalised, XU1, XU2, XU5, in memory apart from the sign-out
+  target).
 - ADR-040: the residual-cases consequence no longer lists F6/F7 as open.
-- ADR-029: an amendment line for F8 (D5's "cancel deletes nothing" held for
-  the confirmed wipe but not for the planning boundary switch).
+- ADR-029: an amendment line for F8 and R-C (D5's "cancel deletes nothing"
+  held for the confirmed wipe but not for the planning boundary switch, and
+  a cancel could leave the new user's songs on screen).
 - `docs/architecture/architecture.md`: the offline-authenticated paragraph
-  states the ownership rule.
+  states the ownership rule and the sign-out target.
 - `docs/testing/testing-strategy.md`: the cross-user ownership suite.
 - `docs/deferred/2026-10-05-gate-cross-user-leaks.md`: F6 and F7 removed;
-  C4, F5, N1, N2 kept.
+  C4, F5, N1, N2 kept. Only the title is renamed; the file name stays,
+  because ADR-040, the roadmap and the S0 spec link to it.
 - Roadmap: S0 PR 1 merged (#85); this PR before S0 PR 2 (updated with
   this spec, at the design gate).
 - No ADR-035 change. No new ADR: this narrows ADR-037's existing invariant

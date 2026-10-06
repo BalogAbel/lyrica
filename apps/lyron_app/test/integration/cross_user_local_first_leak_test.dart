@@ -11,6 +11,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/active_organization_resolution.dart';
@@ -36,6 +37,8 @@ import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
+import 'package:lyron_app/src/presentation/auth/membership_gate.dart';
+import 'package:lyron_app/src/presentation/auth/reauth_banner.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -106,6 +109,67 @@ void main() {
       expect(fixture.planningUserId, isNot(_userA));
       expect(await fixture.readPlanNames(), isNot(contains('A secret plan')));
     }, skip: 'red until Task 2 (XU1); spec 2026-10-06 cross-user ownership');
+
+    // AC1: B's way out after losing the session, in both gate states. The
+    // gate and the re-auth banner are the real widgets.
+    for (final bMembershipAnswered in [true, false]) {
+      testWidgets(
+        bMembershipAnswered
+            ? 'B\'s way out when B\'s membership answered: home with the '
+                  're-auth banner, and none of A\'s songs (AC1)'
+            : 'B\'s way out when B\'s membership did not answer: the gate\'s '
+                  'failure screen offers sign-in, and no context of A\'s (AC1)',
+        (tester) async {
+          late _Fixture fixture;
+          await tester.runAsync(() async {
+            fixture = await _Fixture.create(
+              seedSongsForA: true,
+              seedPlanningForA: true,
+              membershipAnswersFor: bMembershipAnswered
+                  ? const {_userA, _userB}
+                  : const {_userA},
+            );
+            await fixture.coldStartAsA();
+            await fixture.signInAs(_sessionB);
+            await fixture.loseSession();
+          });
+          expect(fixture.auth.state.status, AppAuthStatus.sessionExpired);
+          expect(fixture.auth.state.currentUserId, _userB);
+
+          await tester.pumpWidget(
+            UncontrolledProviderScope(
+              container: fixture.container,
+              child: const MaterialApp(
+                home: MembershipGate(child: Scaffold(body: ReauthBanner())),
+              ),
+            ),
+          );
+
+          if (bMembershipAnswered) {
+            expect(fixture.gateViewForCurrentUser, MembershipGateView.home);
+            expect(
+              find.byKey(const Key('reauth-banner-action')),
+              findsOneWidget,
+            );
+          } else {
+            expect(
+              fixture.gateViewForCurrentUser,
+              MembershipGateView.connectivityFailure,
+            );
+            expect(
+              find.byKey(const ValueKey('membership-gate-sign-in')),
+              findsOneWidget,
+            );
+          }
+          expect(fixture.catalogContextUserId, isNot(_userA));
+          expect(fixture.planningUserId, isNot(_userA));
+
+          await tester.pumpWidget(const SizedBox.shrink());
+        },
+        // Red until Task 2 (XU1); spec 2026-10-06 cross-user ownership.
+        skip: true,
+      );
+    }
   });
 
   group('contexts held for the previous user (F7)', () {
@@ -246,6 +310,109 @@ void main() {
     }, skip: 'red until Task 5 (XU2); spec 2026-10-06 cross-user ownership');
   });
 
+  group('explicit sign-out deletes only the signing-out user\'s data '
+      '(AC9, AC10)', () {
+    test('B signing out in the F7 state leaves A\'s plans and pending work '
+        'and still deletes B\'s own pending work (AC9)', () async {
+      // B's own local data: a pending planning mutation without a cached
+      // projection, so no planning context of B's is ever established and
+      // the sign-out cannot take its target from held state.
+      final fixture = await _Fixture.create(
+        seedSongsForA: false,
+        seedPlanningForA: true,
+        seedPendingPlanningForB: true,
+      );
+      await fixture.coldStartAsA();
+      await fixture.signInAs(_sessionB);
+      expect(fixture.auth.state.currentUserId, _userB);
+
+      await fixture.signOut();
+      expect(fixture.auth.state.status, AppAuthStatus.signedOut);
+
+      expect(await fixture.pendingPlanningMutationCount(_userA), 1);
+      expect(
+        await fixture.planningStore.hasProjection(
+          userId: _userA,
+          organizationId: _orgA,
+        ),
+        isTrue,
+      );
+      expect(
+        await fixture.pendingPlanningMutationCount(_userB),
+        0,
+        reason: 'explicit sign-out still deletes the signing-out user\'s data',
+      );
+    }, skip: 'red until Task 6 (XU5); spec 2026-10-06 cross-user ownership');
+
+    test('B signing out after A\'s planning context was held leaves A\'s '
+        'plans and pending work (AC9, stale fallback)', () async {
+      // A re-authenticates offline first, so planning has recorded A as its
+      // last authenticated user; B then signs in and out.
+      final fixture = await _Fixture.create(
+        seedSongsForA: false,
+        seedPlanningForA: true,
+        seedPendingPlanningForB: true,
+      );
+      await fixture.coldStartAsA();
+      await fixture.signInAs(_sessionA);
+      await fixture.loseSession();
+      await fixture.signInAs(_sessionB);
+      expect(fixture.auth.state.currentUserId, _userB);
+
+      await fixture.signOut();
+      expect(fixture.auth.state.status, AppAuthStatus.signedOut);
+
+      expect(await fixture.pendingPlanningMutationCount(_userA), 1);
+      expect(
+        await fixture.planningStore.hasProjection(
+          userId: _userA,
+          organizationId: _orgA,
+        ),
+        isTrue,
+      );
+      expect(await fixture.pendingPlanningMutationCount(_userB), 0);
+    }, skip: 'red until Task 6 (XU5); spec 2026-10-06 cross-user ownership');
+
+    test('after a cancelled reauth A sees none of B\'s songs, and A\'s '
+        'sign-out deletes A\'s data and leaves B\'s (AC10)', () async {
+      // B's songs were cached during B's session (a refresh while the
+      // different-user prompt was pending). A has plans but no songs.
+      final fixture = await _Fixture.create(
+        seedSongsForA: false,
+        seedPlanningForA: true,
+        seedSongsForB: true,
+      );
+      await fixture.coldStartAsA();
+      await fixture.signInAs(_sessionB);
+      expect(fixture.catalogContextUserId, _userB);
+
+      fixture.container.read(reauthPromptControllerProvider).answer(false);
+      await _settle();
+      expect(fixture.auth.state.status, AppAuthStatus.sessionExpired);
+      expect(fixture.auth.state.currentUserId, _userA);
+      expect(fixture.catalogContextUserId, isNot(_userB));
+      expect(await fixture.readSongTitles(), isNot(contains('B own song')));
+      expect(await fixture.readPlanNames(), contains('A secret plan'));
+
+      await fixture.signOut();
+      expect(fixture.auth.state.status, AppAuthStatus.signedOut);
+
+      expect(
+        await fixture.cachedSongTitles(userId: _userB, organizationId: _orgB),
+        contains('B own song'),
+        reason: 'A\'s sign-out must not delete B\'s songs',
+      );
+      expect(await fixture.pendingPlanningMutationCount(_userA), 0);
+      expect(
+        await fixture.planningStore.hasProjection(
+          userId: _userA,
+          organizationId: _orgA,
+        ),
+        isFalse,
+      );
+    }, skip: 'red until Task 6 (XU5); spec 2026-10-06 cross-user ownership');
+  });
+
   group('the prior user\'s own access is unchanged', () {
     test('cancelling B\'s reauth returns A\'s songs and plans', () async {
       final fixture = await _Fixture.create(
@@ -292,6 +459,7 @@ class _Fixture {
     required this.authRepository,
     required this.identityStore,
     required this.planningDatabase,
+    required this.songStore,
     required this.planningStore,
     required this.catalogReadGate,
     required this.planningReadGate,
@@ -302,6 +470,7 @@ class _Fixture {
   final _ControllableAuthRepository authRepository;
   final DriftLastKnownIdentityStore identityStore;
   final PlanningLocalDatabase planningDatabase;
+  final SongCatalogStore songStore;
   final PlanningLocalStore planningStore;
   final _ReadGate catalogReadGate;
   final _ReadGate planningReadGate;
@@ -312,6 +481,9 @@ class _Fixture {
     required bool seedSongsForA,
     required bool seedPlanningForA,
     Set<String> lookupAnswersFor = const {},
+    Set<String> membershipAnswersFor = const {_userA, _userB},
+    bool seedSongsForB = false,
+    bool seedPendingPlanningForB = false,
   }) async {
     final catalogReadGate = _ReadGate();
     final planningReadGate = _ReadGate();
@@ -354,6 +526,33 @@ class _Fixture {
         items: const [],
         refreshedAt: DateTime.utc(2026, 10, 1, 12),
       );
+    }
+    if (seedSongsForB) {
+      await songStore.replaceActiveSnapshot(
+        userId: _userB,
+        organizationId: _orgB,
+        summaries: const [SongSummary(id: 'song-b', title: 'B own song')],
+        sources: const [
+          SongSource(id: 'song-b', source: '{title: B own song}'),
+        ],
+        refreshedAt: DateTime.utc(2026, 10, 1, 12),
+      );
+    }
+    if (seedPendingPlanningForB) {
+      await planningDatabase
+          .into(planningDatabase.cachedPlanningMutations)
+          .insert(
+            CachedPlanningMutationsCompanion.insert(
+              userId: _userB,
+              organizationId: _orgB,
+              aggregateType: 'plan',
+              aggregateId: 'plan-b-edit',
+              mutationKind: PlanningMutationKind.planEdit.value,
+              syncStatus: PlanningMutationSyncStatus.pending.value,
+              orderKey: 1,
+              updatedAt: DateTime.utc(2026, 10, 1, 12),
+            ),
+          );
     }
     // A's unsynced work: a different-user sign-in must ask before wiping it,
     // so the reauth prompt stays pending (ADR-029 D3).
@@ -409,9 +608,14 @@ class _Fixture {
         lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
         localDataLifecycleProvider.overrideWithValue(lifecycle),
         appForegroundStateProvider.overrideWithValue(_ForegroundState()),
-        // Every user's membership RPC answers, so the gate opens ...
+        // The membership RPC answers for the users in membershipAnswersFor
+        // (by default everyone, so the gate opens) ...
         activeOrganizationResolutionProvider.overrideWithValue(() async {
-          return auth.state.currentUserId == _userB
+          final userId = auth.state.currentUserId;
+          if (userId == null || !membershipAnswersFor.contains(userId)) {
+            return const ActiveOrganizationResolution.unknownConnectivityFailure();
+          }
+          return userId == _userB
               ? const ActiveOrganizationResolution.selected(_orgB)
               : const ActiveOrganizationResolution.selected(_orgA);
         }),
@@ -462,6 +666,7 @@ class _Fixture {
       authRepository: authRepository,
       identityStore: identityStore,
       planningDatabase: planningDatabase,
+      songStore: songStore,
       planningStore: planningStore,
       catalogReadGate: catalogReadGate,
       planningReadGate: planningReadGate,
@@ -512,6 +717,22 @@ class _Fixture {
 
   Future<void> signInAs(AppAuthSession session) async {
     authRepository.emit(session);
+    await _settle();
+  }
+
+  Future<List<String>> cachedSongTitles({
+    required String userId,
+    required String organizationId,
+  }) async {
+    final songs = await songStore.readActiveSummaries(
+      userId: userId,
+      organizationId: organizationId,
+    );
+    return songs.map((song) => song.title).toList();
+  }
+
+  Future<void> signOut() async {
+    await auth.signOut();
     await _settle();
   }
 
