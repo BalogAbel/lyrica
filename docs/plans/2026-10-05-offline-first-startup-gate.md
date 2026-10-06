@@ -2303,15 +2303,15 @@ An adversarial review of PR 1 found five gate bugs. Each has its own red test an
   - `lastKnownIdentityPersistenceProvider` checked: it calls the resolver only in its `signedIn` case, where `currentUserId == session.userId`; a status change during its await is discarded by its own `isCurrent` check. Behaviour on the signedIn edge is unchanged.
 - **Red tests.** Wiring: `sessionExpired`, identity (A, no organization), catalog snapshot cached for (A, X), a raw reader that counts calls: Retry reaches home on X with zero reader calls. Without a cached organization Retry stays on `connectivityFailure`, zero calls. `signedIn` Retry still asks the network once. Widget: with `sessionExpired` both failure screens show the sign-in action and tapping it goes to `/sign-in?from=<current uri>`; with `signedIn` neither does.
 
-#### F5 (low, pre-existing): flash of the invite-required screen after a redemption
+#### F5 (low, pre-existing): flash of the invite-required screen after a redemption (REVERTED in Task 8c, deferred)
 
 - **Problem.** No known organization, live `verifiedEmpty`, pending invite. After a successful redeem the listener scheduled a refresh, but `beginResolution` kept the same-user `verifiedEmpty`, and `RedeemEffect` cleared the pending invite, so the invite-required screen showed until the RPC returned.
-- **Fix (one line).** The redeem-success listener calls `membershipController.reset()` before `scheduleRefresh()`. Reset and the refresh microtask both run before the next frame, so the gate goes from `redeem` to `resolving`.
-- **Red test.** Wiring: live `verifiedEmpty` plus a pending invite, then redeem success and clearing the pending invite; no view recorded is `inviteRequired`, the final view is `resolving`, and the answer opens the gate.
+- **Fix that was tried (one line).** The redeem-success listener called `membershipController.reset()` before `scheduleRefresh()`. **Reverted in Task 8c** (`91057dc` reverted): the reset let a late pre-redeem result be accepted over the post-redeem resolution (C3) and could wipe another user's live result on a user switch during the redeem RPC (C5). The flash is old and cosmetic, so it is deferred; see `docs/deferred/2026-10-05-gate-cross-user-leaks.md`, entry F5.
+- **Test that was added.** Wiring test for the flash. Removed with the revert.
 
 - [ ] **Verify and commit per finding**
 
-Run: `cd apps/lyron_app && dart format lib test && flutter analyze && flutter test`. Expected: no analyzer issues; the full suite passes; none of "Tried to modify a provider", "markNeedsBuild", "UnmountedRef", "pending timer" in the output. Commits: `fix(auth): drop late membership results after sign-out (S0 8b F3)`, `... bind the gate's resolving state to the user it runs for (S0 8b F4)`, `... resolve membership on a direct user switch (S0 8b F1)`, `... no dead end for an expired session without a known org (S0 8b F2)`, `... drop the stale verifiedEmpty when a redemption succeeds (S0 8b F5)`.
+Run: `cd apps/lyron_app && dart format lib test && flutter analyze && flutter test`. Expected: no analyzer issues; the full suite passes; none of "Tried to modify a provider", "markNeedsBuild", "UnmountedRef", "pending timer" in the output. Commits: `fix(auth): drop late membership results after sign-out (S0 8b F3)`, `... bind the gate's resolving state to the user it runs for (S0 8b F4)`, `... resolve membership on a direct user switch (S0 8b F1)`, `... no dead end for an expired session without a known org (S0 8b F2)`, `... drop the stale verifiedEmpty when a redemption succeeds (S0 8b F5)` (reverted in Task 8c).
 
 ---
 

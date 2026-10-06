@@ -335,9 +335,12 @@ its normal refresh paths.
 - A resolution starts on every edge that changes who the app acts for while
   signed in: becoming `signedIn`, and a direct switch to another user
   (`signedIn` to `signedIn`). One edge starts one resolution.
-- A successful invite redemption forgets the stored live result before the
-  refresh starts, so a stale `verifiedEmpty` never shows the invite-required
-  screen while the refresh runs.
+- A successful invite redemption refreshes membership but keeps the stored
+  live result while the refresh runs, so a stale `verifiedEmpty` can flash the
+  invite-required screen until the answer arrives. This is old and cosmetic.
+  A reset before the refresh (Task 8b F5) was reverted in Task 8c because it
+  caused two stale-result races; the flash is deferred
+  (`docs/deferred/2026-10-05-gate-cross-user-leaks.md`, F5).
 - With no live session (`sessionExpired`) Retry resolves from the local
   cache only. Online it would run as the anonymous role and fail with a
   permission error. Both failure screens then offer sign-in, with the same
