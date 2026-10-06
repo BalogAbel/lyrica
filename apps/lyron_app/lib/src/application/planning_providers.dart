@@ -276,6 +276,11 @@ final activePlanningContextControllerProvider =
       );
 
       void handleAuthStateChanged(AppAuthState authState) {
+        // XU2: ownership first (null for initializing and signedOut).
+        final currentUserId = authState.currentUserId;
+        if (currentUserId != null) {
+          controller.handleCurrentUser(currentUserId);
+        }
         switch (authState.status) {
           case AppAuthStatus.initializing:
             return;

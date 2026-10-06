@@ -286,7 +286,7 @@ void main() {
         entries.map((entry) => entry.aggregateId),
         isNot(contains('plan-a-edit')),
       );
-    }, skip: 'red until Task 4 (XU2); spec 2026-10-06 cross-user ownership');
+    });
 
     test('a catalog establishment started for A does not land after B signs '
         'in', () async {
