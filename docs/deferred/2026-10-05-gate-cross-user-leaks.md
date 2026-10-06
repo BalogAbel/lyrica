@@ -6,7 +6,8 @@ by the gate change)
 **Related:**
 - `docs/specs/2026-10-05-offline-first-startup-gate.md` (SG1, SG3)
 - `docs/plans/2026-10-05-offline-first-startup-gate.md` (Task 8b fixed F1 to
-  F5; these are F6 and F7)
+  F4, Task 8c reverted F5; F6 and F7 are the leaks below, C4 and F5 are the
+  gate residuals at the end)
 - `docs/architecture/decisions/ADR-020-non-destructive-session-and-offline-authenticated-state.md`
   (`sessionExpired` is offline-authenticated access, not sign-out)
 - `docs/architecture/decisions/ADR-029-reauth-prompt-host-and-different-user-resolution.md`
@@ -20,7 +21,7 @@ lands before PR 2 (capabilities and the last-synced indicator). Both leaks
 show one user's local data to another user, so they must not wait for the
 trigger-gated entries.
 
-**Line references** are to the tree at the Task 8b commits of this branch.
+**Line references** are to the tree at the Task 8c commits of this branch.
 Re-verify them before editing.
 
 ## F6 - the catalog reads the unfiltered last known identity (leak class (a))
@@ -129,6 +130,89 @@ refresh that may never run.
 `sessionExpired(A)` with a planning projection cached for `(A, X)`, then
 `signedIn(B)` with a planning organization reader that fails: expect
 `planningSyncState.userId != A` (and `hasLocalPlanningData` false).
+
+## C4 - sessionExpired(A) loses its cache-only result after a cancelled reauth (gate residual, not a leak)
+
+### Problem
+
+A user in `sessionExpired(A)` with no known organization can see the
+connectivity failure screen again after a different user's reauth is
+cancelled, although Retry had already opened home for A.
+
+### Event sequence
+
+1. `sessionExpired(A)`, A has no known organization (identity organization
+   null). A taps Retry; `membershipRetryProvider`
+   (`apps/lyron_app/lib/src/application/auth_providers.dart:810`) resolves
+   from the cache only and records `selected(X)` for A. The gate shows home.
+2. B starts signing in. The auth state becomes `signedIn(B)`; the status
+   listener in `membershipRefreshEffectProvider`
+   (`auth_providers.dart:858-862`) starts B's resolution, so
+   `ActiveMembershipController.beginResolution(B)`
+   (`apps/lyron_app/lib/src/application/auth/active_membership_controller.dart:101`)
+   runs. Its `_lastUserId != userId` branch (`:103-105`) clears A's stored
+   result.
+3. The different-user reauth is cancelled and the app returns to
+   `sessionExpired(A)`. The listener starts a resolution only for a
+   `signedIn` edge (`auth_providers.dart:858`), so nothing refreshes A.
+4. A has no known organization and no live result, so the gate shows the
+   connectivity failure screen.
+
+### Why it is low
+
+No other user's data is shown, and A's own data is untouched. Retry
+recovers in one tap (it reads the cache again). The screen is a status, not
+a loss.
+
+### Fix sketch
+
+Start a cache-only resolution on a `sessionExpired(user)` edge when the user
+has no known organization (the same reader Retry uses), or keep per-user
+results instead of one slot. Decide in the slice that picks this up.
+
+### Test sketch
+
+Wiring: `sessionExpired(A)` without a known organization and a cached
+organization for A, Retry, then `signedIn(B)`, then back to
+`sessionExpired(A)`: expect home for A without a Retry.
+
+## F5 - the invite-required screen can flash after a redemption (cosmetic, old)
+
+### Problem
+
+With no known organization, a live `verifiedEmpty` and a pending invite, a
+successful redemption refreshes membership but the same-user `verifiedEmpty`
+stays until the answer arrives. `RedeemEffect` clears the pending invite
+first, so the invite-required screen shows for the length of the RPC.
+
+### Where
+
+`auth_providers.dart:880-882` (the redeem-success listener only calls
+`scheduleRefresh()`); the stored result survives `beginResolution` for the
+same user (`active_membership_controller.dart:103-106`).
+
+### Why it is deferred
+
+Task 8b added `membershipController.reset()` before the refresh. Task 8c
+reverted it (`91057dc`): the reset let a late pre-redeem result be accepted
+over the post-redeem resolution (C3) and could wipe another user's live
+result when a user switch happened during the redeem RPC (C5). With the
+per-resolution token (Task 8c) the first of those is closed independently,
+but the flash itself is old and cosmetic, so it stays deferred.
+
+### Fix sketch
+
+Hold the redeem screen until the refresh answers: let `beginResolution` take
+a flag that hides the stored result for this resolution only (a view concern,
+not a reset), or make the gate treat "redemption succeeded, refresh running"
+as `resolving`. Either must not clear another user's state.
+
+### Test sketch
+
+The wiring test removed with the revert: live `verifiedEmpty` plus a pending
+invite, then redeem success and clearing the pending invite; no recorded view
+is `inviteRequired`, the final view is `resolving`, and the answer opens the
+gate.
 
 ## Why these were deferred
 

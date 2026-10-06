@@ -328,6 +328,10 @@ its normal refresh paths.
 - A result for a user other than the current one is dropped. That covers a
   resolution started under one user that completes after another has signed
   in, and one that completes after an explicit sign-out (nobody is current).
+- A resolution result is applied only if it belongs to the current user's
+  most recently started resolution: reset and a change of the current user
+  invalidate earlier ones, and the purge handler is authoritative for the
+  current user (it supersedes whatever is running).
 - The loading state and the first-run timer belong to the user their
   resolution runs for. Only that user's dropped result ends them, and a
   resolution running for someone else never counts as loading for the

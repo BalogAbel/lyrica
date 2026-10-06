@@ -2315,6 +2315,45 @@ Run: `cd apps/lyron_app && dart format lib test && flutter analyze && flutter te
 
 ---
 
+### Task 8c: Per-resolution token (C1-C3), F5 reverted
+
+A second targeted review of the Task 8b fixes found five more gate races. Three share one root cause and are fixed; two are deferred (`docs/deferred/2026-10-05-gate-cross-user-leaks.md`).
+
+**Files:** `apps/lyron_app/lib/src/application/active_organization_resolver.dart`, `.../auth/active_membership_controller.dart`, `.../auth_providers.dart`; tests in `test/application/active_organization_resolver_test.dart`, `test/application/auth/active_membership_controller_test.dart`, `membership_gate_wiring_test.dart`, and the new `active_membership_controller_interleaving_test.dart`.
+
+#### Problem
+
+- **C1.** `resolveWithCachedFallbackDetailed` read the user after `await resolveRaw()`. A user switch during the await made a resolution started for A read B's cached organization and record it under A.
+- **C2.** `ActiveMembershipController.update` accepted any same-user result and stopped the running state. A's r1 running, sign-out, `reset()`, A signs in, r2 begins, r1 answers late: r1 is accepted, stops r2's timer and shows a stale verdict while r2 still runs. Same for Retry and for a purge followed by a late result.
+- **C3.** The same root cause defeated the 8b F5 reset: a pre-redeem r1 returning `verifiedEmpty` after the reset and r2 showed the invite-required screen.
+- **C4.** `sessionExpired(A)` reaches home through cache-only Retry, B begins sign-in (`beginResolution(B)` clears A's stored result), the reauth is cancelled back to `sessionExpired(A)`; no refresh runs on a `sessionExpired` edge, so A sees the connectivity failure until Retry. **Deferred.**
+- **C5.** The F5 redeem listener's unconditional `reset()` could wipe another user's live result when a user switch happened during A's redeem RPC. **Gone with the F5 revert.**
+
+#### Decisions
+
+1. **F5 reverted first** (`91057dc`): the post-redeem flash is old and cosmetic, and the reset caused C3 and C5. Plan (Task 8b F5) and spec (SG3) no longer claim it fixed. Deferred as F5.
+2. **C1:** the user is read before the await (`final userId = _readUserId();`), no new parameter, the `ActiveOrganizationResolutionReader` typedef is unchanged. The other resolver methods already read the user before any await (`resolveFromCacheOnly` evaluates it as an argument; `resolveOrganizationId` reads none).
+3. **C2/C3, per-resolution token.**
+   - `beginResolution` returns `++_gen`. `update(next, {userId, token})` with a token is a complete no-op unless `token == _gen`: no write, no stop, no notification. A token-less call keeps the old behaviour exactly (legacy callers and tests).
+   - `reset()` bumps `_gen`. `recordPurgeResult(userId)` (new, used by the purge handler instead of `update`) bumps `_gen`, stops the running state and writes `verifiedEmpty` only when `userId` is the current user; for anyone else it does nothing.
+   - **A change of the current user bumps `_gen` and stops the running state.** The controller remembers the user it last saw (`_epochUserId`) and compares it with the reader in `_syncUser()`, called from `beginResolution`, `update`, `recordPurgeResult` and `noteInputsChanged`. Chosen over carrying the user inside the token because a token carrying only the user cannot see A to B to A (the same user returns, the old resolution would look valid). Chosen over a listener on the auth controller because the controller already receives `noteInputsChanged` on every auth change, and `update` re-checks as a backstop, so a missed notification cannot let a stale result in. Nothing is cleared on a user change: the stored result is already scoped by user. The running state stops because nobody is waiting for that resolution any more.
+   - With tokens, a result for a user who is not current stops the running state only if its token is the latest (F4's rule stated per resolution); `_resolvingUserId` stays for `viewFor` and for token-less callers.
+   - Retry (`membershipRetryProvider`) and `refreshMembership` pass the token from `beginResolution` to `update`.
+4. **C4 and F5 are not fixed**; both are recorded in the deferred doc with the exact sequence and why they are low.
+
+#### Tests
+
+- C1 (red first): resolver with a raw reader that completes after the user reader switched A to B; the cache is read for A.
+- C2 (red first): begin(A) r1, reset, begin(A) r2, update(r1) leaves `last` unchanged and the resolution running; r2 decides. Also: a later resolution supersedes an earlier one whichever answers first, A to B to A invalidates, a user change is noticed at the next update without a notification, the F4 rule with tokens, a purge for the current user ends the running resolution and ignores a late result, a purge for another user changes nothing.
+- C3 (red first), wiring: a pre-redeem r1 in flight, redemption succeeds and starts r2, r1 answers `verifiedEmpty`; the gate stays `resolving` and r2's answer opens it.
+- Interleaving (`active_membership_controller_interleaving_test.dart`): seeds 42, 7, 1234, 31337, 2026, 99, 5, 8675309, 250 steps each, `fakeAsync`. Random begin, result delivery (the newest or any outstanding resolution, with a random outcome), reset, sign-out, user switch among A, B and nobody, a user bounce (leave and return with nothing begun in between), purge for A or B, clock elapse (0 to 20 s) and plain input notes. A reference model written from the SG3/SG4 rules (the live resolution is the newest one with nothing superseding it; the stored result is scoped by user) predicts, after every step, the gate view, the live result for the current user and whether the first-run timer is pending. It also asserts that stale results, purges for another user, input notes and clock ticks that expire nothing change nothing, that a begin never changes the shown result, that a reset forgets it, and that another user's result is never shown. The seed, step and the last 14 events are in every failure message. Mutation-checked: dropping the token check, the bump on reset or purge, the stop on purge or user change, the keep-selected rule, or letting a stale result stop the timer each fail it.
+
+- [ ] **Verify and commit**
+
+Run: `cd apps/lyron_app && dart format lib test && flutter analyze && flutter test`. Expected: no analyzer issues; the full suite passes; none of "Tried to modify a provider", "markNeedsBuild", "UnmountedRef", "pending timer" in the output. Commits: `revert(auth): keep the redeem-success refresh without a reset (S0 8c)`, `fix(auth): read the user before the raw resolution await (S0 8c C1)`, `fix(auth): apply a membership result only for the latest resolution (S0 8c C2, C3)`, `test(auth): seeded interleaving test for the membership controller (S0 8c)`, then this documentation.
+
+---
+
 ### Task 9: PR 1 documentation, verification, pull request
 
 **Files:**
