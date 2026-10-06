@@ -428,7 +428,9 @@ class PlanningSyncController extends ChangeNotifier {
     // session the context is for THAT session's user; the identity's
     // organizationId is only trusted when the identity belongs to the same
     // user. Without a live session (sessionExpired) the identity's user is
-    // the only one there is. Using identity.userId unconditionally
+    // used; the provider passes only the current user's identity (XU1,
+    // docs/specs/2026-10-06-cross-user-local-first-ownership.md), so that
+    // is the last known session's user. Using identity.userId unconditionally
     // re-established the PRIOR user's context after _refreshPlanning's I3
     // guard had just cleared it, so a different user's refresh fetched the
     // prior user's org with the new user's token and overwrote the prior

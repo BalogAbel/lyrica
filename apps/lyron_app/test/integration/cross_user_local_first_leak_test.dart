@@ -91,7 +91,7 @@ void main() {
         reason: 'the current user is B; A\'s catalog must not be established',
       );
       expect(await fixture.readSongTitles(), isNot(contains('A secret song')));
-    }, skip: 'red until Task 2 (XU1); spec 2026-10-06 cross-user ownership');
+    });
 
     test('the same sequence must not establish A\'s planning context for '
         'B', () async {
@@ -108,7 +108,7 @@ void main() {
 
       expect(fixture.planningUserId, isNot(_userA));
       expect(await fixture.readPlanNames(), isNot(contains('A secret plan')));
-    }, skip: 'red until Task 2 (XU1); spec 2026-10-06 cross-user ownership');
+    });
 
     // AC1: B's way out after losing the session, in both gate states. The
     // gate and the re-auth banner are the real widgets.
@@ -166,8 +166,6 @@ void main() {
 
           await tester.pumpWidget(const SizedBox.shrink());
         },
-        // Red until Task 2 (XU1); spec 2026-10-06 cross-user ownership.
-        skip: true,
       );
     }
   });

@@ -335,8 +335,10 @@ final planningSyncControllerProvider =
         remoteRepository: () =>
             ref.read(planningRemoteRefreshRepositoryProvider),
         authSessionReader: () => authController.state.session,
+        // XU1 (docs/specs/2026-10-06-cross-user-local-first-ownership.md):
+        // only the current user's identity; another user's is never read.
         lastKnownIdentityReader: () {
-          final identity = authController.lastKnownIdentity;
+          final identity = authController.currentUserLastKnownIdentity;
           if (identity == null) return null;
           return (
             userId: identity.userId,
