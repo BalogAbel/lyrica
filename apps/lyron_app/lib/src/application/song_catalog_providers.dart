@@ -117,6 +117,12 @@ final songCatalogControllerProvider =
       );
 
       void handleAuthStateChanged(AppAuthState authState) {
+        // XU2: ownership first (null for initializing and signedOut; the
+        // sign-out handler owns that edge and its purge target).
+        final currentUserId = authState.currentUserId;
+        if (currentUserId != null) {
+          controller.handleCurrentUser(currentUserId);
+        }
         switch (authState.status) {
           case AppAuthStatus.initializing:
             return;

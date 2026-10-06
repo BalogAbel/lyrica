@@ -305,7 +305,7 @@ void main() {
       expect(fixture.auth.state.currentUserId, _userB);
       expect(fixture.catalogContextUserId, isNot(_userA));
       expect(await fixture.readSongTitles(), isNot(contains('A secret song')));
-    }, skip: 'red until Task 5 (XU2); spec 2026-10-06 cross-user ownership');
+    });
   });
 
   group('explicit sign-out deletes only the signing-out user\'s data '
