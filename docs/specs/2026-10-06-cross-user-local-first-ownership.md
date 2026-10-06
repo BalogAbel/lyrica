@@ -291,7 +291,12 @@ effect would also create and dispose it outside its real lifetime.
   is on file, the app would become `sessionExpired(A)` and show A's data to
   the person who has just signed in as B. That is the same exposure under
   another label. It also changes the auth state machine (ADR-020 D2), which
-  the gate, the router and the reauth flow depend on.
+  the gate, the router and the reauth flow depend on. A cold start is
+  different and unchanged: after `sessionExpired(B)` with A's identity on
+  file, the next process start restores `sessionExpired(A)` from the identity
+  (ADR-020, `_stateForSession`). That is the device's last known user, the
+  same view the device showed before B signed in, so it is A's own view and
+  not a cross-user one (ownership review, 2026-10-06).
 - **Filter at the presentation readers** (`activeCatalogContextProvider`,
   `planningSyncStateProvider`, ...). The controllers would still refresh,
   sync, write, and choose a sign-out purge target with a foreign context.
@@ -370,7 +375,11 @@ the new optional parameter.
   controllers is not reset on a direct user switch. Its effect is on the
   connectivity fallback for the next user's own data only.
 - The org-id telemetry leak (S6).
-- C4, F5, N1 and N2 of the deferred entry.
+- C4, F5, N1 and N2 of the deferred entry, and O1–O3 recorded there by this
+  PR's adversarial review (an explicit sign-out clearing another user's
+  identity row, mutation sync not re-checking the user mid-run, D5 purge
+  handlers ignoring ownership; all pre-existing, none shows or deletes
+  another user's data).
 
 ## Acceptance criteria
 
