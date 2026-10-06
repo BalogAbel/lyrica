@@ -1,5 +1,10 @@
 # Non-Destructive Session Expiry And Offline Relaunch
 
+> **Correction (2026-10-05):** the claim that the `MembershipGate` resolves
+> via the cached organization id in `sessionExpired` was not true for a cold
+> start straight into `sessionExpired`: the gate never opened. Fixed by
+> `docs/specs/2026-10-05-offline-first-startup-gate.md` (G-B), ADR-040.
+
 - Status: Proposed
 - Date: 2026-06-28
 - Scope: Mobile (`apps/lyron_app`) application + presentation + router layers — auth/session lifecycle, identity persistence, planning/catalog cleanup paths.

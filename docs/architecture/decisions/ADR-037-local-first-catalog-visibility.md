@@ -13,6 +13,8 @@ D3) and, implicitly, ADR-020's non-destructive-state policy by tightening
 *when* the read context is established, not by loosening what may destroy it.
 **Context spec:**
 `docs/specs/2026-09-28-offline-catalog-local-first-visibility.md`
+**Extended by:** ADR-040 (2026-10-05) — the same invariant now covers the
+membership gate, the router redirect and capability-gated affordances.
 
 ## Context
 

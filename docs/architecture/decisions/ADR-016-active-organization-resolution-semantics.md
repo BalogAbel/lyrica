@@ -4,6 +4,10 @@
 
 Accepted
 
+> **2026-10-05:** the membership gate no longer uses the cached fallback as
+> its offline path. It decides from the last known identity first; see
+> ADR-040. The fallback remains for a user with no known organization.
+
 ## Context
 
 The local-first song and planning flows scope cached data by `(userId, organizationId)` and rely on backend RLS for remote authorization. Before this decision, active-organization resolution used `String?` plus exception shape alone as its contract, without distinguishing verified empty membership from connectivity failure.

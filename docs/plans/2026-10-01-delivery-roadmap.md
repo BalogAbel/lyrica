@@ -12,7 +12,10 @@
 > **2026-10-05: S0 inserted ahead of S5a.** It is a field-reported bug: after
 > a long idle period the app waits 10–15 s offline before it shows anything.
 > Spec: `docs/specs/2026-10-05-offline-first-startup-gate.md`. S0 also pulls
-> S6 option (a) (persisted capabilities) forward. Next: S0, then S5a.
+> S6 option (a) (persisted capabilities) forward. S0 PR 1 implemented on `fix/offline-first-startup-gate`, awaiting merge.
+> Sequencing: PR 1 merge, then the F6/F7 cross-user-leak fix PR
+> (`docs/deferred/2026-10-05-gate-cross-user-leaks.md`), then S0 PR 2, then
+> S5a.
 
 ## Purpose
 

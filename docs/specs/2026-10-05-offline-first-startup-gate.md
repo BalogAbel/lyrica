@@ -1,6 +1,6 @@
 # Offline-First Startup Gate
 
-> Status: Draft (2026-10-05), product decisions confirmed, awaiting plan
+> Status: PR 1 implemented (SG1–SG5, SG8; review fixes 6b, 8b, 8c); PR 2 pending
 
 **Branch:** `fix/offline-first-startup-gate`
 **Roadmap:** slice **S0** in `docs/plans/2026-10-01-delivery-roadmap.md`, a
@@ -13,8 +13,7 @@ field-reported bug inserted ahead of S5a. It pulls S6 option (a) forward (see
 **New deferred entries:**
 `docs/deferred/2026-10-05-membership-revoked-notice.md`,
 `docs/deferred/2026-10-05-offline-token-refresh-churn.md`
-**Plan:** `docs/plans/2026-10-05-offline-first-startup-gate.md` (not yet
-written)
+**Plan:** `docs/plans/2026-10-05-offline-first-startup-gate.md`
 
 ## Problem
 

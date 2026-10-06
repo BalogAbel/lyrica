@@ -488,6 +488,26 @@ exists guarantee:
   review round hardening exactly this kind of "passes today, not provably
   robust" gap.
 
+#### Real auth client rule (offline startup)
+
+A fake that answers instantly does not prove an offline path: the 10–15 s
+startup wait fixed by ADR-040 hid behind exactly such fakes for months.
+Every offline startup path keeps at least one test that uses the real
+`SupabaseClient` and `GoTrueClient` with an expired persisted session
+(`test/integration/offline_first_startup_gate_test.dart` is the template).
+
+- Use an HTTP client whose requests never complete. Under widget-test fake
+  time gotrue's refresh retry loop measures elapsed time with the real
+  `DateTime.now()` while its back-off delays are fake timers, so a failing
+  client makes the loop endless and leaves timers pending.
+- Teardown: `client.auth.stopAutoRefresh()`, unmount the tree, then close
+  the databases. Never call `client.dispose()` inside the test: it completes
+  the hung refresh with an error and app code resumes after its providers
+  are disposed.
+- Concurrency in the gate controller is covered by a seeded interleaving
+  test (`test/application/auth/active_membership_controller_interleaving_test.dart`)
+  with fixed seeds.
+
 ### Widget Tests
 
 Cover:

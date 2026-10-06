@@ -6,8 +6,8 @@ by the gate change)
 **Related:**
 - `docs/specs/2026-10-05-offline-first-startup-gate.md` (SG1, SG3)
 - `docs/plans/2026-10-05-offline-first-startup-gate.md` (Task 8b fixed F1 to
-  F4, Task 8c reverted F5; F6 and F7 are the leaks below, C4 and F5 are the
-  gate residuals at the end)
+  F4, Task 8c reverted F5; F6 and F7 are the leaks below, C4, F5, N1 and N2
+  are the gate residuals after them)
 - `docs/architecture/decisions/ADR-020-non-destructive-session-and-offline-authenticated-state.md`
   (`sessionExpired` is offline-authenticated access, not sign-out)
 - `docs/architecture/decisions/ADR-029-reauth-prompt-host-and-different-user-resolution.md`
@@ -213,6 +213,86 @@ The wiring test removed with the revert: live `verifiedEmpty` plus a pending
 invite, then redeem success and clearing the pending invite; no recorded view
 is `inviteRequired`, the final view is `resolving`, and the answer opens the
 gate.
+
+## N1 - Retry with no current user writes an ownerless result (gate residual, non-blocking)
+
+### Problem
+
+A Retry tapped in the window between a sign-out and the router redirect can
+store a result that belongs to nobody. The late result then either shows a
+failure to the next user or overwrites that user's result.
+
+### Event sequence
+
+1. `signedIn(A)` on the connectivity-failure view.
+2. A goes to `signedOut` (explicit sign-out, or a null session with no
+   identity). Retry is tapped in the window of at most one frame before the
+   router redirects.
+3. `currentUserId` is null, so `membershipRetryProvider` passes no token
+   (`apps/lyron_app/lib/src/application/auth_providers.dart:817-819`). The
+   anonymous RPC is denied (EXECUTE is granted to `authenticated` only,
+   `supabase/migrations/202605160007_*.sql:25-35`), giving
+   `nonConnectivity`, or `connectivity` when offline. The cached fallback is
+   skipped because the user is null
+   (`apps/lyron_app/lib/src/application/active_organization_resolution.dart:104`).
+4. The token-less `update(userId: null)` is applied through the legacy path
+   (`apps/lyron_app/lib/src/application/auth/active_membership_controller.dart:128-168`),
+   and `_lastUserId` stays null (`:164-166`).
+   - (5a) If the late update lands before `beginResolution(B)`: `last`
+     returns it for any user (`:62`, `_lastUserId` null) and
+     `beginResolution(B)` does not clear it (`:103`), so B briefly sees
+     `nonConnectivity` until B's own result arrives.
+   - (5b) If it lands after B's result was `verifiedEmpty`: the token-less
+     path overwrites B's result and B is stuck on `nonConnectivity` with no
+     Retry (that view has none).
+
+### Why it is non-blocking
+
+It needs a tap within one frame and an anonymous RPC that outlives B's whole
+sign-in and resolution. The ownerless result is never `selected` and never
+another user's organization.
+
+### Fix sketch
+
+`if (userId == null) return;` in `membershipRetryProvider`. Optionally make
+`token` required on `update` and delete the legacy token-less branch; this is
+its only production caller.
+
+### Test sketch
+
+Wiring: Retry with a null current user calls neither the raw reader nor the
+controller.
+
+## N2 - Session lost mid-resolution yields nonConnectivity without Retry (gate residual, non-blocking)
+
+### Problem
+
+A user whose session is lost while the first resolution runs ends on a
+failure screen that offers sign-in but no Retry.
+
+### Event sequence
+
+1. `signedIn(A)` with no known organization and `refreshMembership` in
+   flight.
+2. A non-retryable token refresh failure moves the state to
+   `sessionExpired(A)`. The token stays current because the user is
+   unchanged.
+3. The RPC errors with an `AuthException`, so the result is
+   `nonConnectivity` with no cached fallback
+   (`apps/lyron_app/lib/src/application/active_organization_resolution.dart:78-82`,
+   `:104`); it is applied.
+4. The `nonConnectivity` view has no Retry, only Sign in
+   (`apps/lyron_app/lib/src/presentation/auth/membership_gate.dart:42-46`).
+
+### Why it is non-blocking
+
+Own user only, sign-in is offered, and the behaviour was the same before the
+gate change.
+
+### Follow-up
+
+Offer the cache-only Retry on the `nonConnectivity` view when
+`isSessionExpired`.
 
 ## Why these were deferred
 
