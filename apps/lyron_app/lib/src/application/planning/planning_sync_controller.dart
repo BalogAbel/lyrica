@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:lyron_app/src/application/auth/current_user_ownership.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_remote_refresh_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_payload.dart';
@@ -49,13 +50,49 @@ class PlanningSyncController extends ChangeNotifier {
   int? _refreshFutureGeneration;
   bool _refreshQueued = false;
   bool _disposed = false;
+  final _ownership = CurrentUserOwnership();
 
   PlanningSyncState get state => _state;
+
+  /// XU2 (docs/specs/2026-10-06-cross-user-local-first-ownership.md): called
+  /// on every signedIn and sessionExpired notification with
+  /// AppAuthState.currentUserId, before the status handlers. When the
+  /// current user changes, refresh and local-first work started for the
+  /// previous user is invalidated, and planning state held for another user
+  /// is reset. This runs on the auth edge itself: the I3 guard in
+  /// _refreshPlanning runs only if a refresh runs, and _readPlanningOrThrow
+  /// skips the refresh while local data is present (F7). Releasing the
+  /// previous boundary here also means handleActiveContextChanged finds no
+  /// previous boundary to delete when the new user's arrives (F8). In memory
+  /// only: no local data is deleted.
+  void handleCurrentUser(String currentUserId) {
+    final changed = _ownership.observe(currentUserId);
+    final heldUserId = _state.userId;
+    final holdsForeign = heldUserId != null && heldUserId != currentUserId;
+    if (!changed && !holdsForeign) {
+      return;
+    }
+    _advanceBoundaryGeneration();
+    _invalidateRefreshGeneration();
+    if (holdsForeign) {
+      _setState(
+        const PlanningSyncState.initial().copyWith(
+          accessStatus: PlanningAccessStatus.signedIn,
+        ),
+      );
+    }
+  }
 
   Future<void> handleActiveContextChanged(
     ActivePlanningReadContext? context, {
     bool refresh = true,
   }) async {
+    if (context != null && !_ownership.allows(context.userId)) {
+      // XU2: a mirrored boundary owned by a user who is no longer current (a
+      // notification queued before the user changed) is never adopted, and
+      // must not disturb the current user's work.
+      return;
+    }
     final boundaryGeneration = _advanceBoundaryGeneration();
     final session = _authSessionReader();
     if (context == null) {

@@ -189,7 +189,7 @@ void main() {
 
       expect(fixture.planningUserId, isNot(_userA));
       expect(await fixture.readPlanNames(), isNot(contains('A secret plan')));
-    }, skip: 'red until Task 3 (XU2); spec 2026-10-06 cross-user ownership');
+    });
 
     test('with songs and plans cached, nothing of A\'s survives B\'s '
         'sign-in', () async {
@@ -239,7 +239,7 @@ void main() {
         ),
         isTrue,
       );
-    }, skip: 'red until Task 3 (XU2); spec 2026-10-06 cross-user ownership');
+    });
 
     test('a planning establishment started for A does not land after B '
         'signs in', () async {
@@ -258,7 +258,7 @@ void main() {
       expect(fixture.auth.state.currentUserId, _userB);
       expect(fixture.planningUserId, isNot(_userA));
       expect(await fixture.readPlanNames(), isNot(contains('A secret plan')));
-    }, skip: 'red until Task 3 (XU2); spec 2026-10-06 cross-user ownership');
+    });
 
     test('the active planning context held for A does not survive B\'s '
         'sign-in', () async {

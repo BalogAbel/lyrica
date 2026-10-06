@@ -356,6 +356,13 @@ final planningSyncControllerProvider =
       );
 
       void handleAuthStateChanged(AppAuthState authState) {
+        // XU2: ownership first, so the status handlers below never act on
+        // planning state held for an earlier user. Null for initializing and
+        // signedOut; the sign-out handler owns that edge.
+        final currentUserId = authState.currentUserId;
+        if (currentUserId != null) {
+          controller.handleCurrentUser(currentUserId);
+        }
         switch (authState.status) {
           case AppAuthStatus.initializing:
             return;
