@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:lyron_app/src/application/auth/current_user_ownership.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_remote_refresh_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_payload.dart';
@@ -49,13 +50,61 @@ class PlanningSyncController extends ChangeNotifier {
   int? _refreshFutureGeneration;
   bool _refreshQueued = false;
   bool _disposed = false;
+  final _ownership = CurrentUserOwnership();
 
   PlanningSyncState get state => _state;
+
+  /// XU2 (docs/specs/2026-10-06-cross-user-local-first-ownership.md): called
+  /// on every signedIn and sessionExpired notification with
+  /// AppAuthState.currentUserId, before the status handlers. When the
+  /// current user changes, refresh and local-first work started for the
+  /// previous user is invalidated, and planning state held for another user
+  /// is reset. This runs on the auth edge itself: the I3 guard in
+  /// _refreshPlanning runs only if a refresh runs, and _readPlanningOrThrow
+  /// skips the refresh while local data is present (F7). Releasing the
+  /// previous boundary here also means handleActiveContextChanged finds no
+  /// previous boundary to delete when the new user's arrives (F8). In memory
+  /// only: no local data is deleted.
+  void handleCurrentUser(String currentUserId) {
+    final changed = _ownership.observe(currentUserId);
+    final heldUserId = _state.userId;
+    final holdsForeign = heldUserId != null && heldUserId != currentUserId;
+    if (!changed && !holdsForeign) {
+      return;
+    }
+    _advanceBoundaryGeneration();
+    _invalidateRefreshGeneration();
+    if (holdsForeign) {
+      _setState(
+        const PlanningSyncState.initial().copyWith(
+          accessStatus: PlanningAccessStatus.signedIn,
+        ),
+      );
+    }
+  }
 
   Future<void> handleActiveContextChanged(
     ActivePlanningReadContext? context, {
     bool refresh = true,
+    String? previousOwnerUserId,
   }) async {
+    if (context == null &&
+        previousOwnerUserId != null &&
+        !_ownership.allows(previousOwnerUserId)) {
+      // XU6 (docs/specs/2026-10-06-cross-user-local-first-ownership.md): the
+      // active context of a user who is no longer current was released
+      // (XU2). handleCurrentUser has already released this holder's state
+      // for that user. Resetting again here would cancel the current user's
+      // local-first establishment and, with no live session, mark planning
+      // signed out, hiding the current user's own plans.
+      return;
+    }
+    if (context != null && !_ownership.allows(context.userId)) {
+      // XU2: a mirrored boundary owned by a user who is no longer current (a
+      // notification queued before the user changed) is never adopted, and
+      // must not disturb the current user's work.
+      return;
+    }
     final boundaryGeneration = _advanceBoundaryGeneration();
     final session = _authSessionReader();
     if (context == null) {
@@ -308,7 +357,16 @@ class PlanningSyncController extends ChangeNotifier {
   Future<void> handleExplicitSignOut() async {
     final generation = _advanceAuthGeneration();
     _advanceBoundaryGeneration();
+    // XU5 (docs/specs/2026-10-06-cross-user-local-first-ownership.md): the
+    // purge user is the user who signed out -- the last current user this
+    // holder observed -- not whatever it last held. Held state and the stale
+    // _lastAuthenticatedUserId made one user's sign-out purge another user's
+    // planning data, and once XU2 released foreign state the chain could
+    // fall through to nobody and keep the signing-out user's own data (F9).
+    // The old chain is only the fallback for a holder that never observed a
+    // current user.
     final userId =
+        _ownership.userId ??
         _state.userId ??
         _authSessionReader()?.userId ??
         _lastAuthenticatedUserId;
@@ -428,7 +486,9 @@ class PlanningSyncController extends ChangeNotifier {
     // session the context is for THAT session's user; the identity's
     // organizationId is only trusted when the identity belongs to the same
     // user. Without a live session (sessionExpired) the identity's user is
-    // the only one there is. Using identity.userId unconditionally
+    // used; the provider passes only the current user's identity (XU1,
+    // docs/specs/2026-10-06-cross-user-local-first-ownership.md), so that
+    // is the last known session's user. Using identity.userId unconditionally
     // re-established the PRIOR user's context after _refreshPlanning's I3
     // guard had just cleared it, so a different user's refresh fetched the
     // prior user's org with the new user's token and overwrote the prior

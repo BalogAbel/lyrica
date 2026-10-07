@@ -65,6 +65,28 @@ class AppAuthController extends ChangeNotifier {
   /// before the load has settled and when there genuinely is none.
   LastKnownIdentity? get lastKnownIdentity => _identity;
 
+  /// The last known identity, only when it belongs to the user the app is
+  /// acting for ([AppAuthState.currentUserId]): null when nobody is current,
+  /// when no identity is on file, or when the identity is another user's.
+  ///
+  /// The one identity every local-first reader sees (the catalog and
+  /// planning local-first contexts and the membership gate's known
+  /// organization), so none of them can build a read context from a
+  /// different user's identity. Losing user B's session while the device
+  /// still holds user A's identity yields `sessionExpired(B)`; reading the
+  /// raw identity there established A's context for B (F6,
+  /// docs/specs/2026-10-06-cross-user-local-first-ownership.md, XU1).
+  LastKnownIdentity? get currentUserLastKnownIdentity {
+    final identity = _identity;
+    final currentUserId = _state.currentUserId;
+    if (identity == null ||
+        currentUserId == null ||
+        identity.userId != currentUserId) {
+      return null;
+    }
+    return identity;
+  }
+
   /// Updates the in-memory identity cache to match a write or clear that
   /// [_lastKnownIdentityStore]'s owner just made to the durable store from
   /// outside this class. Pass the identity that was just written, or `null`

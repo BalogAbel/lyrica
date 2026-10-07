@@ -734,14 +734,8 @@ final activeMembershipControllerProvider =
       final pendingInvites = ref.read(pendingInviteTokenControllerProvider);
       final controller = ActiveMembershipController(
         currentUserIdReader: () => authController.state.currentUserId,
-        knownOrganizationIdReader: () {
-          final userId = authController.state.currentUserId;
-          final identity = authController.lastKnownIdentity;
-          if (userId == null || identity == null || identity.userId != userId) {
-            return null;
-          }
-          return identity.organizationId;
-        },
+        knownOrganizationIdReader: () =>
+            authController.currentUserLastKnownIdentity?.organizationId,
         hasPendingInviteReader: () => pendingInvites.current != null,
         sessionExpiredReader: () =>
             authController.state.status == AppAuthStatus.sessionExpired,

@@ -16,6 +16,17 @@
   Finding 1 fix had scoped its `try` too widely and mis-described one of its
   own failure branches. See "PR #64 Review Remediation, Round 2 (2026-08-06)"
   below; closed by commits `7e68c78`/`6734244` (Finding A).
+- Amended: 2026-10-06 — D5's guarantee ("cancel deletes nothing") held for
+  the confirmed wipe but not for planning: while the different-user prompt
+  was pending, the new user's first planning boundary made
+  `PlanningSyncController.handleActiveContextChanged` delete the prior user's
+  planning projection and pending mutations (F8). Closed by ADR-037's
+  current-user ownership amendment: the prior user's boundary is released in
+  memory on the sign-in edge, so the confirmed wipe is again the only path
+  that deletes the prior user's data. The same amendment closes R-C: after
+  a cancel, the cancelled user's catalog context could stay on screen for
+  the prior user, and the prior user's later sign-out could purge the
+  cancelled user's catalog.
 
 ## Context
 

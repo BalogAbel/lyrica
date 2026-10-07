@@ -65,7 +65,9 @@ on a connection that never answers). A cold start straight into
 - Every offline startup path keeps at least one test with the real auth
   client (`docs/testing/testing-strategy.md`).
 - Known residual cases are recorded in
-  `docs/deferred/2026-10-05-gate-cross-user-leaks.md`. F6 and F7 are
-  pre-existing cross-user leaks (not introduced by the gate) that the next
-  fix PR closes; C4, F5, N1 and N2 are low-severity gate cases that show
-  only the user's own state.
+  `docs/deferred/2026-10-05-gate-cross-user-leaks.md`: C4, F5, N1 and N2 are
+  low-severity gate cases that show only the user's own state. The two
+  pre-existing cross-user leaks found by the gate review (F6, F7) were closed
+  by ADR-037's current-user ownership amendment (2026-10-06), which also
+  moved the gate's known-organization reader onto the shared
+  `AppAuthController.currentUserLastKnownIdentity` getter.

@@ -488,6 +488,33 @@ exists guarantee:
   review round hardening exactly this kind of "passes today, not provably
   robust" gap.
 
+#### Cross-user ownership pattern
+
+`apps/lyron_app/test/integration/cross_user_local_first_leak_test.dart`
+(`docs/specs/2026-10-06-cross-user-local-first-ownership.md`) is the
+regression gate for "a user never sees or loses another user's songs or
+plans through a local-first path". Rules for extending it:
+
+- Drive user changes through the real `AppAuthController` and its session
+  stream, with the real different-user reauth providers mounted
+  (`appAuthListenableProvider`, `membershipRefreshEffectProvider`). A
+  controller-level test with a live session for the new user misses every
+  path that goes through `sessionExpired` or through a listener that ignores
+  `signedIn`.
+- Hold the three context holders alive together (catalog, planning sync,
+  active planning). Several leaks only appear when two holders disagree (for
+  example the catalog has no songs for the prior user but planning has plans).
+- Assert on what the user sees (`songLibraryListProvider`,
+  `planningPlanListProvider`, `planningMutationEntriesProvider`), not only on
+  controller fields, and assert that the prior user's local rows still exist
+  when only a confirmed wipe may delete them. For a sign-out, assert both
+  sides: the signing-out user's rows are gone and every other user's remain.
+- Check the way out with the real gate and banner widgets
+  (`testWidgets` + `tester.runAsync` for the Drift and auth work, then
+  `UncontrolledProviderScope` over the same container).
+- To pin an interleaving, pause the real Drift read for one user
+  (`_ReadGate`), never replace the store.
+
 #### Real auth client rule (offline startup)
 
 A fake that answers instantly does not prove an offline path: the 10–15 s

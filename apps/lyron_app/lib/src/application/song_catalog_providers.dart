@@ -103,8 +103,10 @@ final songCatalogControllerProvider =
         onVerifiedNonEmptyMembership: ({required userId}) => ref
             .read(localDataLifecycleProvider)
             .clearMembershipRevocation(userId: userId),
+        // XU1 (docs/specs/2026-10-06-cross-user-local-first-ownership.md):
+        // only the current user's identity; another user's is never read.
         lastKnownIdentityReader: () {
-          final identity = authController.lastKnownIdentity;
+          final identity = authController.currentUserLastKnownIdentity;
           if (identity == null) return null;
           return (
             userId: identity.userId,
@@ -115,6 +117,12 @@ final songCatalogControllerProvider =
       );
 
       void handleAuthStateChanged(AppAuthState authState) {
+        // XU2: ownership first (null for initializing and signedOut; the
+        // sign-out handler owns that edge and its purge target).
+        final currentUserId = authState.currentUserId;
+        if (currentUserId != null) {
+          controller.handleCurrentUser(currentUserId);
+        }
         switch (authState.status) {
           case AppAuthStatus.initializing:
             return;

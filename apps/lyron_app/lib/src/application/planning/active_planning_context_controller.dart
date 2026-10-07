@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:lyron_app/src/application/auth/current_user_ownership.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/song_catalog_controller.dart';
@@ -38,8 +39,24 @@ class ActivePlanningContextController extends ChangeNotifier {
 
   ActivePlanningReadContext? _state;
   bool _verifiedEmptyMembershipSeen = false;
+  final _ownership = CurrentUserOwnership();
 
   ActivePlanningReadContext? get state => _state;
+
+  /// XU2 (docs/specs/2026-10-06-cross-user-local-first-ownership.md): called
+  /// on every signedIn and sessionExpired notification with
+  /// AppAuthState.currentUserId, before the status handlers. [refresh] keeps
+  /// an existing context on a connectivity failure and sessionExpired leaves
+  /// the context alone, so a context held for the previous user survived a
+  /// different user's offline sign-in (R-A). In memory only.
+  void handleCurrentUser(String currentUserId) {
+    _ownership.observe(currentUserId);
+    final state = _state;
+    if (state != null && !_ownership.allows(state.userId)) {
+      _verifiedEmptyMembershipSeen = false;
+      _setState(null);
+    }
+  }
 
   Future<void> refresh({bool allowCachedFallback = false}) async {
     final session = _authSessionReader();
@@ -63,6 +80,11 @@ class ActivePlanningContextController extends ChangeNotifier {
         reachedVerifiedEmpty = true;
       }
     } on Object catch (error) {
+      // XU2: the lookup awaited. If the current user changed meanwhile, this
+      // outcome is not the current user's to apply, not even as a clear().
+      if (!_ownership.allows(session.userId)) {
+        return;
+      }
       if (isConnectivityFailure(error)) {
         organizationLookupWasConnectivityFailure = true;
         if (allowCachedFallback &&
@@ -83,6 +105,11 @@ class ActivePlanningContextController extends ChangeNotifier {
         clear();
         return;
       }
+    }
+
+    // XU2: the same check after the lookup (or the cached fallback read).
+    if (!_ownership.allows(session.userId)) {
+      return;
     }
 
     if (reachedVerifiedEmpty) {
@@ -170,6 +197,10 @@ class ActivePlanningContextController extends ChangeNotifier {
       }
     }
 
+    // XU2: the marker clear above awaited; check again before committing.
+    if (!_ownership.allows(session.userId)) {
+      return;
+    }
     _setState(
       organizationId == null
           ? null
@@ -190,6 +221,11 @@ class ActivePlanningContextController extends ChangeNotifier {
   }
 
   void syncToCatalogContext(ActiveCatalogContext? context) {
+    if (context != null && !_ownership.allows(context.userId)) {
+      // XU2: a catalog context of a user who is no longer current (a
+      // notification queued before the user changed) is never mirrored.
+      return;
+    }
     if (context == null) {
       _setState(null);
       return;

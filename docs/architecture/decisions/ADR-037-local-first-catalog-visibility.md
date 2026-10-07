@@ -149,3 +149,48 @@ rather than to "never."
 carries a forward-reference status note (added alongside this ADR) pointing
 here, since this ADR is the fuller statement of what D3 originally gestured
 at but did not fully enforce.
+
+## Amendment: current-user ownership (2026-10-06)
+
+Spec: `docs/specs/2026-10-06-cross-user-local-first-ownership.md`.
+
+The ownership rule above said "`identity.userId` alone when
+`sessionExpired` (no live session to compare against)". There is always
+something to compare against: `AppAuthState.currentUserId`, the last known
+session's user when `sessionExpired`. Losing user B's session while user A's
+identity was on file gave `sessionExpired(B)`, and both controllers then
+established A's context for B (F6). Separately, a context held for A survived
+B's sign-in in planning, in the active planning context, and through
+establishments still in flight, and a context held for B survived a
+cancelled reauth back to A (F7, R-A, R-B, R-C). In planning it also made B's
+first boundary delete A's plans and pending work while the different-user
+prompt was pending (F8). An explicit sign-out took its purge user from held
+state, so one user's sign-out could purge another user's data (F9).
+
+Narrowed rule: a local-first read context may belong only to
+`AppAuthState.currentUserId`.
+
+- **Establishment (XU1).** `AppAuthController.currentUserLastKnownIdentity`
+  (the identity only when it is the current user's) is the only identity the
+  catalog and planning local-first readers and the membership gate see.
+- **Held contexts (XU2).** Cause 4 of the invariant ("a different-user
+  sign-in") now reads "a change of the current user": a sign-in, a direct
+  session switch, or a cancelled reauth back to the prior user. On every
+  `signedIn` and `sessionExpired` notification each holder (catalog context,
+  active planning context, planning sync state) applies
+  `CurrentUserOwnership`. It invalidates work started for the previous user,
+  drops a context owned by anyone else, and never adopts one. This happens on
+  the auth edge, not only inside a refresh that may never run. The I3 guards
+  stay as a second line. Planning ignores the null mirror that a release of a
+  foreign active context produces (XU6), so the release cannot reset the
+  current user's own offline planning state.
+- **Explicit sign-out (XU5).** The existing `userSignOut` purge takes its
+  user from `CurrentUserOwnership.userId`, the user who signed out, instead
+  of from held state or a stale `_lastAuthenticatedUserId`. Before, one
+  user's sign-out could purge another user's planning data or catalog (F9),
+  or nobody's.
+
+No new purge, no `PurgeReason`, no new store write or delete (ADR-035
+unchanged: its `userSignOut` is the act of the user who signed out, and the
+purge now targets exactly that user). Everything else in this amendment is in
+memory only.

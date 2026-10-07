@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:lyron_app/src/application/auth/current_user_ownership.dart';
 import 'package:lyron_app/src/application/observability/observability.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/app_foreground_state.dart';
@@ -113,6 +114,7 @@ class SongCatalogController extends ChangeNotifier {
   // to a single slot so a burst of differing-identity triggers cannot fan
   // out into a refresh storm; every such caller shares this one completer.
   Completer<void>? _pendingFollowUpRefresh;
+  final _ownership = CurrentUserOwnership();
 
   CatalogSnapshotState get state => _state;
 
@@ -685,7 +687,15 @@ class SongCatalogController extends ChangeNotifier {
 
   Future<void> handleExplicitSignOut() async {
     _resetSessionLifecycle();
+    // XU5 (docs/specs/2026-10-06-cross-user-local-first-ownership.md): the
+    // purge user is the user who signed out -- the last current user this
+    // holder observed. _lastAuthenticatedUserId is only set on a live
+    // session, so after a cancelled reauth it still named the cancelled
+    // user, and the prior user's sign-out purged that user's catalog (F9).
+    // The old chain is only the fallback for a holder that never observed a
+    // current user.
     final userId =
+        _ownership.userId ??
         _state.context?.userId ??
         _authSessionReader()?.userId ??
         _lastAuthenticatedUserId;
@@ -746,6 +756,30 @@ class SongCatalogController extends ChangeNotifier {
       _rememberAuthenticatedUser(session.userId);
     }
     _updateRefreshScheduler();
+  }
+
+  /// XU2 (docs/specs/2026-10-06-cross-user-local-first-ownership.md): called
+  /// on every signedIn and sessionExpired notification with
+  /// AppAuthState.currentUserId, before the status handlers. A signedIn edge
+  /// does not advance the refresh generation on its own, so a refresh or
+  /// local-first establishment started for the previous user could still
+  /// commit that user's context (R-B). When the current user changes that
+  /// work is invalidated, and a context held for another user is dropped on
+  /// the edge instead of waiting for the I3 guard in _refreshCatalogBody,
+  /// which runs only once the new user's refresh starts (possibly queued
+  /// behind the previous user's in-flight one). In memory only: nothing is
+  /// deleted.
+  void handleCurrentUser(String currentUserId) {
+    final changed = _ownership.observe(currentUserId);
+    final context = _state.context;
+    final holdsForeign = context != null && context.userId != currentUserId;
+    if (!changed && !holdsForeign) {
+      return;
+    }
+    _invalidateRefreshWork();
+    if (holdsForeign) {
+      _setState(const CatalogSnapshotState.initial());
+    }
   }
 
   // Step 1 (docs/specs/2026-09-28-offline-catalog-local-first-visibility.md,
