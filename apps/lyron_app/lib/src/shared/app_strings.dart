@@ -52,8 +52,12 @@ class AppStrings {
   static const songTitleLabel = 'Title';
   static const songSourceLabel = 'ChordPro source';
   static const unsyncedSignOutTitle = 'Discard unsynced changes?';
-  static const unsyncedSignOutMessage =
-      'You have unsynced modifications. Signing out will permanently discard these changes.';
+  static String unsyncedSignOutPendingMessage({required int count}) =>
+      count == 1
+      ? 'You have 1 unsynced change. Signing out will permanently discard it.'
+      : 'You have $count unsynced changes. Signing out will permanently discard them.';
+  static const unsyncedSignOutUnknownPendingMessage =
+      'Unsynced changes could not be counted. Signing out will permanently discard any changes that have not synced.';
   static const unsyncedSignOutConfirmAction = 'Discard and sign out';
   static const songDeleteBlockedMessage =
       'This song cannot be deleted because a session still references it.';

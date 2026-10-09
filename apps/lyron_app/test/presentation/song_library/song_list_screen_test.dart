@@ -11,6 +11,7 @@ import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
 import 'package:lyron_app/src/application/auth/capability_resolver.dart';
 import 'package:lyron_app/src/application/auth/last_known_identity.dart';
+import 'package:lyron_app/src/application/auth/pending_local_work_counter.dart';
 import 'package:lyron_app/src/application/planning/planning_remote_refresh_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_controller.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_payload.dart';
@@ -72,6 +73,8 @@ void main() {
     mutationEntriesForContext,
     bool? hasUnsyncedChanges,
     bool? hasUnsyncedPlanningMutations,
+    int? songPendingWorkCount,
+    int? planningPendingWorkCount,
     CapabilityResolver? capabilityResolver,
     CatalogSnapshotState catalogState = const CatalogSnapshotState(
       context: null,
@@ -169,6 +172,15 @@ void main() {
               hasUnsyncedWork:
                   hasUnsyncedChanges == true ||
                   hasUnsyncedPlanningMutations == true,
+            ),
+          ),
+        if (songPendingWorkCount != null || planningPendingWorkCount != null)
+          pendingLocalWorkCounterProvider.overrideWithValue(
+            PendingLocalWorkCounter(
+              readPlanningPendingWorkCount: ({required userId}) async =>
+                  planningPendingWorkCount ?? 0,
+              readSongPendingWorkCount: ({required userId}) async =>
+                  songPendingWorkCount ?? 0,
             ),
           ),
         capabilityResolverProvider.overrideWith(
@@ -744,9 +756,14 @@ void main() {
         songs: const [
           SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
         ],
-        hasUnsyncedChanges: true,
+        songPendingWorkCount: 1,
       ),
     );
+    await tester.pumpAndSettle();
+    // SO2: the warning counts the current user's work, so a user is needed.
+    await ProviderScope.containerOf(
+      tester.element(find.byType(SongListScreen)),
+    ).read(appAuthControllerProvider).restoreSession();
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('song-list-overflow-menu')));
@@ -755,7 +772,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text(AppStrings.unsyncedSignOutTitle), findsOneWidget);
-    expect(find.text(AppStrings.unsyncedSignOutMessage), findsOneWidget);
+    expect(
+      find.text(AppStrings.unsyncedSignOutPendingMessage(count: 1)),
+      findsOneWidget,
+    );
   });
 
   testWidgets(
@@ -766,10 +786,14 @@ void main() {
           songs: const [
             SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
           ],
-          hasUnsyncedChanges: false,
-          hasUnsyncedPlanningMutations: true,
+          planningPendingWorkCount: 1,
         ),
       );
+      await tester.pumpAndSettle();
+      // SO2: the warning counts the current user's work, so a user is needed.
+      await ProviderScope.containerOf(
+        tester.element(find.byType(SongListScreen)),
+      ).read(appAuthControllerProvider).restoreSession();
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('song-list-overflow-menu')));
@@ -778,7 +802,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text(AppStrings.unsyncedSignOutTitle), findsOneWidget);
-      expect(find.text(AppStrings.unsyncedSignOutMessage), findsOneWidget);
+      expect(
+        find.text(AppStrings.unsyncedSignOutPendingMessage(count: 1)),
+        findsOneWidget,
+      );
     },
   );
 

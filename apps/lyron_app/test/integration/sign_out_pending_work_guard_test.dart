@@ -361,58 +361,53 @@ void main() {
     },
   );
 
-  // Red until Task 5 (SO2); spec 2026-10-07 sign-out pending-work guard.
-  testWidgets(
-    'song list > Sign out in sessionExpired with no read context '
-    'and pending work warns before deleting it (b)',
-    skip: true,
-    (tester) async {
-      // A has pending work but neither cached songs nor a cached projection,
-      // so no catalog and no planning context is ever established.
-      final fixture = _Fixture();
-      await fixture.seed(tester, cachedSongs: false, cachedProjection: false);
-      await fixture.pumpApp(tester);
-      expect(fixture.authStatus(tester), AppAuthStatus.sessionExpired);
-      expect(
-        fixture.container(tester).read(activeCatalogContextProvider),
-        isNull,
-      );
-      expect(
-        fixture.container(tester).read(planningSyncStateProvider).userId,
-        isNull,
-      );
+  testWidgets('song list > Sign out in sessionExpired with no read context '
+      'and pending work warns before deleting it (b)', (tester) async {
+    // A has pending work but neither cached songs nor a cached projection,
+    // so no catalog and no planning context is ever established.
+    final fixture = _Fixture();
+    await fixture.seed(tester, cachedSongs: false, cachedProjection: false);
+    await fixture.pumpApp(tester);
+    expect(fixture.authStatus(tester), AppAuthStatus.sessionExpired);
+    expect(
+      fixture.container(tester).read(activeCatalogContextProvider),
+      isNull,
+    );
+    expect(
+      fixture.container(tester).read(planningSyncStateProvider).userId,
+      isNull,
+    );
 
-      await tester.tap(find.byKey(const Key('song-list-overflow-menu')));
-      await fixture.pumpFrames(tester);
-      await tester.tap(find.text(AppStrings.signOutAction));
-      await fixture.pumpFrames(tester);
+    await tester.tap(find.byKey(const Key('song-list-overflow-menu')));
+    await fixture.pumpFrames(tester);
+    await tester.tap(find.text(AppStrings.signOutAction));
+    await fixture.pumpFrames(tester);
 
-      final observed = (
-        warningShown: find
-            .text(AppStrings.unsyncedSignOutTitle)
-            .evaluate()
-            .isNotEmpty,
-        status: fixture.authStatus(tester),
-        pendingWorkOfA: await fixture.pendingPlanningMutationCount(tester),
-      );
-      expect(
-        observed,
-        (
-          warningShown: true,
-          status: AppAuthStatus.sessionExpired,
-          pendingWorkOfA: 1,
-        ),
-        reason:
-            'the song-list sign-out must warn about A\'s unsynced work even '
-            'without a read context, and delete nothing before the user '
-            'confirms',
-      );
+    final observed = (
+      warningShown: find
+          .text(AppStrings.unsyncedSignOutTitle)
+          .evaluate()
+          .isNotEmpty,
+      status: fixture.authStatus(tester),
+      pendingWorkOfA: await fixture.pendingPlanningMutationCount(tester),
+    );
+    expect(
+      observed,
+      (
+        warningShown: true,
+        status: AppAuthStatus.sessionExpired,
+        pendingWorkOfA: 1,
+      ),
+      reason:
+          'the song-list sign-out must warn about A\'s unsynced work even '
+          'without a read context, and delete nothing before the user '
+          'confirms',
+    );
 
-      await fixture.confirmDiscardAndExpectDeleted(tester);
+    await fixture.confirmDiscardAndExpectDeleted(tester);
 
-      await fixture.tearDown(tester);
-    },
-  );
+    await fixture.tearDown(tester);
+  });
 
   // Guard: the harness sees the existing warning. With a planning context
   // established, the song list's context-scoped check already warns today.

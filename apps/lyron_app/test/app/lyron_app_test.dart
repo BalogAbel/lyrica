@@ -23,6 +23,7 @@ import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/infrastructure/song_library/supabase_song_repository.dart';
+import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
@@ -86,12 +87,17 @@ void main() {
     final authRepository = _SignedInAuthRepository();
     final database = SongCatalogDatabase.inMemory();
     final store = DriftSongCatalogStore(database);
+    final planningDatabase = PlanningLocalDatabase.inMemory();
 
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           authRepositoryProvider.overrideWithValue(authRepository),
           songCatalogDatabaseProvider.overrideWithValue(database),
+          // The sign-out command counts pending work through the planning
+          // database (SO2, docs/specs/2026-10-07-sign-out-pending-work-guard.md);
+          // the file-backed default never opens under fake time.
+          planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
           songCatalogStoreProvider.overrideWithValue(store),
           supabaseSongRepositoryProvider.overrideWithValue(
             SupabaseSongRepository.testing(
@@ -127,6 +133,7 @@ void main() {
       ),
     );
     addTearDown(database.close);
+    addTearDown(planningDatabase.close);
 
     await tester.pumpAndSettle();
 
@@ -153,12 +160,17 @@ void main() {
       final authRepository = _InteractiveAuthRepository();
       final database = SongCatalogDatabase.inMemory();
       final store = DriftSongCatalogStore(database);
+      final planningDatabase = PlanningLocalDatabase.inMemory();
 
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
             authRepositoryProvider.overrideWithValue(authRepository),
             songCatalogDatabaseProvider.overrideWithValue(database),
+            // The sign-out command counts pending work through the planning
+            // database (SO2, docs/specs/2026-10-07-sign-out-pending-work-guard.md);
+            // the file-backed default never opens under fake time.
+            planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
             songCatalogStoreProvider.overrideWithValue(store),
             supabaseSongRepositoryProvider.overrideWithValue(
               SupabaseSongRepository.testing(
@@ -194,6 +206,7 @@ void main() {
         ),
       );
       addTearDown(database.close);
+      addTearDown(planningDatabase.close);
       addTearDown(authRepository.dispose);
 
       await tester.pumpAndSettle();
