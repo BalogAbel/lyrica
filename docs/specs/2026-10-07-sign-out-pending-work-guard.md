@@ -414,8 +414,16 @@ account, and the `signedOut` edge purges that user's data.
 The Account screen captures `currentUserId` before it shows the Delete
 account dialog and, after a confirmation, deletes nothing if the current
 user is no longer that user. This changes the "unchanged" Delete account
-row of the entry-point table above for this one check; the dialog and
-`AppAuthController.deleteAccount()` are otherwise unchanged.
+row of the entry-point table above for this one check; the dialog is
+otherwise unchanged.
+
+The second review round (2026-10-09) found the same switch inside the
+`delete_account` call itself: `deleteAccount()` applied `signedOut`
+unconditionally after the backend answered, so a sign-in that landed during
+the call was overwritten and the `signedOut` edge purged the new user's
+data and cleared their identity row. `deleteAccount()` now applies
+`signedOut` only if the auth generation is unchanged since it started, the
+same rule `signOut()` follows (SO3).
 
 ## Rejected alternatives
 
@@ -543,7 +551,8 @@ the spec and are red before their task and green after.
   the song list is gone and always releases it when it leaves the running
   phases; awaiting duplicate resolution, done and failed do not block.
 - **AC14 (B3, SO8):** a user switch while the Delete account dialog is open:
-  confirming deletes nothing.
+  confirming deletes nothing; a user switch while the delete call runs:
+  the new user stays signed in and nothing of theirs is purged.
 - **AC11:** `flutter test` (full suite) and `flutter analyze` are green after
   every task. No existing test changes except the two named in
   "Intentional behaviour changes" (items 1 and 4). The ownership suite

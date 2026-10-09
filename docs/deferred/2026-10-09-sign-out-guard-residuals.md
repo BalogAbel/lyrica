@@ -1,4 +1,4 @@
-# Sign-Out Guard Residuals (R1–R13)
+# Sign-Out Guard Residuals (R1–R17)
 
 **Slice:** `fix/sign-out-pending-work-guard`
 (`docs/specs/2026-10-07-sign-out-pending-work-guard.md`). Found by the
@@ -139,6 +139,35 @@ by a sign-in; not verified by a test. **Fix sketch:** a wiring test.
 answer given while the screen is being replaced is dropped and the import
 stays in `ImportAwaitingDuplicateResolution` until the next import. Nothing
 is written and, since Task 10c, nothing is blocked.
+
+## R14 - Delete account and a token refresh on the server side
+
+`AuthHttpClient` reads the bearer token after `getSession()`; if A's token is
+being refreshed when Delete account is confirmed and B's session lands in
+that window, the `delete_account` RPC would run as B. Needs a session switch
+inside a token refresh. **Fix sketch:** `delete_account(p_user_id)` that
+checks `auth.uid() = p_user_id` server-side (backend change).
+
+## R15 - a failed Delete account is unhandled
+
+`AccountScreen`'s delete `onTap` has `try/finally` without `catch`; an offline
+or RPC failure escapes as an unhandled error (the W3 analogue). Nothing is
+purged. **Fix sketch:** catch, report once, show a message.
+
+## R16 - an import started while the sign-out sequence runs
+
+After the warning closes, the Import item is enabled again while the purges
+and the local sign-out run. Picking files takes seconds, so the rows are
+written after the sign-out as orphans of the signed-out user (R10). Not a
+loss.
+
+## R17 - duplicate resolution commits into the current user's catalog
+
+`commitWithResolutions` reads the live catalog context, not the run's. A
+user switch while the duplicate dialog is open commits the first user's
+picked files into the second user's catalog as their pending work.
+Pre-existing; nothing is deleted. **Fix sketch:** keep the run's context and
+refuse the commit if the current context belongs to another user.
 
 ## Trigger
 
