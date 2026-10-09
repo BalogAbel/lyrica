@@ -510,10 +510,11 @@ the spec and are red before their task and green after.
   failure of the revocation is not reported; any other failure is reported
   exactly once and never thrown; a revocation result landing after a new
   sign-in does not change the new user's state.
-- **AC12 (B1, SO6):** a user switch while the catalog purge of the
-  signing-out user runs: the outcome is `superseded`, the planning purge and
-  `AppAuthController.signOut()` do not run, and the new user stays signed in
-  with their pending work and identity row.
+- **AC12 (B1, SO6):** a user switch while the catalog purge, or the
+  planning purge, of the signing-out user runs: the outcome is `superseded`,
+  no later step runs (no planning purge, no `AppAuthController.signOut()`),
+  and the new user stays signed in. Nothing of the new user is purged or
+  cleared, because no later step runs.
 - **AC13 (B2, SO7):** the song list's Sign out item is disabled while an
   import is picking, analysing, awaiting duplicate resolution or committing,
   and enabled again when it is done or failed.
