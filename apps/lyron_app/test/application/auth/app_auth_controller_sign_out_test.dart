@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
+import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
 import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
@@ -53,6 +54,43 @@ class _RevocationRepository implements AuthRepository {
   Future<void> deleteAccount() async {}
 }
 
+/// Holds one identity, so a null session maps by the real rules (D2): to
+/// sessionExpired when the app did not initiate a sign-out, to signedOut only
+/// while a sign-out is in flight.
+class _FakeLastKnownIdentityStore implements LastKnownIdentityStore {
+  _FakeLastKnownIdentityStore(this.value);
+
+  LastKnownIdentity? value;
+
+  @override
+  Future<LastKnownIdentity?> read() async => value;
+
+  @override
+  Future<void> write(LastKnownIdentity identity) async {
+    value = identity;
+  }
+
+  @override
+  Future<void> clear() async {
+    value = null;
+  }
+
+  @override
+  Future<EmptyMembershipResolutionOutcome> resolveEmptyMembership({
+    required String userId,
+  }) async => const EmptyMembershipResolutionIgnored();
+
+  @override
+  Future<bool> clearMembershipRevocation({required String userId}) async =>
+      false;
+
+  @override
+  Future<bool> hasCurrentMembershipRevocationMarker({
+    required String userId,
+    required DateTime markedAt,
+  }) async => false;
+}
+
 /// A repository whose signOut throws synchronously (a non-async method), the
 /// way a failure before the first await of the real call would.
 class _SyncThrowRepository extends _RevocationRepository {
@@ -68,10 +106,13 @@ void main() {
   late AppAuthController controller;
   late List<Object> reported;
 
-  Future<void> start(_RevocationRepository repository) async {
+  Future<void> start(
+    _RevocationRepository repository, {
+    LastKnownIdentityStore? identityStore,
+  }) async {
     repo = repository;
     addTearDown(repo.dispose);
-    controller = AppAuthController(repo);
+    controller = AppAuthController(repo, lastKnownIdentityStore: identityStore);
     await controller.restoreSession();
     expect(controller.state.status, AppAuthStatus.signedIn);
     reported = [];
@@ -167,7 +208,16 @@ void main() {
 
   group('a synchronous throw of the repository call', () {
     setUp(() async {
-      await start(_SyncThrowRepository());
+      await start(
+        _SyncThrowRepository(),
+        identityStore: _FakeLastKnownIdentityStore(
+          const LastKnownIdentity(
+            userId: 'u3',
+            email: 'u3@example.com',
+            organizationId: null,
+          ),
+        ),
+      );
     });
 
     test('is a handled revocation failure: signs out, reported once, and '
@@ -178,11 +228,16 @@ void main() {
       expect(reported, hasLength(1));
       expect(reported.single, isA<StateError>());
 
-      // _isSigningOut was reset: a later null session on a new sign-in cycle
-      // is mapped by the normal rules, not as an in-flight sign-out.
+      // _isSigningOut was reset: u3 signs in and later loses the session. With
+      // u3's identity on file that is sessionExpired (D2); a stuck signing-out
+      // flag would map the null session to signedOut.
       repo.emit(const AppAuthSession(userId: 'u3', email: 'u3@example.com'));
       await pumpEventQueue();
       expect(controller.state.status, AppAuthStatus.signedIn);
+      repo.emit(null);
+      await pumpEventQueue();
+      expect(controller.state.status, AppAuthStatus.sessionExpired);
+      expect(controller.state.currentUserId, 'u3');
     });
   });
 }
