@@ -169,18 +169,35 @@ class AppAuthController extends ChangeNotifier {
   /// settles, whichever is first. The revocation keeps running; its result
   /// is handled once by [_handleRevocationResult] and never thrown.
   Future<void> signOut() async {
+    // SO3: a second call while one is in flight joins it instead of starting
+    // a second repository sign-out.
+    final inFlight = _pendingLocalSignOut;
+    if (inFlight != null) {
+      return inFlight.future;
+    }
     _authGeneration += 1;
+    final generation = _authGeneration;
     _isSigningOut = true;
     final localSignOut = Completer<void>();
     _pendingLocalSignOut = localSignOut;
-    final revocation = _repository.signOut().then<(Object, StackTrace)?>(
-      (_) => null,
-      onError: (Object error, StackTrace stackTrace) => (error, stackTrace),
-    );
+    // Future.sync: a synchronous throw of the repository call is a handled
+    // revocation failure like any other, not an escape that skips the
+    // cleanup below.
+    final revocation = Future<void>.sync(_repository.signOut)
+        .then<(Object, StackTrace)?>(
+          (_) => null,
+          onError: (Object error, StackTrace stackTrace) => (error, stackTrace),
+        );
     unawaited(revocation.then((_) => _completeLocalSignOut(localSignOut)));
     try {
       await localSignOut.future;
-      _setState(const AppAuthState(status: AppAuthStatus.signedOut));
+      // The null event of this sign-out has already applied signedOut and
+      // advanced the generation; any other advance is a newer auth event
+      // (for example a sign-in) that must not be overwritten: it would fire
+      // the signedOut purge edge for the new user.
+      if (_authGeneration == generation) {
+        _setState(const AppAuthState(status: AppAuthStatus.signedOut));
+      }
     } finally {
       _isSigningOut = false;
       if (identical(_pendingLocalSignOut, localSignOut)) {

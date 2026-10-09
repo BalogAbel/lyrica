@@ -45,9 +45,26 @@ import '../support/drift_test_setup.dart';
 const _userA = 'user-a';
 const _orgA = 'org-a';
 
-class _HangingHttpClient extends http.BaseClient {
+/// Counts the backend session revocations (`/auth/v1/logout`), so a test can
+/// prove a sign-out really sent its revocation: without the count, a skipped
+/// revocation would keep the offline tests green.
+abstract class _CountingHttpClient extends http.BaseClient {
+  int logoutRequests = 0;
+
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) {
+    if (request.url.path == '/auth/v1/logout') {
+      logoutRequests += 1;
+    }
+    return respond(request);
+  }
+
+  Future<http.StreamedResponse> respond(http.BaseRequest request);
+}
+
+class _HangingHttpClient extends _CountingHttpClient {
+  @override
+  Future<http.StreamedResponse> respond(http.BaseRequest request) {
     return Completer<http.StreamedResponse>().future;
   }
 }
@@ -62,9 +79,9 @@ class _HangingHttpClient extends http.BaseClient {
 /// sign-out's identity clear queued behind it. Only GET and HEAD stay open
 /// like [_HangingHttpClient]: PostgREST retries a failed GET with real
 /// back-off timers, which would outlive the test under widget-test fake time.
-class _FailingHttpClient extends http.BaseClient {
+class _FailingHttpClient extends _CountingHttpClient {
   @override
-  Future<http.StreamedResponse> send(http.BaseRequest request) {
+  Future<http.StreamedResponse> respond(http.BaseRequest request) {
     final retriedByPostgrest =
         request.method == 'GET' || request.method == 'HEAD';
     if (request.url.path.startsWith('/auth/v1/') || !retriedByPostgrest) {
@@ -426,7 +443,8 @@ void main() {
     'offline: a confirmed sign-out on a failing network signs out locally, '
     'purges, and raises no unhandled error (SO3)',
     (tester) async {
-      final fixture = _Fixture(httpClient: _FailingHttpClient());
+      final httpClient = _FailingHttpClient();
+      final fixture = _Fixture(httpClient: httpClient);
       await fixture.seed(
         tester,
         cachedSongs: true,
@@ -455,6 +473,11 @@ void main() {
       expect(fixture.authStatus(tester), AppAuthStatus.signedOut);
       expect(await fixture.pendingPlanningMutationCount(tester), 0);
       expect(await fixture.identityUserId(tester), isNull);
+      expect(
+        httpClient.logoutRequests,
+        1,
+        reason: 'the sign-out must still have sent its backend revocation',
+      );
 
       await fixture.tearDown(tester);
     },
@@ -470,9 +493,10 @@ void main() {
           : 'offline (network that never answers): the command signs out '
                 'and a second run is not held (SO3)',
       (tester) async {
-        final fixture = _Fixture(
-          httpClient: failingNetwork ? _FailingHttpClient() : null,
-        );
+        final _CountingHttpClient httpClient = failingNetwork
+            ? _FailingHttpClient()
+            : _HangingHttpClient();
+        final fixture = _Fixture(httpClient: httpClient);
         await fixture.seed(
           tester,
           cachedSongs: true,
@@ -491,6 +515,11 @@ void main() {
         expect(outcomes, [SignOutOutcome.signedOut]);
         expect(fixture.authStatus(tester), AppAuthStatus.signedOut);
         expect(tester.takeException(), isNull);
+        expect(
+          httpClient.logoutRequests,
+          1,
+          reason: 'the sign-out must still have sent its backend revocation',
+        );
 
         unawaited(
           command.run(confirmDiscard: (_) async => true).then(outcomes.add),
