@@ -1281,6 +1281,8 @@ git add -A apps/lyron_app/lib apps/lyron_app/test
 git commit -m "fix(sign-out): song list warns from the user-wide pending count (SO2, SO3, W2)"
 ```
 
+**Executed 2026-10-09 (`6fe62f9`):** the full suite also failed two tests in `test/app/lyron_app_test.dart` that leave `planningLocalDatabaseProvider` at its file-backed default, which never opens under fake time; the command's count waited on it. With the user's approval both override it with an in-memory database (spec, intentional change 7); no assertion changed.
+
 ---
 
 ### Task 6: The Account sign-out uses the command (SO1, closes W1; AC1, AC3)

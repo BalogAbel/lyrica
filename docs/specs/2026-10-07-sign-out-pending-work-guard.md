@@ -380,6 +380,14 @@ before this spec too, under the same table. No ADR-035 change.
    throws a backend revocation failure (W3). No existing test expects it to
    throw (checked: `app_auth_controller_test.dart` uses `signOutError` only
    with `cancelReauthToPriorSession`).
+7. Harness only, approved 2026-10-09: two tests in
+   `apps/lyron_app/test/app/lyron_app_test.dart` ("explicit sign-out removes
+   cached authenticated access", "signing in again after explicit sign-out
+   refreshes the catalog in the same app session") now override
+   `planningLocalDatabaseProvider` with an in-memory database. The command
+   counts pending work through it, and the file-backed default
+   (`PlanningLocalDatabase.local()`, path_provider and a background isolate)
+   never opens under widget-test fake time. No assertion changed.
 
 ## Out of scope (pre-existing, unchanged)
 
