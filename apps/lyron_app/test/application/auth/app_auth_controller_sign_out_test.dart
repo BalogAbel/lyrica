@@ -101,6 +101,19 @@ class _SyncThrowRepository extends _RevocationRepository {
   }
 }
 
+/// deleteAccount stays in flight until [deletion] completes, so a test can land
+/// another auth event while the RPC is running.
+class _GatedDeleteRepository extends _RevocationRepository {
+  final deletion = Completer<void>();
+  int deleteAccountCalls = 0;
+
+  @override
+  Future<void> deleteAccount() {
+    deleteAccountCalls += 1;
+    return deletion.future;
+  }
+}
+
 void main() {
   late _RevocationRepository repo;
   late AppAuthController controller;
@@ -204,6 +217,40 @@ void main() {
     expect(controller.state.status, AppAuthStatus.signedIn);
     expect(controller.state.currentUserId, 'u2');
     expect(reported, isEmpty);
+  });
+
+  group('deleteAccount', () {
+    late _GatedDeleteRepository gated;
+
+    setUp(() async {
+      gated = _GatedDeleteRepository();
+      await start(gated);
+    });
+
+    test('ends signed out when no other auth event landed during the '
+        'RPC', () async {
+      final done = controller.deleteAccount();
+      await pumpEventQueue();
+      gated.deletion.complete();
+      await done;
+      expect(gated.deleteAccountCalls, 1);
+      expect(controller.state.status, AppAuthStatus.signedOut);
+    });
+
+    test('does not overwrite another user\'s sign-in that landed during the '
+        'RPC (SO8)', () async {
+      final done = controller.deleteAccount();
+      gated.emit(const AppAuthSession(userId: 'u2', email: 'u2@example.com'));
+      await pumpEventQueue();
+      expect(controller.state.status, AppAuthStatus.signedIn);
+      expect(controller.state.currentUserId, 'u2');
+
+      gated.deletion.complete();
+      await done;
+      await pumpEventQueue();
+      expect(controller.state.status, AppAuthStatus.signedIn);
+      expect(controller.state.currentUserId, 'u2');
+    });
   });
 
   group('a synchronous throw of the repository call', () {

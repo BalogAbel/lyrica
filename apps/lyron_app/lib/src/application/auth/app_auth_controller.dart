@@ -239,10 +239,16 @@ class AppAuthController extends ChangeNotifier {
 
   Future<void> deleteAccount() async {
     _authGeneration += 1;
+    final generation = _authGeneration;
     _isSigningOut = true;
     try {
       await _repository.deleteAccount();
-      _setState(const AppAuthState(status: AppAuthStatus.signedOut));
+      // SO8 (docs/specs/2026-10-07-sign-out-pending-work-guard.md): a newer
+      // auth event (another user's sign-in during the RPC) must not be
+      // overwritten, or the signedOut edge would purge that user.
+      if (_authGeneration == generation) {
+        _setState(const AppAuthState(status: AppAuthStatus.signedOut));
+      }
     } finally {
       _isSigningOut = false;
     }
