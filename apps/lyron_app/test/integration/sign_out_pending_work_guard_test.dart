@@ -5,13 +5,16 @@
 // context is established.
 //
 // The whole app runs: LyronApp with its real router, membership gate,
-// AppAuthController, LocalDataLifecycle, purge listeners and Drift in-memory
-// stores. Only the network is replaced, by an HTTP client that never answers
-// (see offline_first_startup_gate_test.dart for why that is the one
-// deterministic network shape under widget-test fake time). No session is
-// persisted and user A's identity is on file, so the app cold-starts into
-// sessionExpired(A).
+// AppAuthController, LocalDataLifecycle, purge listeners, the real gotrue
+// client and Drift in-memory stores. Only the network is replaced: by default
+// by an HTTP client that never answers (see offline_first_startup_gate_test.dart
+// for why that is the one deterministic network shape under widget-test fake
+// time). User A's identity is on file. Without a persisted session the app
+// cold-starts into sessionExpired(A); with a persisted, still valid session
+// it starts signedIn(A), and a sign-out then calls the backend through the
+// replaced client (SO3, offline sign-out).
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -48,15 +51,55 @@ class _HangingHttpClient extends http.BaseClient {
   }
 }
 
+/// A dropped connection: every request fails at once, the way an offline
+/// device's requests do. gotrue turns it into an AuthRetryableFetchException
+/// without a status code.
+class _FailingHttpClient extends http.BaseClient {
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) {
+    return Future.error(http.ClientException('network is unreachable'));
+  }
+}
+
+String _jwt({required int expiresAtSeconds}) {
+  String encode(Map<String, Object> json) =>
+      base64Url.encode(utf8.encode(jsonEncode(json))).replaceAll('=', '');
+  return '${encode({'alg': 'HS256', 'typ': 'JWT'})}.'
+      '${encode({'sub': _userA, 'exp': expiresAtSeconds})}.signature';
+}
+
+/// A's persisted session with an access token valid for another hour, so
+/// the cold start needs no token refresh and lands on signedIn(A).
+String _validSessionJsonForA() {
+  final expiresAt = DateTime.now().add(const Duration(hours: 1));
+  return jsonEncode({
+    'access_token': _jwt(
+      expiresAtSeconds: expiresAt.millisecondsSinceEpoch ~/ 1000,
+    ),
+    'token_type': 'bearer',
+    'expires_in': 3600,
+    'expires_at': expiresAt.millisecondsSinceEpoch ~/ 1000,
+    'refresh_token': 'refresh-a',
+    'user': {
+      'id': _userA,
+      'aud': 'authenticated',
+      'email': 'a@lyron.local',
+      'app_metadata': <String, Object>{},
+      'user_metadata': <String, Object>{},
+      'created_at': DateTime.utc(2026, 10, 1).toIso8601String(),
+    },
+  });
+}
+
 class _Fixture {
-  _Fixture()
+  _Fixture({http.Client? httpClient})
     : songDatabase = SongCatalogDatabase.inMemory(),
       planningDatabase = PlanningLocalDatabase.inMemory(),
       identityDatabase = LastKnownIdentityDatabase.inMemory(),
       client = SupabaseClient(
         'https://test.supabase.co',
         'anon-key',
-        httpClient: _HangingHttpClient(),
+        httpClient: httpClient ?? _HangingHttpClient(),
       );
 
   final SongCatalogDatabase songDatabase;
@@ -66,13 +109,36 @@ class _Fixture {
 
   /// A's pending planning mutation is always seeded: it is the unsynced
   /// work at stake. [cachedSongs] and [cachedProjection] decide whether a
-  /// catalog and a planning read context can be established for A.
+  /// catalog and a planning read context can be established for A;
+  /// [pendingSongForA] adds a pending song create of A's;
+  /// [persistedSessionForA] starts the app signedIn(A).
   Future<void> seed(
     WidgetTester tester, {
     required bool cachedSongs,
     required bool cachedProjection,
+    bool pendingSongForA = false,
+    bool persistedSessionForA = false,
   }) async {
     await tester.runAsync(() async {
+      if (pendingSongForA) {
+        await songDatabase
+            .into(songDatabase.cachedCatalogSongMutations)
+            .insert(
+              CachedCatalogSongMutationsCompanion.insert(
+                userId: _userA,
+                organizationId: _orgA,
+                songId: 'song-a-draft',
+                slug: 'a-draft',
+                title: 'A draft',
+                source: '{title:A draft}\n',
+                version: 0,
+                syncStatus: SongSyncStatus.pendingCreate.value,
+              ),
+            );
+      }
+      if (persistedSessionForA) {
+        await client.auth.setInitialSession(_validSessionJsonForA());
+      }
       if (cachedSongs) {
         await DriftSongCatalogStore(songDatabase).replaceActiveSnapshot(
           userId: _userA,
@@ -168,6 +234,16 @@ class _Fixture {
     return count!;
   }
 
+  Future<int> pendingSongMutationCount(WidgetTester tester) async {
+    final count = await tester.runAsync(() async {
+      final rows = await (songDatabase.select(
+        songDatabase.cachedCatalogSongMutations,
+      )..where((table) => table.userId.equals(_userA))).get();
+      return rows.length;
+    });
+    return count!;
+  }
+
   Future<String?> identityUserId(WidgetTester tester) async {
     final identity = await tester.runAsync(
       () => DriftLastKnownIdentityStore(identityDatabase).read(),
@@ -182,6 +258,7 @@ class _Fixture {
     await pumpFrames(tester);
     expect(authStatus(tester), AppAuthStatus.signedOut);
     expect(await pendingPlanningMutationCount(tester), 0);
+    expect(await pendingSongMutationCount(tester), 0);
     expect(await identityUserId(tester), isNull);
   }
 
@@ -203,14 +280,19 @@ class _Fixture {
 void main() {
   suppressDriftMultipleDatabaseWarnings();
 
-  // Red until Task 5 (SO1); spec 2026-10-07 sign-out pending-work guard.
+  // Red until Task 6 (SO1); spec 2026-10-07 sign-out pending-work guard.
   testWidgets(
     'Account > Sign out with pending work warns before deleting '
     'it (a)',
     skip: true,
     (tester) async {
       final fixture = _Fixture();
-      await fixture.seed(tester, cachedSongs: true, cachedProjection: true);
+      await fixture.seed(
+        tester,
+        cachedSongs: true,
+        cachedProjection: true,
+        pendingSongForA: true,
+      );
       await fixture.pumpApp(tester);
       // Precondition: sessionExpired(A), A's own catalog on screen.
       expect(fixture.authStatus(tester), AppAuthStatus.sessionExpired);
@@ -228,6 +310,7 @@ void main() {
             .isNotEmpty,
         status: fixture.authStatus(tester),
         pendingWorkOfA: await fixture.pendingPlanningMutationCount(tester),
+        pendingSongWorkOfA: await fixture.pendingSongMutationCount(tester),
       );
       expect(
         observed,
@@ -235,6 +318,7 @@ void main() {
           warningShown: true,
           status: AppAuthStatus.sessionExpired,
           pendingWorkOfA: 1,
+          pendingSongWorkOfA: 1,
         ),
         reason:
             'the Account sign-out must warn about A\'s unsynced work and '
@@ -247,7 +331,7 @@ void main() {
     },
   );
 
-  // Red until Task 4 (SO2); spec 2026-10-07 sign-out pending-work guard.
+  // Red until Task 5 (SO2); spec 2026-10-07 sign-out pending-work guard.
   testWidgets(
     'song list > Sign out in sessionExpired with no read context '
     'and pending work warns before deleting it (b)',
@@ -322,4 +406,46 @@ void main() {
 
     await fixture.tearDown(tester);
   });
+
+  // Red until Task 4 (SO3, offline sign-out); spec 2026-10-07 sign-out
+  // pending-work guard. gotrue drops the local session and emits signedOut
+  // before it calls the backend, then rethrows that call's network failure.
+  testWidgets(
+    'offline: a confirmed sign-out on a failing network signs out locally, '
+    'purges, and raises no unhandled error (SO3)',
+    skip: true,
+    (tester) async {
+      final fixture = _Fixture(httpClient: _FailingHttpClient());
+      await fixture.seed(
+        tester,
+        cachedSongs: true,
+        cachedProjection: true,
+        persistedSessionForA: true,
+      );
+      await fixture.pumpApp(tester);
+      expect(fixture.authStatus(tester), AppAuthStatus.signedIn);
+
+      await tester.tap(find.byKey(const Key('song-list-overflow-menu')));
+      await fixture.pumpFrames(tester);
+      await tester.tap(find.text(AppStrings.signOutAction));
+      await fixture.pumpFrames(tester);
+      expect(find.text(AppStrings.unsyncedSignOutTitle), findsOneWidget);
+
+      await tester.tap(find.text(AppStrings.unsyncedSignOutConfirmAction));
+      await fixture.pumpFrames(tester);
+
+      expect(
+        tester.takeException(),
+        isNull,
+        reason:
+            'the backend revocation\'s network failure after the local '
+            'sign-out is not an error',
+      );
+      expect(fixture.authStatus(tester), AppAuthStatus.signedOut);
+      expect(await fixture.pendingPlanningMutationCount(tester), 0);
+      expect(await fixture.identityUserId(tester), isNull);
+
+      await fixture.tearDown(tester);
+    },
+  );
 }

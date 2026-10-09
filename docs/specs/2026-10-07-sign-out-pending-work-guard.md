@@ -1,12 +1,13 @@
 # Sign-Out Pending-Work Guard
 
-> Status: proposed 2026-10-07, awaiting approval at the design gate
+> Status: approved 2026-10-09 with two additions (W3 offline sign-out, the
+> explicit catalog lifetime in SO1)
 
 **Branch:** `fix/sign-out-pending-work-guard`
 **Roadmap:** a small fix PR after the cross-user ownership PR (#86) and
 before S0 PR 2 in `docs/plans/2026-10-01-delivery-roadmap.md`
 **Resolves:** W1 and W2 below (found at the end of #86, not recorded in the
-repository before this spec), and O1 of
+repository before this spec), W3 (found at the design gate), and O1 of
 `docs/deferred/2026-10-05-gate-cross-user-leaks.md`
 **Builds on:** ADR-020, ADR-029 (D4, D5, honest null count), ADR-035
 (unchanged; D2, D5.4 and D5.5), ADR-037 (current-user ownership amendment,
@@ -69,6 +70,33 @@ A guard in the same suite pins the harness: with a planning context
 established, the song list's current check warns, and Cancel deletes
 nothing. Green today.
 
+### W3 — an offline sign-out raises an unhandled error (reproduced)
+
+gotrue 2.27.2 signs out in two steps (`gotrue_client.dart:1085-1108`,
+`_signOut`): it drops the local session (`_removeSession()`), emits
+`signedOut`, and only then calls `admin.signOut` on the backend. A failure of
+that call is rethrown unless it is a 401, 403 or 404, and gotrue's fetch
+turns any failure to send (`fetch.dart:188-190`) into an
+`AuthRetryableFetchException` without a status code.
+
+`AppAuthController.signOut()` awaits the whole repository call. Offline, the
+`signedOut` event has already made the state `signedOut` (the app initiated
+the sign-out), and the sign-out purges have already run, but `signOut()`
+then throws. Both sign-out controls start it with `unawaited`, so the error
+is unhandled (on native, Sentry records it as an unhandled event). On a
+network that never answers, the call runs until the response backstop of
+`TracingHttpClient` (60 s for this request,
+`infrastructure/observability/tracing_http_client.dart`); a command lock
+held for the whole call (SO3) would block every further sign-out for that
+long.
+
+Reproduced with the whole app and a client whose every request fails at
+once (a dropped connection), a persisted valid session for A (so the app
+starts `signedIn(A)` and the sign-out calls the backend), and the song
+list's confirmed sign-out: `AuthRetryableFetchException(message:
+ClientException: network is unreachable, statusCode: null)` escaped
+unhandled; the state was `signedOut` and the purge had run.
+
 ### O1 — an explicit sign-out clears another user's identity row (reproduced)
 
 `lastKnownIdentityPersistenceProvider`'s `signedOut` case calls
@@ -111,7 +139,8 @@ screen has no in-app link; it is reachable at `/account` (by URL on web).
 > it, whenever the signing-out user's user-wide pending count is nonzero or
 > unknown. The count, the purge and the identity clear all target the same
 > user: the user who signed out. No sign-out touches another user's data or
-> identity row.
+> identity row. A sign-out completes at the local sign-out, whatever the
+> network does, and never raises an unhandled error.
 
 ## Constraints (from the task, all kept)
 
@@ -132,7 +161,7 @@ screen has no in-app link; it is reachable at `/account` (by URL on web).
 sign-out rule once. It has no `Ref`; its inputs are injected:
 
 ```dart
-enum SignOutOutcome { signedOut, cancelled, superseded, alreadyRunning }
+enum SignOutOutcome { signedOut, cancelled, superseded, alreadyRunning, failed }
 
 typedef SignOutConfirmation = Future<bool> Function(int? pendingCount);
 
@@ -141,6 +170,7 @@ class SignOutCommand {
     required String? Function() currentUserIdReader,
     required Future<int> Function({required String userId}) countPendingWork,
     required Future<void> Function() signOut,
+    required void Function(Object error, StackTrace stackTrace) reportError,
   });
 
   Future<SignOutOutcome> run({required SignOutConfirmation confirmDiscard});
@@ -155,16 +185,26 @@ class SignOutCommand {
   `songCatalogControllerProvider.handleExplicitSignOut()`, then
   `planningSyncControllerProvider.handleExplicitSignOut()`, then
   `AppAuthController.signOut()`.
+- `reportError`: `FlutterError.reportError` (a handled error, SO3).
 
 The provider is app-scoped (not `autoDispose`), like
 `reauthPromptControllerProvider`: the command awaits a count and a dialog,
 and in Riverpod 3 a `Ref` used after its provider was disposed throws
-(checked with context7). The catalog controller is `autoDispose`, but in
-the running app it lives as long as the app: `LyronApp` holds
-`planningSyncControllerProvider`, whose active planning context controller
-listens to `activeCatalogContextProvider`, which watches the catalog
-controller. Reading it from the command therefore never creates it outside
-its lifetime, the same as the song list does today.
+(checked with context7).
+
+**The catalog controller's lifetime is held explicitly.**
+`songCatalogControllerProvider` is `autoDispose`. In the running app it
+happens to live as long as the app (`LyronApp` holds planning, whose active
+planning context listens to the catalog context), but the command does not
+rely on that chain. For the duration of the sign-out sequence it holds a
+`ref.listen(songCatalogControllerProvider, …)` subscription, reads the
+controller through it, and closes it in a `finally`. The catalog purge and
+the catalog's own `signedOut` listener therefore run from whichever screen
+started the sign-out, and the controller is released afterwards. Riverpod
+3.4.3 allows `Ref.listen` outside a provider's build while the ref is
+mounted (`ref.dart`, `_throwIfInvalidUsage`), and a non-`autoDispose`
+provider may listen to an `autoDispose` one; a listen subscription keeps an
+`autoDispose` provider alive until it is closed (context7).
 
 Presentation (`presentation/auth/sign_out_flow.dart`):
 
@@ -205,7 +245,7 @@ The new rule warns in every case the old check warned in: the old rows
 belonged to the current user's active context, a subset of what the
 user-wide count counts.
 
-### SO3 — confirmation, re-validation and one run at a time
+### SO3 — confirmation, re-validation, one run at a time, offline completion
 
 - Cancel, a barrier dismiss, or an unmounted context → `cancelled`. Nothing
   is deleted and no state changes.
@@ -215,9 +255,41 @@ user-wide count counts.
   counted or shown. The same user proceeds: nothing can add work behind the
   modal dialog, and sync only removes rows.
 - A second `run` while one is in flight → `alreadyRunning`, no dialog (a
-  double tap on the Account tile).
+  double tap on the Account tile). The lock is held until the **local**
+  sign-out, not until the backend answers (next bullet).
 - The dialog is awaited outside every lifecycle chain (ADR-035 D5.5 rule 2
   holds trivially: the command is not on the chain).
+
+**Offline completion (closes W3).** `AppAuthController.signOut()` completes
+at the local sign-out:
+
+- It starts the repository's sign-out and completes as soon as either the
+  auth stream reports the null session of this sign-out (gotrue emits it
+  after dropping the local session and before any network call) or the
+  repository call settles, whichever is first. It then applies `signedOut`
+  and resets `_isSigningOut` (the existing "signedOut is sticky" rule covers
+  a late null event). The backend revocation keeps running on its own.
+- The revocation's result is handled exactly once, after the local sign-out
+  has been applied, so the state is already `signedOut` by construction:
+  a connectivity failure (`isConnectivityFailure`, which includes
+  `AuthRetryableFetchException`) is not an error and is not reported; any
+  other failure is reported once through `FlutterError.reportError` as a
+  handled error. `signOut()` never throws a revocation failure, and its
+  caller's outcome is `signedOut`.
+- A failure that lands before gotrue's `signedOut` event (for example a
+  local storage failure while gotrue clears its code verifier) still ends in
+  `signedOut`: gotrue drops the in-memory session synchronously before its
+  first await. It is not a connectivity failure, so it is reported once.
+- Offline, the server-side session is not revoked. That is unchanged: before
+  this spec the revocation failed the same way and nothing retried it.
+
+**Errors in the command.** No sign-out control may raise an unhandled
+error. An error from the sign-out sequence (for example a failed local
+purge) is reported once through `reportError`; the outcome is `failed` and
+the lock is released, so the user can try again. An error while asking (the
+confirmation callback throws) is reported once and counts as not confirmed
+(`cancelled`). An unreadable count is not an error; it becomes `null`
+(SO2).
 
 ### SO4 — the identity clear targets the user who signed out (closes O1)
 
@@ -264,6 +336,16 @@ before this spec too, under the same table. No ADR-035 change.
   scoped out; the capture is local to the one listener.
 - **O1 via `AppAuthController.lastKnownIdentity`.** That is the stored row's
   user, not the signing-out user: exactly O1's defect.
+- **W3 by catching in the screens.** The error would no longer be unhandled,
+  but the command would still wait for the backend, holding its lock for up
+  to 60 s on a network that never answers.
+- **W3 by applying `signedOut` before calling the repository.** It would
+  rely on the order of gotrue's internals instead of on gotrue's own
+  `signedOut` event; waiting for that event (or the call settling) is the
+  local sign-out itself.
+- **Keep the catalog controller alive through the planning chain.** The
+  chain is an accident of the provider graph; an explicit subscription
+  states the requirement where it is needed.
 
 ## Intentional behaviour changes
 
@@ -286,6 +368,10 @@ before this spec too, under the same table. No ADR-035 change.
    user-scoped clear finds no row of user-1 and clears nothing. The test's
    subject (no rewrite after sign-out) is unchanged.
 5. The audit row of a sign-out identity clear carries the user id (was null).
+6. `AppAuthController.signOut()` completes at the local sign-out and never
+   throws a backend revocation failure (W3). No existing test expects it to
+   throw (checked: `app_auth_controller_test.dart` uses `signOutError` only
+   with `cancelReauthToPriorSession`).
 
 ## Out of scope (pre-existing, unchanged)
 
@@ -302,22 +388,43 @@ before this spec too, under the same table. No ADR-035 change.
 Each criterion is a test. The reproduction tests are committed skipped with
 the spec and are red before their task and green after.
 
-- **AC1 (W1):** Account, Sign out with A's pending work: the warning shows,
-  the state stays `sessionExpired`, A's pending work stays.
+- **AC1 (W1):** Account, Sign out with A's pending planning mutation and
+  pending song mutation: the warning shows, the state stays
+  `sessionExpired`, both stay.
 - **AC2 (W2):** song list, Sign out in `sessionExpired(A)` with no catalog and
   no planning context and A's pending work: the same.
 - **AC3 (confirmed sign-out still deletes):** in AC1 and AC2, confirming
-  signs out, deletes A's pending work and clears A's identity row.
+  signs out, deletes A's pending planning and song work and clears A's
+  identity row.
 - **AC4 (guard):** song list with a planning context: the warning shows and
   Cancel deletes nothing (green today, stays green).
-- **AC5 (O1):** B's sign-out after losing the session, and while A's prompt
-  is pending, leaves A's identity row; A's own sign-out clears it (guard).
+- **AC5 (O1, SO4):** B's sign-out after losing the session, and while A's
+  prompt is pending, leaves A's identity row; A's own sign-out clears it
+  (guard). A `signedOut` edge with no observed user clears nothing (a
+  documenting wiring test).
 - **AC6 (SO2, SO3 units):** the command signs out without asking on zero,
   asks with the count on nonzero, asks with `null` when the count throws or
   there is no current user, deletes nothing on cancel, returns `superseded`
   when the user changes during the count or the dialog, and
-  `alreadyRunning` for a second run.
-- **AC7:** `flutter test` (full suite) and `flutter analyze` are green after
+  `alreadyRunning` for a second run; a failing sign-out sequence gives
+  `failed`, is reported once and releases the lock; a throwing confirmation
+  is reported once and gives `cancelled`.
+- **AC7 (SO1 catalog lifetime):** with nothing else listening to the catalog
+  controller, it stays alive through the whole sign-out sequence and is
+  released after it.
+- **AC8 (W3, whole app):** with a failing network and a persisted session,
+  the song list's confirmed sign-out raises no unhandled error, ends
+  `signedOut`, purges and clears the identity row.
+- **AC9 (W3, command, whole app):** with a failing network and with a
+  network that never answers, a run's outcome is `signedOut` with no
+  unhandled error, and a second run is not held (`signedOut`, not
+  `alreadyRunning`) while the first run's backend request is still open.
+- **AC10 (W3 units):** `AppAuthController.signOut()` completes at the
+  stream's null event while the revocation never answers; a connectivity
+  failure of the revocation is not reported; any other failure is reported
+  exactly once and never thrown; a revocation result landing after a new
+  sign-in does not change the new user's state.
+- **AC11:** `flutter test` (full suite) and `flutter analyze` are green after
   every task. No existing test changes except the two named in
   "Intentional behaviour changes" (items 1 and 4). The ownership suite
   (XU1–XU6) stays green.
@@ -333,7 +440,9 @@ entry.
 
 - ADR-020: amendment line on the explicit sign-out row: destructive after a
   warning whenever the signing-out user's user-wide count is nonzero or
-  unknown; one command for every entry point.
+  unknown; one command for every entry point; the sign-out completes at the
+  local sign-out, and an offline backend revocation failure is not an error
+  (W3).
 - ADR-037: the current-user ownership amendment's explicit sign-out bullet
   also covers the identity clear (SO4).
 - `docs/architecture/architecture.md`: the offline-authenticated paragraph
