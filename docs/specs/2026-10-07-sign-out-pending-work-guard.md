@@ -376,13 +376,26 @@ breaks SO3's premise that nothing adds work behind the warning.
 
 ### SO7 — no sign-out while an import is running
 
-The song list's Sign out menu item is disabled while the import is
-`ImportPicking`, `ImportAnalysing`, `ImportAwaitingDuplicateResolution` or
-`ImportCommitting`. The import is the only writer of pending work that runs
-without the user's hand on its screen; every other writer (the song editor,
-planning edits) is a screen of its own, from which no sign-out control is
-reachable. Sign out becomes available again when the import finishes or
-fails.
+The import is the only writer of pending work that runs without the user's
+hand on its own screen; every other writer (the song editor, planning
+edits) is a screen of its own, from which no sign-out control is reachable,
+and sync only removes or transitions rows.
+
+- `isImportRunning` (exhaustive over the sealed import state) is true for
+  `ImportPicking`, `ImportAnalysing`, `ImportAwaitingDuplicateResolution` and
+  `ImportCommitting`.
+- An import run keeps `chordProImportControllerProvider` alive
+  (`ref.keepAlive`) from its first running state until it ends (Idle, Done,
+  Failed, or a reset). Otherwise replacing the song list (for example the
+  re-auth banner's navigation to sign-in) disposed the controller while its
+  commit kept writing, and the remounted song list read `ImportIdle`.
+- The shared sign-out path (`signOutWithPendingWorkGuard`) refuses while a
+  run is in progress and returns `cancelled` without asking, so every
+  sign-out control inherits the rule (the Account screen included).
+- The song list disables both Sign out and Import while a run is in
+  progress, and `startImport` does not start a second run (a second run
+  used to overwrite the first one's state, so the first run's end re-enabled
+  Sign out while the second still wrote). Task 10 review.
 
 ### B3 — Delete account deletes whoever is current at confirm time (pre-existing)
 
@@ -515,9 +528,12 @@ the spec and are red before their task and green after.
   no later step runs (no planning purge, no `AppAuthController.signOut()`),
   and the new user stays signed in. Nothing of the new user is purged or
   cleared, because no later step runs.
-- **AC13 (B2, SO7):** the song list's Sign out item is disabled while an
-  import is picking, analysing, awaiting duplicate resolution or committing,
-  and enabled again when it is done or failed.
+- **AC13 (B2, SO7):** while an import is picking, analysing, awaiting
+  duplicate resolution or committing, the song list's Sign out and Import
+  items are disabled, the shared sign-out path refuses (any control), and a
+  second import does not start; the run keeps its controller alive after the
+  song list is gone; Sign out is enabled again when the run is done or
+  failed.
 - **AC14 (B3, SO8):** a user switch while the Delete account dialog is open:
   confirming deletes nothing.
 - **AC11:** `flutter test` (full suite) and `flutter analyze` are green after

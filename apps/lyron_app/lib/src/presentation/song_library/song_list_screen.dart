@@ -20,15 +20,6 @@ import 'package:lyron_app/src/shared/app_strings.dart';
 
 enum _SongListMenuAction { import, signOut }
 
-// SO7 (docs/specs/2026-10-07-sign-out-pending-work-guard.md): the import
-// writes pending work in the background with the context it captured; a
-// sign-out meanwhile would count too little.
-bool _isImportRunning(ChordProImportState state) =>
-    state is ImportPicking ||
-    state is ImportAnalysing ||
-    state is ImportAwaitingDuplicateResolution ||
-    state is ImportCommitting;
-
 class SongListScreen extends ConsumerStatefulWidget {
   const SongListScreen({super.key});
 
@@ -158,7 +149,7 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
                   );
                 case _SongListMenuAction.signOut:
                   // The import may have started while the menu was open.
-                  if (_isImportRunning(
+                  if (isImportRunning(
                     ref.read(chordProImportControllerProvider),
                   )) {
                     return;
@@ -168,14 +159,18 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
             },
             itemBuilder: (_) => [
               if (_canEditSongs(orgId))
-                const PopupMenuItem(
-                  key: Key('song-import-menu-item'),
+                PopupMenuItem(
+                  key: const Key('song-import-menu-item'),
                   value: _SongListMenuAction.import,
-                  child: Text(AppStrings.songImportAction),
+                  // SO7: one import run at a time.
+                  enabled: !isImportRunning(
+                    ref.read(chordProImportControllerProvider),
+                  ),
+                  child: const Text(AppStrings.songImportAction),
                 ),
               PopupMenuItem(
                 value: _SongListMenuAction.signOut,
-                enabled: !_isImportRunning(
+                enabled: !isImportRunning(
                   ref.read(chordProImportControllerProvider),
                 ),
                 child: const Text(AppStrings.signOutAction),

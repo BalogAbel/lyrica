@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/legacy.dart';
+import 'package:flutter_riverpod/misc.dart' show KeepAliveLink;
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/chordpro_import_service.dart';
 import 'package:lyron_app/src/application/song_library/chordpro_import_types.dart';
@@ -47,16 +48,47 @@ class ImportFailed extends ChordProImportState {
   final String message;
 }
 
+/// SO7 (docs/specs/2026-10-07-sign-out-pending-work-guard.md): an import run
+/// writes pending work in the background with the context it captured.
+bool isImportRunning(ChordProImportState state) => switch (state) {
+  ImportPicking() ||
+  ImportAnalysing() ||
+  ImportAwaitingDuplicateResolution() ||
+  ImportCommitting() => true,
+  ImportIdle() || ImportDone() || ImportFailed() => false,
+};
+
 class ChordProImportController extends StateNotifier<ChordProImportState> {
   ChordProImportController({
     required this._importService,
     required this._contextReader,
+    this._keepAlive,
   }) : super(const ImportIdle());
 
   final ChordProImportService _importService;
   final ActiveCatalogContext? Function() _contextReader;
+  final KeepAliveLink Function()? _keepAlive;
+  KeepAliveLink? _runLink;
+
+  @override
+  set state(ChordProImportState value) {
+    super.state = value;
+    // SO7: a run keeps the provider alive until it ends, so the state the
+    // sign-out guard reads stays truthful even if the song list was replaced.
+    if (isImportRunning(value)) {
+      _runLink ??= _keepAlive?.call();
+    } else {
+      _runLink?.close();
+      _runLink = null;
+    }
+  }
 
   Future<void> startImport() async {
+    // SO7: a second run would overwrite the first run's state, and the first
+    // run's end would then report a running import as finished.
+    if (isImportRunning(state)) {
+      return;
+    }
     final context = _contextReader();
     if (context == null) {
       state = const ImportFailed(AppStrings.songImportNoContextMessage);

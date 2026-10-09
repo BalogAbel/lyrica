@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyron_app/src/application/auth/sign_out_command.dart';
 import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/presentation/song_library/chordpro_import_controller.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 /// SO3 (docs/specs/2026-10-07-sign-out-pending-work-guard.md): the sign-out
@@ -45,6 +46,12 @@ Future<SignOutOutcome> signOutWithPendingWorkGuard(
   BuildContext context,
   WidgetRef ref,
 ) {
+  // SO7 (docs/specs/2026-10-07-sign-out-pending-work-guard.md): every
+  // sign-out control inherits the rule. A running import writes pending work
+  // behind the count.
+  if (isImportRunning(ref.read(chordProImportControllerProvider))) {
+    return Future.value(SignOutOutcome.cancelled);
+  }
   final command = ref.read(signOutCommandProvider);
   return command.run(
     confirmDiscard: (pendingCount) async {

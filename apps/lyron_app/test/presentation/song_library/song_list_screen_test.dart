@@ -25,6 +25,7 @@ import 'package:lyron_app/src/application/song_library/catalog_refresh_status.da
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyron_app/src/application/song_library/chordpro_import_service.dart';
+import 'package:lyron_app/src/application/song_library/chordpro_import_types.dart';
 import 'package:lyron_app/src/application/song_library/song_catalog_controller.dart';
 import 'package:lyron_app/src/application/song_library/song_library_service.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_controller.dart';
@@ -964,6 +965,115 @@ void main() {
     await tester.pump();
     await openMenuAndTapSignOut();
     expect(sequenceRuns, 1);
+  });
+
+  group('import state seeded before the screen is built (SO7)', () {
+    const memberCatalogState = CatalogSnapshotState(
+      context: ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
+      connectionStatus: CatalogConnectionStatus.online,
+      refreshStatus: CatalogRefreshStatus.idle,
+      sessionStatus: CatalogSessionStatus.verified,
+      hasCachedCatalog: true,
+    );
+    const emptyResult = ImportBatchResult(
+      successes: [],
+      duplicates: [],
+      errors: [],
+    );
+
+    // A seed made before pumpWidget does not reach the screen's listener (it
+    // fires on transitions only), so no import dialog opens.
+    Future<int Function()> pumpSeeded(
+      WidgetTester tester,
+      ChordProImportState seed,
+    ) async {
+      var sequenceRuns = 0;
+      final importController = _StatefulImportController()
+        ..setImportState(seed);
+      await tester.pumpWidget(
+        buildApp(
+          songs: const [
+            SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
+          ],
+          catalogState: memberCatalogState,
+          capabilityResolver: CapabilityResolver(
+            gateway: _StaticGateway({
+              Capability.viewSongs,
+              Capability.editSongs,
+            }),
+          ),
+          extraOverrides: [
+            chordProImportControllerProvider.overrideWith(
+              (_) => importController,
+            ),
+            signOutCommandProvider.overrideWithValue(
+              SignOutCommand(
+                currentUserIdReader: () => 'user-1',
+                countPendingWork: ({required userId}) async => 0,
+                signOut: (_) async {
+                  sequenceRuns += 1;
+                  return true;
+                },
+                reportError: (_, _) {},
+              ),
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('song-list-overflow-menu')));
+      await tester.pumpAndSettle();
+      return () => sequenceRuns;
+    }
+
+    bool menuItemEnabled(WidgetTester tester, String label) {
+      final item = find.ancestor(
+        of: find.text(label),
+        matching: find.byWidgetPredicate((w) => w is PopupMenuItem),
+      );
+      return (tester.widget(item) as PopupMenuItem).enabled;
+    }
+
+    final running = <String, ChordProImportState>{
+      'ImportPicking': const ImportPicking(),
+      'ImportAnalysing': const ImportAnalysing(),
+      'ImportAwaitingDuplicateResolution':
+          const ImportAwaitingDuplicateResolution(emptyResult, []),
+      'ImportCommitting': const ImportCommitting(),
+    };
+    for (final entry in running.entries) {
+      testWidgets('${entry.key}: Sign out and Import are disabled', (
+        tester,
+      ) async {
+        final sequenceRuns = await pumpSeeded(tester, entry.value);
+
+        expect(menuItemEnabled(tester, AppStrings.signOutAction), isFalse);
+        expect(menuItemEnabled(tester, AppStrings.songImportAction), isFalse);
+
+        await tester.tap(find.text(AppStrings.signOutAction));
+        await tester.pumpAndSettle();
+        expect(sequenceRuns(), 0);
+      });
+    }
+
+    final finished = <String, ChordProImportState>{
+      'ImportDone': const ImportDone(result: emptyResult, skippedCount: 0),
+      'ImportFailed': const ImportFailed('failed'),
+    };
+    for (final entry in finished.entries) {
+      testWidgets('${entry.key}: Sign out and Import are enabled', (
+        tester,
+      ) async {
+        final sequenceRuns = await pumpSeeded(tester, entry.value);
+
+        expect(menuItemEnabled(tester, AppStrings.signOutAction), isTrue);
+        expect(menuItemEnabled(tester, AppStrings.songImportAction), isTrue);
+
+        await tester.tap(find.text(AppStrings.signOutAction));
+        await tester.pumpAndSettle();
+        expect(sequenceRuns(), 1);
+      });
+    }
   });
 
   testWidgets('create action navigates to the song create screen', (
