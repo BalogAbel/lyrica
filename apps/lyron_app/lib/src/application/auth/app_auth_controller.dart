@@ -29,6 +29,9 @@ class AppAuthController extends ChangeNotifier {
   AppAuthState _state;
   StreamSubscription<AppAuthSession?>? _subscription;
   bool _isSigningOut = false;
+  // SO3 (docs/specs/2026-10-07-sign-out-pending-work-guard.md): completed
+  // at the local sign-out of the [signOut] call in flight.
+  Completer<void>? _pendingLocalSignOut;
   bool _isDisposed = false;
   int _authGeneration = 0;
   AppAuthSession? _pendingReauthCancelSession;
@@ -159,15 +162,62 @@ class AppAuthController extends ChangeNotifier {
     await _repository.sendMagicLink(email: email, redirectTo: redirectTo);
   }
 
+  /// Explicit sign-out. Completes at the local sign-out, not at the backend
+  /// revocation (SO3, W3, docs/specs/2026-10-07-sign-out-pending-work-guard.md):
+  /// gotrue drops the local session and emits signedOut before it calls the
+  /// backend, so this completes on that event or when the repository call
+  /// settles, whichever is first. The revocation keeps running; its result
+  /// is handled once by [_handleRevocationResult] and never thrown.
   Future<void> signOut() async {
     _authGeneration += 1;
     _isSigningOut = true;
+    final localSignOut = Completer<void>();
+    _pendingLocalSignOut = localSignOut;
+    final revocation = _repository.signOut().then<(Object, StackTrace)?>(
+      (_) => null,
+      onError: (Object error, StackTrace stackTrace) => (error, stackTrace),
+    );
+    unawaited(revocation.then((_) => _completeLocalSignOut(localSignOut)));
     try {
-      await _repository.signOut();
+      await localSignOut.future;
       _setState(const AppAuthState(status: AppAuthStatus.signedOut));
     } finally {
       _isSigningOut = false;
+      if (identical(_pendingLocalSignOut, localSignOut)) {
+        _pendingLocalSignOut = null;
+      }
     }
+    unawaited(revocation.then(_handleRevocationResult));
+  }
+
+  void _completeLocalSignOut(Completer<void> localSignOut) {
+    if (!localSignOut.isCompleted) {
+      localSignOut.complete();
+    }
+  }
+
+  // Runs after the local sign-out was applied, so the app is signedOut by
+  // construction: offline, the revocation's failure changes nothing (the
+  // server-side session stays unrevoked, as it did before SO3).
+  void _handleRevocationResult((Object, StackTrace)? failure) {
+    if (failure == null) {
+      return;
+    }
+    final (error, stackTrace) = failure;
+    if (isConnectivityFailure(error)) {
+      return;
+    }
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stackTrace,
+        library: 'AppAuthController',
+        context: ErrorDescription(
+          'signOut: the backend session revocation failed; the app is '
+          'signed out locally',
+        ),
+      ),
+    );
   }
 
   Future<void> deleteAccount() async {
@@ -331,6 +381,11 @@ class AppAuthController extends ChangeNotifier {
     }
     _authGeneration += 1;
     _setState(_stateForSession(session));
+    // SO3: the null session of a sign-out in flight is its local sign-out.
+    final pendingLocalSignOut = _pendingLocalSignOut;
+    if (session == null && pendingLocalSignOut != null) {
+      _completeLocalSignOut(pendingLocalSignOut);
+    }
   }
 
   // D2 (docs/specs/2026-08-19-local-data-durability-contract.md): a null

@@ -23,6 +23,7 @@ import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import 'package:lyron_app/src/app/lyron_app.dart';
 import 'package:lyron_app/src/application/auth/last_known_identity.dart';
+import 'package:lyron_app/src/application/auth/sign_out_command.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
@@ -51,13 +52,25 @@ class _HangingHttpClient extends http.BaseClient {
   }
 }
 
-/// A dropped connection: every request fails at once, the way an offline
-/// device's requests do. gotrue turns it into an AuthRetryableFetchException
-/// without a status code.
+/// The backend is unreachable: every request to `/auth/v1/` (including
+/// gotrue's `/auth/v1/logout`, the backend revocation of a sign-out) fails at
+/// once, the way an offline device's requests do. gotrue turns it into an
+/// AuthRetryableFetchException without a status code. PostgREST RPCs and
+/// writes (anything but GET and HEAD) fail the same way: they are not
+/// retried, and the signedIn identity resolution awaits the membership RPC
+/// (`current_organization_ids`), so leaving it open would also keep the
+/// sign-out's identity clear queued behind it. Only GET and HEAD stay open
+/// like [_HangingHttpClient]: PostgREST retries a failed GET with real
+/// back-off timers, which would outlive the test under widget-test fake time.
 class _FailingHttpClient extends http.BaseClient {
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) {
-    return Future.error(http.ClientException('network is unreachable'));
+    final retriedByPostgrest =
+        request.method == 'GET' || request.method == 'HEAD';
+    if (request.url.path.startsWith('/auth/v1/') || !retriedByPostgrest) {
+      return Future.error(http.ClientException('network is unreachable'));
+    }
+    return Completer<http.StreamedResponse>().future;
   }
 }
 
@@ -407,13 +420,11 @@ void main() {
     await fixture.tearDown(tester);
   });
 
-  // Red until Task 4 (SO3, offline sign-out); spec 2026-10-07 sign-out
-  // pending-work guard. gotrue drops the local session and emits signedOut
-  // before it calls the backend, then rethrows that call's network failure.
+  // W3: gotrue drops the local session and emits signedOut before it calls
+  // the backend, then rethrows that call's network failure (SO3).
   testWidgets(
     'offline: a confirmed sign-out on a failing network signs out locally, '
     'purges, and raises no unhandled error (SO3)',
-    skip: true,
     (tester) async {
       final fixture = _Fixture(httpClient: _FailingHttpClient());
       await fixture.seed(
@@ -448,4 +459,54 @@ void main() {
       await fixture.tearDown(tester);
     },
   );
+
+  // W3, AC9: the outcome is signedOut and the command's lock is released at
+  // the local sign-out, while the backend revocation fails or never answers.
+  for (final failingNetwork in [true, false]) {
+    testWidgets(
+      failingNetwork
+          ? 'offline (failing network): the command signs out and a second '
+                'run is not held (SO3)'
+          : 'offline (network that never answers): the command signs out '
+                'and a second run is not held (SO3)',
+      (tester) async {
+        final fixture = _Fixture(
+          httpClient: failingNetwork ? _FailingHttpClient() : null,
+        );
+        await fixture.seed(
+          tester,
+          cachedSongs: true,
+          cachedProjection: true,
+          persistedSessionForA: true,
+        );
+        await fixture.pumpApp(tester);
+        expect(fixture.authStatus(tester), AppAuthStatus.signedIn);
+
+        final command = fixture.container(tester).read(signOutCommandProvider);
+        final outcomes = <SignOutOutcome>[];
+        unawaited(
+          command.run(confirmDiscard: (_) async => true).then(outcomes.add),
+        );
+        await fixture.pumpFrames(tester);
+        expect(outcomes, [SignOutOutcome.signedOut]);
+        expect(fixture.authStatus(tester), AppAuthStatus.signedOut);
+        expect(tester.takeException(), isNull);
+
+        unawaited(
+          command.run(confirmDiscard: (_) async => true).then(outcomes.add),
+        );
+        await fixture.pumpFrames(tester);
+        expect(
+          outcomes,
+          [SignOutOutcome.signedOut, SignOutOutcome.signedOut],
+          reason:
+              'a second run must not wait for the first run\'s backend '
+              'request',
+        );
+        expect(tester.takeException(), isNull);
+
+        await fixture.tearDown(tester);
+      },
+    );
+  }
 }
