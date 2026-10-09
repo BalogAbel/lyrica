@@ -72,7 +72,10 @@ void main() {
   }) => SignOutCommand(
     currentUserIdReader: () => 'user-1',
     countPendingWork: ({required userId}) async => pendingCount,
-    signOut: () async => onSignOut(),
+    signOut: (_) async {
+      onSignOut();
+      return true;
+    },
     reportError: (_, _) {},
   );
 

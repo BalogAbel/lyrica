@@ -739,12 +739,20 @@ final signOutCommandProvider = Provider<SignOutCommand>((ref) {
     // The catalog controller is autoDispose; the subscription holds it for
     // the whole sequence, including its own signedOut listener, whichever
     // screen started the sign-out, and releases it afterwards.
-    signOut: () async {
+    signOut: (isStillCountedUser) async {
       final catalog = ref.listen(songCatalogControllerProvider, (_, _) {});
       try {
         await catalog.read().handleExplicitSignOut();
+        // SO6 (docs/specs/2026-10-07-sign-out-pending-work-guard.md): a
+        // session that landed meanwhile makes the holders follow the new
+        // user; stop before purging or signing that user out. Each handler
+        // takes its purge user synchronously at its start, so checking
+        // right before the call is enough.
+        if (!isStillCountedUser()) return false;
         await ref.read(planningSyncControllerProvider).handleExplicitSignOut();
+        if (!isStillCountedUser()) return false;
         await authController.signOut();
+        return true;
       } finally {
         catalog.close();
       }

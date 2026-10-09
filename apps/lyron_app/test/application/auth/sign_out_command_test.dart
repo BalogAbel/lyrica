@@ -17,9 +17,10 @@ void main() {
       countedUsers.add(userId);
       return countResult();
     },
-    signOut: () async {
+    signOut: (_) async {
       signOutCalls += 1;
       await signOutStep();
+      return true;
     },
     reportError: (error, _) => reported.add(error),
   );
@@ -178,5 +179,27 @@ void main() {
     expect(outcome, SignOutOutcome.cancelled);
     expect(reported, hasLength(1));
     expect(signOutCalls, 0);
+  });
+
+  test('a sequence that stops because the user changed gives superseded, '
+      'and the predicate follows the current user (SO6)', () async {
+    final seen = <bool>[];
+    final command = SignOutCommand(
+      currentUserIdReader: () => currentUserId,
+      countPendingWork: ({required userId}) async => 0,
+      signOut: (isStillCountedUser) async {
+        seen.add(isStillCountedUser());
+        currentUserId = 'user-b';
+        seen.add(isStillCountedUser());
+        return false;
+      },
+      reportError: (error, _) => reported.add(error),
+    );
+    expect(
+      await command.run(confirmDiscard: (_) async => true),
+      SignOutOutcome.superseded,
+    );
+    expect(seen, [true, false]);
+    expect(reported, isEmpty);
   });
 }

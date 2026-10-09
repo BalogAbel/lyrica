@@ -7,6 +7,13 @@ typedef SignOutConfirmation = Future<bool> Function(int? pendingCount);
 typedef SignOutPendingWorkCounter =
     Future<int> Function({required String userId});
 
+/// The sign-out sequence. [isStillCountedUser] is true while the current
+/// user is still the user whose work was counted and confirmed; the
+/// sequence checks it before every step after the first and returns false
+/// when it stopped because the user changed (SO6).
+typedef SignOutSequence =
+    Future<bool> Function(bool Function() isStillCountedUser);
+
 typedef SignOutErrorReporter =
     void Function(Object error, StackTrace stackTrace);
 
@@ -34,7 +41,7 @@ class SignOutCommand {
 
   final String? Function() _currentUserIdReader;
   final SignOutPendingWorkCounter _countPendingWork;
-  final Future<void> Function() _signOut;
+  final SignOutSequence _signOut;
   final SignOutErrorReporter _reportError;
   bool _running = false;
 
@@ -62,17 +69,25 @@ class SignOutCommand {
           return SignOutOutcome.superseded;
         }
       }
-      try {
-        await _signOut();
-      } catch (error, stackTrace) {
-        // SO3: no sign-out control may raise an unhandled error. The user
-        // can try again: the lock is released below.
-        _reportError(error, stackTrace);
+      final completed = await _runSequence(userId);
+      if (completed == null) {
         return SignOutOutcome.failed;
       }
-      return SignOutOutcome.signedOut;
+      return completed ? SignOutOutcome.signedOut : SignOutOutcome.superseded;
     } finally {
       _running = false;
+    }
+  }
+
+  /// Null when the sequence threw: reported once, the lock is released by
+  /// [run] (SO3). No sign-out control may raise an unhandled error; the user
+  /// can try again.
+  Future<bool?> _runSequence(String? userId) async {
+    try {
+      return await _signOut(() => _currentUserIdReader() == userId);
+    } catch (error, stackTrace) {
+      _reportError(error, stackTrace);
+      return null;
     }
   }
 

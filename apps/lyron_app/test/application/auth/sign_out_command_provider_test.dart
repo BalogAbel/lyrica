@@ -32,6 +32,7 @@ void main() {
   late SongCatalogDatabase songDatabase;
   late List<String> events;
   late AppAuthController authController;
+  late StreamController<AppAuthSession?> sessions;
 
   setUp(() async {
     planningDatabase = PlanningLocalDatabase.inMemory();
@@ -39,7 +40,11 @@ void main() {
     songDatabase = SongCatalogDatabase.inMemory();
     addTearDown(songDatabase.close);
     events = [];
-    authController = AppAuthController(_SignedInAuthRepository(events));
+    sessions = StreamController<AppAuthSession?>.broadcast();
+    addTearDown(sessions.close);
+    authController = AppAuthController(
+      _SignedInAuthRepository(events, sessions.stream),
+    );
     await authController.restoreSession();
   });
 
@@ -127,12 +132,56 @@ void main() {
       'catalog-disposed',
     ]);
   });
+
+  test('a user switch during the catalog purge stops the sequence: no '
+      'planning purge, no sign-out, the new user stays signed in '
+      '(SO6, AC12)', () async {
+    final catalogGate = Completer<void>();
+    final container = ProviderContainer(
+      overrides: [
+        appAuthControllerProvider.overrideWith((_) => authController),
+        planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
+        songCatalogDatabaseProvider.overrideWithValue(songDatabase),
+        songCatalogControllerProvider.overrideWith((ref) {
+          events.add('catalog-created');
+          ref.onDispose(() => events.add('catalog-disposed'));
+          return _GatedSongCatalogController(songDatabase, events, catalogGate);
+        }),
+        planningSyncControllerProvider.overrideWith(
+          (ref) => _RecordingPlanningSyncController(events),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    // No pending work for user-1: the run signs out without asking.
+    final run = container
+        .read(signOutCommandProvider)
+        .run(confirmDiscard: (_) async => true);
+    await pumpEventQueue();
+    expect(events, ['catalog-created', 'catalog-sign-out']);
+
+    // user-2's session lands while the catalog purge of user-1 is held.
+    sessions.add(
+      const AppAuthSession(userId: 'user-2', email: 'user2@example.com'),
+    );
+    await pumpEventQueue();
+    expect(authController.state.currentUserId, 'user-2');
+
+    catalogGate.complete();
+    expect(await run, SignOutOutcome.superseded);
+    await pumpEventQueue();
+    expect(events, ['catalog-created', 'catalog-sign-out', 'catalog-disposed']);
+    expect(authController.state.status, AppAuthStatus.signedIn);
+    expect(authController.state.currentUserId, 'user-2');
+  });
 }
 
 class _SignedInAuthRepository implements AuthRepository {
-  _SignedInAuthRepository(this.events);
+  _SignedInAuthRepository(this.events, this.sessions);
 
   final List<String> events;
+  final Stream<AppAuthSession?> sessions;
 
   @override
   Future<AppAuthSession?> restoreSession() async {
@@ -140,7 +189,7 @@ class _SignedInAuthRepository implements AuthRepository {
   }
 
   @override
-  Stream<AppAuthSession?> watchSession() => const Stream.empty();
+  Stream<AppAuthSession?> watchSession() => sessions;
 
   @override
   Future<void> signInWithOAuth(
