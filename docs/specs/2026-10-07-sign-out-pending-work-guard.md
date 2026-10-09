@@ -1,7 +1,8 @@
 # Sign-Out Pending-Work Guard
 
 > Status: approved 2026-10-09 with two additions (W3 offline sign-out, the
-> explicit catalog lifetime in SO1)
+> explicit catalog lifetime in SO1); implemented on
+> `fix/sign-out-pending-work-guard` (Tasks 1–6)
 
 **Branch:** `fix/sign-out-pending-work-guard`
 **Roadmap:** a small fix PR after the cross-user ownership PR (#86) and

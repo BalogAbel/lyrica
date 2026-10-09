@@ -370,7 +370,9 @@ the new optional parameter.
 - B's explicit sign-out while A's different-user prompt is pending clears A's
   identity (`persistIdentity`'s `signedOut` case clears whatever identity is
   on file). A's plans and pending work stay on disk (AC9) and reappear for A
-  on A's next sign-in. Not a cross-user view.
+  on A's next sign-in. Not a cross-user view. (Closed by SO4 of
+  `docs/specs/2026-10-07-sign-out-pending-work-guard.md`: the sign-out now
+  clears only the signing-out user's identity row.)
 - `_verifiedEmptyMembershipSeen` in the catalog and active planning
   controllers is not reset on a direct user switch. Its effect is on the
   connectivity fallback for the next user's own data only.

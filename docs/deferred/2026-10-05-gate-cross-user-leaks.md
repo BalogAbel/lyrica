@@ -1,9 +1,11 @@
-# Startup Gate and Ownership Review Residuals (C4, F5, N1, N2, O1–O3)
+# Startup Gate and Ownership Review Residuals (C4, F5, N1, N2, O2, O3)
 
 **Slice:** fix/offline-first-startup-gate (found by the adversarial review of
 PR 1 on 2026-10-05). The two cross-user leaks of that review, F6 and F7, were
 closed by `docs/specs/2026-10-06-cross-user-local-first-ownership.md`
-(ADR-037 amendment, 2026-10-06) and removed from this entry.
+(ADR-037 amendment, 2026-10-06) and removed from this entry. O1 (an
+explicit sign-out cleared another user's identity row) was closed by SO4 of
+`docs/specs/2026-10-07-sign-out-pending-work-guard.md` and removed too.
 **Related:**
 - `docs/specs/2026-10-05-offline-first-startup-gate.md` (SG1, SG3)
 - `docs/plans/2026-10-05-offline-first-startup-gate.md` (Task 8b fixed F1 to
@@ -14,8 +16,8 @@ closed by `docs/specs/2026-10-06-cross-user-local-first-ownership.md`
 - `docs/architecture/decisions/ADR-029-reauth-prompt-host-and-different-user-resolution.md`
 
 **Status:** C4, F5, N1 and N2 are low-severity gate cases that show only the
-user's own state. O1–O3 were found by the adversarial review of the
-cross-user ownership PR (2026-10-06); all three are pre-existing and none
+user's own state. O2 and O3 were found by the adversarial review of the
+cross-user ownership PR (2026-10-06); both are pre-existing and neither
 shows one user's data to another or deletes it. None of the entries is a
 cross-user leak.
 
@@ -185,49 +187,6 @@ gate change.
 Offer the cache-only Retry on the `nonConnectivity` view when
 `isSessionExpired`.
 
-## O1 - an explicit sign-out clears another user's identity row (ownership review, non-blocking)
-
-### Problem
-
-The explicit sign-out clears whatever `LastKnownIdentity` row is on file,
-including a row that belongs to a user other than the one signing out. That
-user's local data stays, but their next offline cold start lands on
-`signedOut` instead of `sessionExpired`.
-
-### Event sequence
-
-1. Cold start into `sessionExpired(A)` (A's identity on file).
-2. B signs in, then loses the session: `sessionExpired(B)` with A's identity
-   still on file (the different-user prompt was superseded,
-   `apps/lyron_app/lib/src/application/auth_providers.dart:642`).
-3. B signs out. The catalog and planning sign-out purges target B only
-   (XU5, `song_catalog_controller.dart:697-701`,
-   `planning_sync_controller.dart:368-372`).
-4. `persistIdentity`'s `signedOut` case calls
-   `lifecycle.clearIdentity(reason: PurgeReason.userSignOut)` with no user
-   (`auth_providers.dart:184`), so A's row is cleared.
-
-The same happens when B signs out while A's different-user prompt is still
-pending (recorded as out of scope in the ownership spec).
-
-### Why it is non-blocking
-
-Nobody sees another user's data and nothing of A's is deleted: A's songs,
-plans and pending work stay on disk and return when A signs in. Only A's
-offline cold start is lost until then. Pre-existing.
-
-### Fix sketch
-
-Capture the current user before the `signedOut` edge (the auth listener's
-previous `currentUserId`) and pass it as `clearIdentity(userId: …)`.
-`LocalDataLifecycle.clearIdentity` already gates the clear on that
-parameter (`local_data_lifecycle.dart:356-379`).
-
-### Test sketch
-
-The ownership suite's F6 sequence, then B's sign-out: expect
-`identityStore.read()?.userId == userA`.
-
 ## O2 - mutation sync does not re-check the user between candidates (ownership review, non-blocking)
 
 ### Problem
@@ -304,7 +263,7 @@ planning context unchanged.
 
 C4, F5, N1 and N2 show only the current user's own state, Retry or sign-in
 recovers each of them, and fixing them means changing the gate's resolution
-bookkeeping, which PR 1 had just settled. O1–O3 neither show nor delete
+bookkeeping, which PR 1 had just settled. O2 and O3 neither show nor delete
 another user's data (the exit criterion of the ownership review) and lie
 outside the read-context scope of that PR.
 
@@ -312,7 +271,6 @@ outside the read-context scope of that PR.
 
 No fixed slice. Pick up C4, F5, N1 and N2 when a change touches the gate's
 retry or resolution bookkeeping (`membershipRetryProvider`,
-`ActiveMembershipController`); O1 with the next change to
-`persistIdentity`'s sign-out path; O2 with the next change to either
+`ActiveMembershipController`); O2 with the next change to either
 mutation sync controller; O3 with the next change to the D5 purge
 coordinator. Any of them earlier if reported from the field.
