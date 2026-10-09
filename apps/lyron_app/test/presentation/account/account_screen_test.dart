@@ -1,4 +1,6 @@
 // ignore_for_file: subtype_of_sealed_class
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -48,6 +50,29 @@ class _RecordingController extends AppAuthController {
   }
 }
 
+// SO8 (docs/specs/2026-10-07-sign-out-pending-work-guard.md): a repository
+// whose restored session is user-1 and whose stream the test drives.
+class _SwitchableUserRepo extends _StubRepo {
+  final sessions = StreamController<AppAuthSession?>.broadcast();
+
+  @override
+  Future<AppAuthSession?> restoreSession() async =>
+      const AppAuthSession(userId: 'user-1', email: 'one@example.com');
+
+  @override
+  Stream<AppAuthSession?> watchSession() => sessions.stream;
+}
+
+class _DeleteRecordingController extends AppAuthController {
+  _DeleteRecordingController(super.repository);
+  int deleteCalls = 0;
+
+  @override
+  Future<void> deleteAccount() async {
+    deleteCalls += 1;
+  }
+}
+
 void main() {
   testWidgets('delete confirmation triggers deleteAccount', (tester) async {
     final controller = _RecordingController();
@@ -65,6 +90,42 @@ void main() {
 
     expect(controller.deleted, isTrue);
   });
+
+  testWidgets(
+    'delete confirmation deletes nothing when the user switched while the '
+    'dialog was open (SO8, B3)',
+    (tester) async {
+      final repository = _SwitchableUserRepo();
+      addTearDown(repository.sessions.close);
+      final controller = _DeleteRecordingController(repository);
+      await controller.restoreSession();
+      expect(controller.state.currentUserId, 'user-1');
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appAuthControllerProvider.overrideWith((_) => controller),
+          ],
+          child: const MaterialApp(home: AccountScreen()),
+        ),
+      );
+
+      await tester.tap(find.text('Delete account'));
+      await tester.pump();
+
+      // A sign-in in another tab replaces the user while the dialog is open.
+      repository.sessions.add(
+        const AppAuthSession(userId: 'user-2', email: 'two@example.com'),
+      );
+      await tester.pump();
+      expect(controller.state.currentUserId, 'user-2');
+
+      await tester.tap(find.text('Delete permanently'));
+      await tester.pumpAndSettle();
+
+      expect(controller.deleteCalls, 0);
+    },
+  );
 
   SignOutCommand commandWith({
     required int pendingCount,
