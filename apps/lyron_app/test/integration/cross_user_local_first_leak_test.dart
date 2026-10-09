@@ -448,6 +448,84 @@ void main() {
       expect(await fixture.readPlanNames(), contains('A secret plan'));
     });
   });
+
+  // O1 (docs/deferred/2026-10-05-gate-cross-user-leaks.md,
+  // docs/specs/2026-10-07-sign-out-pending-work-guard.md): an explicit
+  // sign-out clears only the signing-out user's identity row.
+  group('explicit sign-out clears only the signing-out user\'s identity '
+      '(O1)', () {
+    test(
+      'B signing out after losing the session leaves A\'s identity '
+      'row',
+      skip:
+          'red until Task 1 (SO4); spec 2026-10-07 sign-out pending-work guard',
+      () async {
+        final fixture = await _Fixture.create(
+          seedSongsForA: true,
+          seedPlanningForA: true,
+        );
+        await fixture.coldStartAsA();
+        await fixture.signInAs(_sessionB);
+        await fixture.loseSession();
+        expect(fixture.auth.state.status, AppAuthStatus.sessionExpired);
+        expect(fixture.auth.state.currentUserId, _userB);
+        expect((await fixture.identityStore.read())?.userId, _userA);
+
+        await fixture.signOut();
+        expect(fixture.auth.state.status, AppAuthStatus.signedOut);
+
+        expect(
+          (await fixture.identityStore.read())?.userId,
+          _userA,
+          reason: 'B\'s sign-out must not clear A\'s identity row',
+        );
+      },
+    );
+
+    test(
+      'B signing out while A\'s different-user prompt is pending leaves '
+      'A\'s identity row',
+      skip:
+          'red until Task 1 (SO4); spec 2026-10-07 sign-out pending-work guard',
+      () async {
+        final fixture = await _Fixture.create(
+          seedSongsForA: true,
+          seedPlanningForA: true,
+        );
+        await fixture.coldStartAsA();
+        await fixture.signInAs(_sessionB);
+        expect(fixture.auth.state.currentUserId, _userB);
+        expect(
+          fixture.container.read(reauthPromptControllerProvider).pending,
+          isNotNull,
+        );
+
+        await fixture.signOut();
+        expect(fixture.auth.state.status, AppAuthStatus.signedOut);
+
+        expect(
+          (await fixture.identityStore.read())?.userId,
+          _userA,
+          reason: 'B\'s sign-out must not clear A\'s identity row',
+        );
+      },
+    );
+
+    test('A signing out clears A\'s own identity row', () async {
+      final fixture = await _Fixture.create(
+        seedSongsForA: true,
+        seedPlanningForA: true,
+      );
+      await fixture.coldStartAsA();
+      await fixture.signInAs(_sessionA);
+      expect(fixture.auth.state.currentUserId, _userA);
+
+      await fixture.signOut();
+      expect(fixture.auth.state.status, AppAuthStatus.signedOut);
+
+      expect(await fixture.identityStore.read(), isNull);
+    });
+  });
 }
 
 class _Fixture {
