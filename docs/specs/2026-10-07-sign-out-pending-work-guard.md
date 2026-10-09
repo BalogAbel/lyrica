@@ -366,7 +366,8 @@ before this spec too, under the same table. No ADR-035 change.
    "shows a warning before sign out when unsynced changes exist" and "shows a
    warning before sign out when planning mutations are unsynced" drive the
    old source (an overview override and the old message). They are rewritten
-   to seed pending rows and to expect the count message.
+   to override the pending-work counter, restore a session, and expect the
+   count message.
 2. The Account sign-out warns.
 3. B's sign-out keeps A's identity row; A's next offline cold start returns
    to `sessionExpired(A)`, A's own view (ownership spec, XU4).
