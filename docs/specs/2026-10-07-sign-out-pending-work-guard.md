@@ -495,8 +495,12 @@ same rule `signOut()` follows (SO3).
 - The organization switch that drops pending planning mutations (S5b,
   `docs/deferred/2026-10-01-org-switch-drops-pending-planning-mutations.md`).
 - O2, O3, C4, F5, N1 and N2 of the deferred entry.
-- The non-blocking residuals of this slice's reviews (R1–R13):
+- The non-blocking residuals of this slice's reviews (R1–R17):
   `docs/deferred/2026-10-09-sign-out-guard-residuals.md`.
+- The different-user reauth wipe does not recount rows a running import
+  writes behind its prompt (pre-existing, ADR-029 path, found by the second
+  review round; a separate PR by the user's decision):
+  `docs/deferred/2026-10-09-reauth-wipe-uncounted-import-rows.md`.
 
 ## Acceptance criteria
 

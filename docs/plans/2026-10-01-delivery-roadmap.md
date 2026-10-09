@@ -21,7 +21,11 @@
 > (`fix/sign-out-pending-work-guard`,
 > `docs/specs/2026-10-07-sign-out-pending-work-guard.md`: every sign-out
 > control warns from the signing-out user's user-wide pending count, and the
-> identity clear targets only that user, closing O1), then S0 PR 2, then S5a.
+> identity clear targets only that user, closing O1), then a small fix PR
+> for the different-user reauth wipe that does not recount rows a running
+> import writes behind its prompt
+> (`docs/deferred/2026-10-09-reauth-wipe-uncounted-import-rows.md`, found by
+> the sign-out guard's review), then S0 PR 2, then S5a.
 
 ## Purpose
 
