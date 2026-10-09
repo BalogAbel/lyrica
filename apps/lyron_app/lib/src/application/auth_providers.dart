@@ -21,6 +21,7 @@ import 'package:lyron_app/src/application/auth/pending_local_work_counter.dart';
 import 'package:lyron_app/src/application/auth/reauth_prompt_controller.dart';
 import 'package:lyron_app/src/application/auth/reauth_resolution.dart';
 import 'package:lyron_app/src/application/auth/redeem_controller.dart';
+import 'package:lyron_app/src/application/auth/sign_out_command.dart';
 import 'package:lyron_app/src/application/core_providers.dart';
 import 'package:lyron_app/src/application/observability/observability_providers.dart';
 import 'package:lyron_app/src/application/planning_providers.dart';
@@ -718,6 +719,44 @@ final pendingLocalWorkCounterProvider = Provider<PendingLocalWorkCounter>((
   return PendingLocalWorkCounter(
     readPlanningPendingWorkCount: reader.countPlanningPendingWork,
     readSongPendingWorkCount: reader.countSongPendingWork,
+  );
+});
+
+/// SO1 (docs/specs/2026-10-07-sign-out-pending-work-guard.md): the one
+/// explicit sign-out command every sign-out control runs.
+///
+/// App-scoped, not autoDispose, and it watches nothing: a run awaits the
+/// pending-work count and the confirmation dialog, and in Riverpod 3 a Ref
+/// used after its provider was disposed throws.
+final signOutCommandProvider = Provider<SignOutCommand>((ref) {
+  final authController = ref.read(appAuthControllerProvider);
+  return SignOutCommand(
+    currentUserIdReader: () => authController.state.currentUserId,
+    countPendingWork: ({required userId}) =>
+        ref.read(pendingLocalWorkCounterProvider).count(userId: userId),
+    // The song list's sequence before SO1, unchanged: both holders reset and
+    // purge the signing-out user (XU5) before the auth state leaves them.
+    // The catalog controller is autoDispose; the subscription holds it for
+    // the whole sequence, including its own signedOut listener, whichever
+    // screen started the sign-out, and releases it afterwards.
+    signOut: () async {
+      final catalog = ref.listen(songCatalogControllerProvider, (_, _) {});
+      try {
+        await catalog.read().handleExplicitSignOut();
+        await ref.read(planningSyncControllerProvider).handleExplicitSignOut();
+        await authController.signOut();
+      } finally {
+        catalog.close();
+      }
+    },
+    reportError: (error, stackTrace) => FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stackTrace,
+        library: 'SignOutCommand',
+        context: ErrorDescription('an explicit sign-out failed'),
+      ),
+    ),
   );
 });
 
