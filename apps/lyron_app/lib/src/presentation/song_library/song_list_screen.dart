@@ -20,6 +20,15 @@ import 'package:lyron_app/src/shared/app_strings.dart';
 
 enum _SongListMenuAction { import, signOut }
 
+// SO7 (docs/specs/2026-10-07-sign-out-pending-work-guard.md): the import
+// writes pending work in the background with the context it captured; a
+// sign-out meanwhile would count too little.
+bool _isImportRunning(ChordProImportState state) =>
+    state is ImportPicking ||
+    state is ImportAnalysing ||
+    state is ImportAwaitingDuplicateResolution ||
+    state is ImportCommitting;
+
 class SongListScreen extends ConsumerStatefulWidget {
   const SongListScreen({super.key});
 
@@ -148,6 +157,12 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
                         .startImport(),
                   );
                 case _SongListMenuAction.signOut:
+                  // The import may have started while the menu was open.
+                  if (_isImportRunning(
+                    ref.read(chordProImportControllerProvider),
+                  )) {
+                    return;
+                  }
                   unawaited(signOutWithPendingWorkGuard(context, ref));
               }
             },
@@ -158,9 +173,12 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
                   value: _SongListMenuAction.import,
                   child: Text(AppStrings.songImportAction),
                 ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: _SongListMenuAction.signOut,
-                child: Text(AppStrings.signOutAction),
+                enabled: !_isImportRunning(
+                  ref.read(chordProImportControllerProvider),
+                ),
+                child: const Text(AppStrings.signOutAction),
               ),
             ],
           ),

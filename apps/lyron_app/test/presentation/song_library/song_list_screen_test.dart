@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
@@ -12,6 +13,7 @@ import 'package:lyron_app/src/application/auth/auth_repository.dart';
 import 'package:lyron_app/src/application/auth/capability_resolver.dart';
 import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/auth/pending_local_work_counter.dart';
+import 'package:lyron_app/src/application/auth/sign_out_command.dart';
 import 'package:lyron_app/src/application/planning/planning_remote_refresh_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_controller.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_payload.dart';
@@ -22,6 +24,7 @@ import 'package:lyron_app/src/application/song_library/catalog_connection_status
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
+import 'package:lyron_app/src/application/song_library/chordpro_import_service.dart';
 import 'package:lyron_app/src/application/song_library/song_catalog_controller.dart';
 import 'package:lyron_app/src/application/song_library/song_library_service.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_controller.dart';
@@ -40,6 +43,7 @@ import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
+import 'package:lyron_app/src/presentation/song_library/chordpro_import_controller.dart';
 import 'package:lyron_app/src/presentation/song_library/song_list_screen.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
@@ -83,6 +87,7 @@ void main() {
       sessionStatus: CatalogSessionStatus.verified,
       hasCachedCatalog: true,
     ),
+    List<Override> extraOverrides = const [],
   }) {
     final effectiveCatalogState = initialCatalogState ?? catalogState;
     final authRepository = _TestAuthRepository();
@@ -225,6 +230,7 @@ void main() {
 
           return Future.value(songs);
         }),
+        ...extraOverrides,
       ],
       child: MaterialApp.router(routerConfig: router),
     );
@@ -889,6 +895,77 @@ void main() {
     expect(events, ['planning-sign-out', 'auth-sign-out']);
   });
 
+  testWidgets('sign out is unavailable while a ChordPro import runs (SO7)', (
+    tester,
+  ) async {
+    var sequenceRuns = 0;
+    final importController = _StatefulImportController();
+    await tester.pumpWidget(
+      buildApp(
+        songs: const [
+          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
+        ],
+        extraOverrides: [
+          chordProImportControllerProvider.overrideWith(
+            (_) => importController,
+          ),
+          signOutCommandProvider.overrideWithValue(
+            SignOutCommand(
+              currentUserIdReader: () => 'user-1',
+              countPendingWork: ({required userId}) async => 0,
+              signOut: (_) async {
+                sequenceRuns += 1;
+                return true;
+              },
+              reportError: (_, _) {},
+            ),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    Future<void> openMenuAndTapSignOut() async {
+      await tester.tap(find.byKey(const Key('song-list-overflow-menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(AppStrings.signOutAction));
+      await tester.pumpAndSettle();
+    }
+
+    // The item is disabled for every running state. A tap on a disabled item
+    // leaves the menu open, so the barrier closes it.
+    for (final running in <ChordProImportState>[
+      const ImportPicking(),
+      const ImportAnalysing(),
+      const ImportCommitting(),
+    ]) {
+      importController.setImportState(running);
+      await tester.pump();
+      await openMenuAndTapSignOut();
+      expect(sequenceRuns, 0, reason: '${running.runtimeType}');
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+    }
+
+    // The import starts while the menu is already open: the item was built
+    // enabled, and the selection is refused.
+    importController.setImportState(const ImportIdle());
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('song-list-overflow-menu')));
+    await tester.pumpAndSettle();
+    importController.setImportState(const ImportCommitting());
+    await tester.pump();
+    await tester.tap(find.text(AppStrings.signOutAction));
+    await tester.pumpAndSettle();
+    expect(sequenceRuns, 0);
+
+    // Done or failed: Sign out is available again.
+    importController.setImportState(const ImportIdle());
+    await tester.pump();
+    await openMenuAndTapSignOut();
+    expect(sequenceRuns, 1);
+  });
+
   testWidgets('create action navigates to the song create screen', (
     tester,
   ) async {
@@ -1129,6 +1206,22 @@ void main() {
       expect(find.text(AppStrings.songListEmptyMessage), findsNothing);
     },
   );
+}
+
+class _FakeChordProImportService implements ChordProImportService {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// An import controller whose state the test sets directly.
+class _StatefulImportController extends ChordProImportController {
+  _StatefulImportController()
+    : super(
+        importService: _FakeChordProImportService(),
+        contextReader: () => null,
+      );
+
+  void setImportState(ChordProImportState next) => state = next;
 }
 
 class _TestAuthRepository implements AuthRepository {
