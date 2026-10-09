@@ -1037,8 +1037,6 @@ void main() {
     final running = <String, ChordProImportState>{
       'ImportPicking': const ImportPicking(),
       'ImportAnalysing': const ImportAnalysing(),
-      'ImportAwaitingDuplicateResolution':
-          const ImportAwaitingDuplicateResolution(emptyResult, []),
       'ImportCommitting': const ImportCommitting(),
     };
     for (final entry in running.entries) {
@@ -1056,7 +1054,11 @@ void main() {
       });
     }
 
+    // Awaiting duplicates writes nothing until the user resolves them in the
+    // modal dialog, so it never blocks (with no dialog it would block forever).
     final finished = <String, ChordProImportState>{
+      'ImportAwaitingDuplicateResolution':
+          const ImportAwaitingDuplicateResolution(emptyResult, []),
       'ImportDone': const ImportDone(result: emptyResult, skippedCount: 0),
       'ImportFailed': const ImportFailed('failed'),
     };

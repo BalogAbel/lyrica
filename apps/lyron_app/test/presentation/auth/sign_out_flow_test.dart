@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/auth/sign_out_command.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/chordpro_import_service.dart';
+import 'package:lyron_app/src/application/song_library/chordpro_import_types.dart';
 import 'package:lyron_app/src/presentation/auth/sign_out_flow.dart';
 import 'package:lyron_app/src/presentation/song_library/chordpro_import_controller.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
@@ -116,25 +117,50 @@ void main() {
     return (outcome, sequenceRuns);
   }
 
-  testWidgets('a running import cancels the sign-out before the command', (
-    tester,
-  ) async {
-    final (outcome, sequenceRuns) = await signOutWithImportState(
+  // The truth table of isImportRunning, seen through the shared sign-out
+  // path: a phase that writes or ends on its own refuses; every other state
+  // runs the command. Awaiting duplicates writes nothing until the user
+  // resolves them in the modal dialog.
+  const emptyResult = ImportBatchResult(
+    successes: [],
+    duplicates: [],
+    errors: [],
+  );
+  final refusing = <String, ChordProImportState>{
+    'ImportPicking': const ImportPicking(),
+    'ImportAnalysing': const ImportAnalysing(),
+    'ImportCommitting': const ImportCommitting(),
+  };
+  for (final entry in refusing.entries) {
+    testWidgets('${entry.key} cancels the sign-out before the command', (
       tester,
-      const ImportCommitting(),
-    );
-    expect(outcome, SignOutOutcome.cancelled);
-    expect(sequenceRuns, 0);
-  });
+    ) async {
+      final (outcome, sequenceRuns) = await signOutWithImportState(
+        tester,
+        entry.value,
+      );
+      expect(outcome, SignOutOutcome.cancelled);
+      expect(sequenceRuns, 0);
+    });
+  }
 
-  testWidgets('no running import: the flow runs the command', (tester) async {
-    final (outcome, sequenceRuns) = await signOutWithImportState(
-      tester,
-      const ImportIdle(),
-    );
-    expect(outcome, SignOutOutcome.signedOut);
-    expect(sequenceRuns, 1);
-  });
+  final proceeding = <String, ChordProImportState>{
+    'ImportIdle': const ImportIdle(),
+    'ImportAwaitingDuplicateResolution':
+        const ImportAwaitingDuplicateResolution(emptyResult, []),
+    'ImportDone': const ImportDone(result: emptyResult, skippedCount: 0),
+    'ImportFailed': const ImportFailed('failed'),
+  };
+  for (final entry in proceeding.entries) {
+    testWidgets('${entry.key} runs the command', (tester) async {
+      final (outcome, sequenceRuns) = await signOutWithImportState(
+        tester,
+        entry.value,
+      );
+      expect(outcome, SignOutOutcome.signedOut);
+      expect(sequenceRuns, 1);
+    });
+  }
 
   test('the count message is singular for one change', () {
     expect(
