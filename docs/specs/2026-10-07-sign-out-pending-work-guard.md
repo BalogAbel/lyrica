@@ -487,6 +487,8 @@ row of the entry-point table above for this one check; the dialog and
 - The organization switch that drops pending planning mutations (S5b,
   `docs/deferred/2026-10-01-org-switch-drops-pending-planning-mutations.md`).
 - O2, O3, C4, F5, N1 and N2 of the deferred entry.
+- The non-blocking residuals of this slice's reviews (R1–R13):
+  `docs/deferred/2026-10-09-sign-out-guard-residuals.md`.
 
 ## Acceptance criteria
 
