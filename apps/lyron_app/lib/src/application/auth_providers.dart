@@ -146,9 +146,9 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
   var resolutionChain = Future<void>.value();
 
   // SO4 (docs/specs/2026-10-07-sign-out-pending-work-guard.md): the user an
-  // explicit sign-out clears. Fed on every notification synchronously,
-  // before the resolution is queued, because the chain can be blocked
-  // behind a pending different-user prompt.
+  // explicit sign-out clears. Fed synchronously on every notification that
+  // carries a current user, before the resolution is queued, because the
+  // chain can be blocked behind a pending different-user prompt.
   final ownership = CurrentUserOwnership();
 
   bool isCurrent(

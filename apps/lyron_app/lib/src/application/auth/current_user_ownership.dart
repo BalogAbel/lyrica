@@ -8,6 +8,10 @@
 /// notification. Explicit sign-out is not fed here: the sign-out handlers
 /// reset the holders and choose the purge target themselves (ADR-035,
 /// unchanged).
+///
+/// `lastKnownIdentityPersistenceProvider` also holds one, to name the user
+/// whose identity row an explicit sign-out clears (SO4,
+/// docs/specs/2026-10-07-sign-out-pending-work-guard.md).
 final class CurrentUserOwnership {
   String? _userId;
 
