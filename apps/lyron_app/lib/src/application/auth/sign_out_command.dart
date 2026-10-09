@@ -18,8 +18,9 @@ typedef SignOutErrorReporter =
 /// which is also the scope of the sign-out purges. An unreadable count, or
 /// no current user, is asked about with `null` and never treated as zero
 /// (ADR-029 honest null, ADR-035 D5.4). A confirmed sign-out still deletes
-/// (the 2026-08-19 product decision). No error escapes [run]: it is
-/// reported once through the injected reporter.
+/// (the 2026-08-19 product decision). An error while asking or from the
+/// sign-out sequence never escapes [run]: it is reported once through the
+/// injected reporter. (The user reader is a plain state getter.)
 ///
 /// Holds no `Ref`: the provider in auth_providers.dart injects the reader,
 /// the counter, the sign-out sequence and the reporter.
