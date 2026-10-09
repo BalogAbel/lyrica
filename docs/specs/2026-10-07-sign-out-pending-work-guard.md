@@ -382,20 +382,26 @@ edits) is a screen of its own, from which no sign-out control is reachable,
 and sync only removes or transitions rows.
 
 - `isImportRunning` (exhaustive over the sealed import state) is true for
-  `ImportPicking`, `ImportAnalysing`, `ImportAwaitingDuplicateResolution` and
-  `ImportCommitting`.
-- An import run keeps `chordProImportControllerProvider` alive
-  (`ref.keepAlive`) from its first running state until it ends (Idle, Done,
-  Failed, or a reset). Otherwise replacing the song list (for example the
-  re-auth banner's navigation to sign-in) disposed the controller while its
-  commit kept writing, and the remounted song list read `ImportIdle`.
+  the phases that will write, or end, without further user input:
+  `ImportPicking`, `ImportAnalysing`, `ImportCommitting`. It is false for
+  `ImportAwaitingDuplicateResolution`: nothing is written until the user
+  resolves the duplicates in the modal dialog, which itself blocks every
+  control, and without that dialog nothing can resolve them. Counting it as
+  running would block sign-out for good whenever the dialog has no
+  presenter (the song list was replaced meanwhile).
+- A running phase keeps `chordProImportControllerProvider` alive
+  (`ref.keepAlive`) until the run leaves the running phases. Otherwise
+  replacing the song list (for example the re-auth banner's navigation to
+  sign-in) disposed the controller while its commit kept writing, and the
+  remounted song list read `ImportIdle`. The link is opened and closed
+  before listeners are notified, so a throwing listener cannot leak it.
+  Every running phase ends on its own, so the link is always released.
 - The shared sign-out path (`signOutWithPendingWorkGuard`) refuses while a
   run is in progress and returns `cancelled` without asking, so every
   sign-out control inherits the rule (the Account screen included).
 - The song list disables both Sign out and Import while a run is in
-  progress, and `startImport` does not start a second run (a second run
-  used to overwrite the first one's state, so the first run's end re-enabled
-  Sign out while the second still wrote). Task 10 review.
+  progress; `startImport` does not start a second run, and `reset()` does
+  not interrupt a running phase.
 
 ### B3 — Delete account deletes whoever is current at confirm time (pre-existing)
 
@@ -528,12 +534,12 @@ the spec and are red before their task and green after.
   no later step runs (no planning purge, no `AppAuthController.signOut()`),
   and the new user stays signed in. Nothing of the new user is purged or
   cleared, because no later step runs.
-- **AC13 (B2, SO7):** while an import is picking, analysing, awaiting
-  duplicate resolution or committing, the song list's Sign out and Import
-  items are disabled, the shared sign-out path refuses (any control), and a
-  second import does not start; the run keeps its controller alive after the
-  song list is gone; Sign out is enabled again when the run is done or
-  failed.
+- **AC13 (B2, SO7):** while an import is picking, analysing or committing,
+  the song list's Sign out and Import items are disabled, the shared
+  sign-out path refuses (any control), a second import does not start, and
+  `reset()` does not interrupt it; the run keeps its controller alive after
+  the song list is gone and always releases it when it leaves the running
+  phases; awaiting duplicate resolution, done and failed do not block.
 - **AC14 (B3, SO8):** a user switch while the Delete account dialog is open:
   confirming deletes nothing.
 - **AC11:** `flutter test` (full suite) and `flutter analyze` are green after
