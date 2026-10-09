@@ -188,7 +188,10 @@ Narrowed rule: a local-first read context may belong only to
   user from `CurrentUserOwnership.userId`, the user who signed out, instead
   of from held state or a stale `_lastAuthenticatedUserId`. Before, one
   user's sign-out could purge another user's planning data or catalog (F9),
-  or nobody's.
+  or nobody's. Since 2026-10-09 the identity row the sign-out clears is
+  also the signing-out user's only (SO4 of
+  `docs/specs/2026-10-07-sign-out-pending-work-guard.md`; before, it was
+  whatever row was on file, O1).
 
 No new purge, no `PurgeReason`, no new store write or delete (ADR-035
 unchanged: its `userSignOut` is the act of the user who signed out, and the

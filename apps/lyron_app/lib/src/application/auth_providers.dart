@@ -12,6 +12,7 @@ import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/app_auth_state.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
 import 'package:lyron_app/src/application/auth/capability_resolver.dart';
+import 'package:lyron_app/src/application/auth/current_user_ownership.dart';
 import 'package:lyron_app/src/application/auth/deep_link_listener.dart';
 import 'package:lyron_app/src/application/auth/invitation_repository.dart';
 import 'package:lyron_app/src/application/auth/last_known_identity.dart';
@@ -20,6 +21,7 @@ import 'package:lyron_app/src/application/auth/pending_local_work_counter.dart';
 import 'package:lyron_app/src/application/auth/reauth_prompt_controller.dart';
 import 'package:lyron_app/src/application/auth/reauth_resolution.dart';
 import 'package:lyron_app/src/application/auth/redeem_controller.dart';
+import 'package:lyron_app/src/application/auth/sign_out_command.dart';
 import 'package:lyron_app/src/application/core_providers.dart';
 import 'package:lyron_app/src/application/observability/observability_providers.dart';
 import 'package:lyron_app/src/application/planning_providers.dart';
@@ -144,6 +146,12 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
   // ReauthPromptController.
   var resolutionChain = Future<void>.value();
 
+  // SO4 (docs/specs/2026-10-07-sign-out-pending-work-guard.md): the user an
+  // explicit sign-out clears. Fed synchronously on every notification that
+  // carries a current user, before the resolution is queued, because the
+  // chain can be blocked behind a pending different-user prompt.
+  final ownership = CurrentUserOwnership();
+
   bool isCurrent(
     int generation,
     AppAuthStatus expectedStatus,
@@ -164,6 +172,7 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
     AppAuthState authState,
     int generation,
     AppAuthSession? capturedSession,
+    String? signingOutUserId,
   ) async {
     if (!isCurrent(generation, authState.status, capturedSession)) return;
 
@@ -181,7 +190,16 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
         // AppAuthState). PurgeReason.userSignOut is used for both today;
         // distinguishing them would require adding a discriminator to
         // AppAuthState, out of this task's scope.
-        await lifecycle.clearIdentity(reason: PurgeReason.userSignOut);
+        //
+        // SO4 (docs/specs/2026-10-07-sign-out-pending-work-guard.md): only
+        // the row of the user who signed out (O1: this used to clear
+        // whatever row was on file, including another user's). With no
+        // observed user there is nobody to clear for.
+        if (signingOutUserId == null) return;
+        await lifecycle.clearIdentity(
+          reason: PurgeReason.userSignOut,
+          userId: signingOutUserId,
+        );
         return;
       case AppAuthStatus.sessionExpired:
         return;
@@ -641,8 +659,20 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
     final generation = epoch.invalidate();
     promptController.supersedePending();
     final capturedSession = authState.session;
+    final currentUserId = authState.currentUserId;
+    if (currentUserId != null) {
+      ownership.observe(currentUserId);
+    }
+    final signingOutUserId = authState.status == AppAuthStatus.signedOut
+        ? ownership.userId
+        : null;
     final scheduled = resolutionChain.then(
-      (_) => persistIdentity(authState, generation, capturedSession),
+      (_) => persistIdentity(
+        authState,
+        generation,
+        capturedSession,
+        signingOutUserId,
+      ),
     );
     // Keep the chain itself always-succeeding: one resolution failing must
     // not stall -- or, worse, silently poison -- every resolution queued
@@ -689,6 +719,54 @@ final pendingLocalWorkCounterProvider = Provider<PendingLocalWorkCounter>((
   return PendingLocalWorkCounter(
     readPlanningPendingWorkCount: reader.countPlanningPendingWork,
     readSongPendingWorkCount: reader.countSongPendingWork,
+  );
+});
+
+/// SO1 (docs/specs/2026-10-07-sign-out-pending-work-guard.md): the one
+/// explicit sign-out command every sign-out control runs.
+///
+/// App-scoped, not autoDispose, and it watches nothing: a run awaits the
+/// pending-work count and the confirmation dialog, and in Riverpod 3 a Ref
+/// used after its provider was disposed throws.
+final signOutCommandProvider = Provider<SignOutCommand>((ref) {
+  final authController = ref.read(appAuthControllerProvider);
+  return SignOutCommand(
+    currentUserIdReader: () => authController.state.currentUserId,
+    countPendingWork: ({required userId}) =>
+        ref.read(pendingLocalWorkCounterProvider).count(userId: userId),
+    // The song list's sequence before SO1, unchanged: both holders reset and
+    // purge the signing-out user (XU5) before the auth state leaves them.
+    // The catalog controller is autoDispose; the subscription holds it for
+    // the whole sequence, including its own signedOut listener, whichever
+    // screen started the sign-out, and releases it afterwards.
+    signOut: (isStillCountedUser) async {
+      final catalog = ref.listen(songCatalogControllerProvider, (_, _) {});
+      try {
+        await catalog.read().handleExplicitSignOut();
+        // SO6 (docs/specs/2026-10-07-sign-out-pending-work-guard.md): a
+        // session that landed meanwhile makes the holders follow the new
+        // user; stop before purging or signing that user out. Each handler
+        // takes its purge user synchronously at its start, so checking
+        // right before the call is enough. The one gap left is inside
+        // AppAuthController.signOut(), between gotrue dropping the local
+        // session and its signedOut event (spec SO6 residual).
+        if (!isStillCountedUser()) return false;
+        await ref.read(planningSyncControllerProvider).handleExplicitSignOut();
+        if (!isStillCountedUser()) return false;
+        await authController.signOut();
+        return true;
+      } finally {
+        catalog.close();
+      }
+    },
+    reportError: (error, stackTrace) => FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stackTrace,
+        library: 'SignOutCommand',
+        context: ErrorDescription('an explicit sign-out failed'),
+      ),
+    ),
   );
 });
 

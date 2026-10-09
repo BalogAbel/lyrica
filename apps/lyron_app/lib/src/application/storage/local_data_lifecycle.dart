@@ -343,9 +343,11 @@ class LocalDataLifecycle {
   /// currently stored row belongs to [userId] (D5.5 rule 5 / closeout
   /// finding 4 -- the discarded first attempt at this gate cleared the
   /// identity row unconditionally, which let a stale confirmation for one
-  /// user delete a different user's row). `userId: null` is the explicit
-  /// sign-out path: there is no owner to check against, so it keeps
-  /// clearing unconditionally, exactly as before.
+  /// user delete a different user's row). The explicit sign-out passes the
+  /// user who signed out (SO4,
+  /// `docs/specs/2026-10-07-sign-out-pending-work-guard.md`); `userId: null`
+  /// still clears unconditionally for a caller with no owner to check
+  /// against.
   ///
   /// This reads the store before clearing when [userId] is supplied --
   /// previously deliberately avoided (see git history) to keep the caller's

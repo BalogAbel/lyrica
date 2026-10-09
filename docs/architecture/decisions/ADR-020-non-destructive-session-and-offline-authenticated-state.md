@@ -7,6 +7,10 @@
 - Spec: `docs/specs/2026-06-28-non-destructive-session-and-offline-relaunch.md`
 - Plan: `docs/plans/2026-06-28-non-destructive-session-and-offline-relaunch.md`
 - Findings: `LF-T1` (keystone), `LF-T2` (partial, client half only), `ARCH-5` (targeted identity seam)
+- Amended: 2026-10-09 — the explicit sign-out warns before it deletes
+  unsynced work, through one command for every sign-out control, and
+  completes at the local sign-out (see "Amendment: the explicit sign-out
+  warning" below; `docs/specs/2026-10-07-sign-out-pending-work-guard.md`).
 
 ## Context
 
@@ -41,7 +45,7 @@ authoritative membership revocation — never on connectivity-driven or unknown 
 | In-session expiry (stream `null` while signed in) | **Non-destructive.** Keep projection + cache + pending mutations; mark offline-authenticated; show re-auth banner. |
 | Cold start, dead token, **known** identity present | **Non-destructive.** Same offline-authenticated state. |
 | Cold start, **no** known identity | Sign-in (unchanged). |
-| Explicit sign-out | **Destructive** (unchanged). |
+| Explicit sign-out | **Destructive** after a warning when the signing-out user has nonzero or unknown pending work (2026-10-09). |
 | Verified-empty membership (online authoritative revocation) | **Destructive** (unchanged). |
 | Re-auth, **same** user | Queue flush + sync. |
 | Re-auth, **different** user with pending data | Confirm before wipe; cancel stays offline-authenticated as prior user. |
@@ -70,6 +74,30 @@ verified-empty revocation) and consolidates the previously scattered in-memory
   preserving the prior location via the `from` query param.
 - Re-auth resolution: same user → flush + sync; different user with prior pending mutations →
   confirm before wiping the prior user's data; cancel keeps the prior user offline-authenticated.
+
+## Amendment: the explicit sign-out warning (2026-10-09)
+
+Spec: `docs/specs/2026-10-07-sign-out-pending-work-guard.md`.
+
+The explicit sign-out stays destructive (the 2026-08-19 product decision),
+but the warning in front of it was not reliable: the Account screen's Sign
+out never warned, and the song list warned only about the active context's
+work although the purge is user-wide (W1, W2).
+
+- Every sign-out control runs one application-layer `SignOutCommand`. It
+  counts the signing-out user's user-wide pending work with the ADR-029 D4
+  counter (the purge's own scope). Zero signs out; nonzero or unknown asks
+  first, naming the count or saying it is unknown (ADR-029 honest null).
+  Cancel deletes nothing. If the current user changed while counting or
+  asking, nothing is deleted.
+- The sign-out completes at the local sign-out. Offline, gotrue drops the
+  local session and emits signedOut before the backend revocation fails;
+  that failure is not an error, any other failure is reported once as a
+  handled error, and nothing waits for the backend (W3).
+- The identity row an explicit sign-out clears is the signing-out user's
+  only (SO4).
+
+The purges, their targets (ADR-037, XU5) and ADR-035 are unchanged.
 
 ## Consequences
 

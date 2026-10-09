@@ -16,8 +16,16 @@
 > (2026-10-06).
 > Sequencing: the F6/F7 cross-user-leak fix PR (#86, `fix/cross-user-local-first-leaks`,
 > `docs/specs/2026-10-06-cross-user-local-first-ownership.md`, which also
-> closes three related paths and a planning data-loss case, F8), then S0 PR 2,
-> then S5a.
+> closes three related paths and a planning data-loss case, F8; merged as
+> `c222e44`), then the sign-out pending-work guard PR
+> (`fix/sign-out-pending-work-guard`,
+> `docs/specs/2026-10-07-sign-out-pending-work-guard.md`: every sign-out
+> control warns from the signing-out user's user-wide pending count, and the
+> identity clear targets only that user, closing O1), then a small fix PR
+> for the different-user reauth wipe that does not recount rows a running
+> import writes behind its prompt
+> (`docs/deferred/2026-10-09-reauth-wipe-uncounted-import-rows.md`, found by
+> the sign-out guard's review), then S0 PR 2, then S5a.
 
 ## Purpose
 

@@ -48,7 +48,7 @@ Unified sync coverage includes:
 - `ForegroundSyncListener` unit test for resume-only firing.
 - Header sync control widget tests for green/yellow/red label and color, and popup widget tests for empty state, song row + plan conflict row rendering, `Sync now` button, and specific reason chips for `conflict`, `authorization_denied`, `dependency_blocked`, `remote_missing`, and `sync_failed`.
 - Popup recovery widget tests for the typed sync/discard contention path: per-row discard and **Discard All** show the dedicated “Sync is in progress. Try again after it finishes.” guidance, leave the expected path out of generic exception/failure messaging, and preserve both domains unchanged when Discard All admission is rejected.
-- Sign-out warning routing through `unifiedSyncOverviewProvider.hasUnsyncedWork` instead of the legacy per-domain providers.
+- Sign-out warning decided by `SignOutCommand` from the signing-out user's user-wide pending count (unit tests for zero, nonzero, unknown, cancel, superseded, a second run, a failing sequence and a throwing confirmation), not from the active context.
 - Refresh-failure preservation test confirming a failed catalog refresh keeps the header green and surfaces `stale` freshness without changing the primary header color.
 - `UnifiedRowRecoveryController` unit tests driving the controller directly through its provider, with no widget in the picture: `keepMine` and `discardMine` complete their mutation and their `songMutationEntriesProvider`/`songLibraryListProvider` invalidations even when the caller that started them is gone, and `applyToGroup` performs all of its post-work — the `planningDataRevisionProvider` bump (asserted explicitly, since it is the only thing that reaches the three planning slug/detail *family* providers, which are never invalidated directly) plus the `planningMutationEntriesProvider`/`planningPlanListProvider` invalidations. These fail against the prior `context.mounted`-guarded popup code.
 
@@ -514,6 +514,20 @@ plans through a local-first path". Rules for extending it:
   `UncontrolledProviderScope` over the same container).
 - To pin an interleaving, pause the real Drift read for one user
   (`_ReadGate`), never replace the store.
+
+#### Sign-out pattern
+
+`apps/lyron_app/test/integration/sign_out_pending_work_guard_test.dart`
+(`docs/specs/2026-10-07-sign-out-pending-work-guard.md`) pins every sign-out
+control against the whole app (`LyronApp`) with the real gotrue client. The
+network is a hanging client, or a failing one that fails auth requests and
+every non-GET request at once and leaves GET/HEAD open (PostgREST retries a
+failed GET with real back-off timers that would outlive the test under fake
+time). A persisted, still valid session makes the sign-out call the backend;
+both fakes count `/auth/v1/logout` so a skipped revocation cannot pass.
+Extend it when a sign-out control is added. A widget test that signs out
+through the real command must give `planningLocalDatabaseProvider` an
+in-memory database: the file-backed default never opens under fake time.
 
 #### Real auth client rule (offline startup)
 

@@ -9,12 +9,12 @@ import 'package:lyron_app/src/application/song_library/catalog_refresh_status.da
 import 'package:lyron_app/src/application/song_library/chordpro_import_types.dart';
 import 'package:lyron_app/src/domain/core/capability.dart';
 import 'package:lyron_app/src/presentation/auth/reauth_banner.dart';
+import 'package:lyron_app/src/presentation/auth/sign_out_flow.dart';
 import 'package:lyron_app/src/presentation/shared/if_capability.dart';
 import 'package:lyron_app/src/presentation/song_library/chordpro_import_controller.dart';
 import 'package:lyron_app/src/presentation/song_library/widgets/import_duplicate_dialog.dart';
 import 'package:lyron_app/src/presentation/song_library/widgets/import_summary_dialog.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_header_control.dart';
-import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
@@ -148,19 +148,32 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
                         .startImport(),
                   );
                 case _SongListMenuAction.signOut:
-                  unawaited(_signOut(context, ref));
+                  // The import may have started while the menu was open.
+                  if (isImportRunning(
+                    ref.read(chordProImportControllerProvider),
+                  )) {
+                    return;
+                  }
+                  unawaited(signOutWithPendingWorkGuard(context, ref));
               }
             },
             itemBuilder: (_) => [
               if (_canEditSongs(orgId))
-                const PopupMenuItem(
-                  key: Key('song-import-menu-item'),
+                PopupMenuItem(
+                  key: const Key('song-import-menu-item'),
                   value: _SongListMenuAction.import,
-                  child: Text(AppStrings.songImportAction),
+                  // SO7: one import run at a time.
+                  enabled: !isImportRunning(
+                    ref.read(chordProImportControllerProvider),
+                  ),
+                  child: const Text(AppStrings.songImportAction),
                 ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: _SongListMenuAction.signOut,
-                child: Text(AppStrings.signOutAction),
+                enabled: !isImportRunning(
+                  ref.read(chordProImportControllerProvider),
+                ),
+                child: const Text(AppStrings.signOutAction),
               ),
             ],
           ),
@@ -307,41 +320,6 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
       return;
     }
     context.push(AppRoutes.songCreate.path);
-  }
-
-  Future<void> _signOut(BuildContext context, WidgetRef ref) async {
-    final hasUnsyncedChanges = ref
-        .read(unifiedSyncOverviewProvider)
-        .hasUnsyncedWork;
-    if (!context.mounted) {
-      return;
-    }
-    if (hasUnsyncedChanges) {
-      final shouldContinue = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text(AppStrings.unsyncedSignOutTitle),
-          content: const Text(AppStrings.unsyncedSignOutMessage),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text(AppStrings.songCancelAction),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text(AppStrings.unsyncedSignOutConfirmAction),
-            ),
-          ],
-        ),
-      );
-      if (shouldContinue != true) {
-        return;
-      }
-    }
-
-    await ref.read(songCatalogControllerProvider).handleExplicitSignOut();
-    await ref.read(planningSyncControllerProvider).handleExplicitSignOut();
-    await ref.read(appAuthControllerProvider).signOut();
   }
 
   Future<void> _resolveImportDuplicates(
