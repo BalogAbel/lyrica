@@ -310,56 +310,51 @@ class _Fixture {
 void main() {
   suppressDriftMultipleDatabaseWarnings();
 
-  // Red until Task 6 (SO1); spec 2026-10-07 sign-out pending-work guard.
-  testWidgets(
-    'Account > Sign out with pending work warns before deleting '
-    'it (a)',
-    skip: true,
-    (tester) async {
-      final fixture = _Fixture();
-      await fixture.seed(
-        tester,
-        cachedSongs: true,
-        cachedProjection: true,
-        pendingSongForA: true,
-      );
-      await fixture.pumpApp(tester);
-      // Precondition: sessionExpired(A), A's own catalog on screen.
-      expect(fixture.authStatus(tester), AppAuthStatus.sessionExpired);
-      expect(find.text('A song'), findsOneWidget);
+  testWidgets('Account > Sign out with pending work warns before deleting '
+      'it (a)', (tester) async {
+    final fixture = _Fixture();
+    await fixture.seed(
+      tester,
+      cachedSongs: true,
+      cachedProjection: true,
+      pendingSongForA: true,
+    );
+    await fixture.pumpApp(tester);
+    // Precondition: sessionExpired(A), A's own catalog on screen.
+    expect(fixture.authStatus(tester), AppAuthStatus.sessionExpired);
+    expect(find.text('A song'), findsOneWidget);
 
-      fixture.router(tester).go(AppRoutes.account.path);
-      await fixture.pumpFrames(tester);
-      await tester.tap(find.text(AppStrings.signOutAction));
-      await fixture.pumpFrames(tester);
+    fixture.router(tester).go(AppRoutes.account.path);
+    await fixture.pumpFrames(tester);
+    await tester.tap(find.text(AppStrings.signOutAction));
+    await fixture.pumpFrames(tester);
 
-      final observed = (
-        warningShown: find
-            .text(AppStrings.unsyncedSignOutTitle)
-            .evaluate()
-            .isNotEmpty,
-        status: fixture.authStatus(tester),
-        pendingWorkOfA: await fixture.pendingPlanningMutationCount(tester),
-        pendingSongWorkOfA: await fixture.pendingSongMutationCount(tester),
-      );
-      expect(
-        observed,
-        (
-          warningShown: true,
-          status: AppAuthStatus.sessionExpired,
-          pendingWorkOfA: 1,
-          pendingSongWorkOfA: 1,
-        ),
-        reason:
-            'the Account sign-out must warn about A\'s unsynced work and '
-            'delete nothing before the user confirms',
-      );
+    final observed = (
+      warningShown: find
+          .text(AppStrings.unsyncedSignOutTitle)
+          .evaluate()
+          .isNotEmpty,
+      status: fixture.authStatus(tester),
+      pendingWorkOfA: await fixture.pendingPlanningMutationCount(tester),
+      pendingSongWorkOfA: await fixture.pendingSongMutationCount(tester),
+    );
+    expect(
+      observed,
+      (
+        warningShown: true,
+        status: AppAuthStatus.sessionExpired,
+        pendingWorkOfA: 1,
+        pendingSongWorkOfA: 1,
+      ),
+      reason:
+          'the Account sign-out must warn about A\'s unsynced work and '
+          'delete nothing before the user confirms',
+    );
 
-      await fixture.confirmDiscardAndExpectDeleted(tester);
+    await fixture.confirmDiscardAndExpectDeleted(tester);
 
-      await fixture.tearDown(tester);
-    },
-  );
+    await fixture.tearDown(tester);
+  });
 
   testWidgets('song list > Sign out in sessionExpired with no read context '
       'and pending work warns before deleting it (b)', (tester) async {

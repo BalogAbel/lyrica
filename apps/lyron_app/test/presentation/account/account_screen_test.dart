@@ -4,10 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
+import 'package:lyron_app/src/application/auth/sign_out_command.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 import 'package:lyron_app/src/presentation/account/account_screen.dart';
+import 'package:lyron_app/src/shared/app_strings.dart';
 
 class _StubRepo implements AuthRepository {
   @override
@@ -62,5 +64,67 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(controller.deleted, isTrue);
+  });
+
+  SignOutCommand commandWith({
+    required int pendingCount,
+    required void Function() onSignOut,
+  }) => SignOutCommand(
+    currentUserIdReader: () => 'user-1',
+    countPendingWork: ({required userId}) async => pendingCount,
+    signOut: () async => onSignOut(),
+    reportError: (_, _) {},
+  );
+
+  testWidgets('Sign out asks with the pending count before signing out', (
+    tester,
+  ) async {
+    var signedOut = false;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appAuthControllerProvider.overrideWith((_) => _RecordingController()),
+          signOutCommandProvider.overrideWithValue(
+            commandWith(pendingCount: 2, onSignOut: () => signedOut = true),
+          ),
+        ],
+        child: const MaterialApp(home: AccountScreen()),
+      ),
+    );
+
+    await tester.tap(find.text(AppStrings.signOutAction));
+    await tester.pumpAndSettle();
+    expect(
+      find.text(AppStrings.unsyncedSignOutPendingMessage(count: 2)),
+      findsOneWidget,
+    );
+    expect(signedOut, isFalse);
+
+    await tester.tap(find.text(AppStrings.unsyncedSignOutConfirmAction));
+    await tester.pumpAndSettle();
+    expect(signedOut, isTrue);
+  });
+
+  testWidgets('Cancel in the sign-out warning does not sign out', (
+    tester,
+  ) async {
+    var signedOut = false;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appAuthControllerProvider.overrideWith((_) => _RecordingController()),
+          signOutCommandProvider.overrideWithValue(
+            commandWith(pendingCount: 1, onSignOut: () => signedOut = true),
+          ),
+        ],
+        child: const MaterialApp(home: AccountScreen()),
+      ),
+    );
+
+    await tester.tap(find.text(AppStrings.signOutAction));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(AppStrings.songCancelAction));
+    await tester.pumpAndSettle();
+    expect(signedOut, isFalse);
   });
 }

@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/presentation/auth/sign_out_flow.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
@@ -25,7 +28,7 @@ class _AccountScreenState extends ConsumerState<AccountScreen> {
         children: [
           ListTile(
             title: const Text(AppStrings.signOutAction),
-            onTap: () => controller.signOut(),
+            onTap: () => unawaited(signOutWithPendingWorkGuard(context, ref)),
           ),
           ListTile(
             title: const Text(AppStrings.localDataEventsAction),
