@@ -330,6 +330,74 @@ is the purge's own gate, which stays none: the purge runs when the user
 activates sign-out. The warning precedes that act. The song list showed it
 before this spec too, under the same table. No ADR-035 change.
 
+## Adversarial review (2026-10-09): B1–B3
+
+The whole-diff review (Task 8) found three blocking-grade sequences. All
+three already existed on `main` (the old song-list sign-out ran the same
+steps with less checking), but each is an unconfirmed loss or a cross-user
+effect, so they are fixed here. None needs a new purge, a `PurgeReason` or
+an ADR-035 change.
+
+### B1 — a user switch during the sign-out sequence purges the new user (proven)
+
+The command re-checks the user only before the sequence starts. If B's
+session lands while the catalog purge for A runs (a magic link, or a web
+sign-in in another tab, which gotrue broadcasts across tabs), the holders
+follow B (XU2), so the planning handler purges B (`_ownership.userId`),
+`AppAuthController.signOut()` signs B out, the `signedOut` listeners purge
+B's catalog, and SO4 clears B's identity row. B never confirmed anything.
+A probe showed B's pending planning mutation 1 → 0.
+
+### SO6 — the sequence stops when the counted user is no longer current
+
+The command passes the sequence a predicate, "the counted user is still the
+current user", and the sequence checks it before every step after the
+first (before the planning purge and before `AppAuthController.signOut()`).
+If it fails, the sequence stops: nothing more is purged, nobody is signed
+out, and the outcome is `superseded`. Each handler captures its purge user
+synchronously at its start, so a check immediately before the call is
+enough. What was purged before the switch was the signing-out user's own,
+confirmed work.
+
+Residual (recorded in
+`docs/deferred/2026-10-09-sign-out-guard-residuals.md`): a session that
+lands inside `AppAuthController.signOut()`, between `_isSigningOut = true`
+and gotrue's `signedOut` event (gotrue awaits only a local storage call
+there).
+
+### B2 — a running ChordPro import adds work after the count (proven)
+
+The import's commit loop writes `pendingCreate` rows one by one with the
+context captured when the import started, and nothing blocks the song
+list's menu while it runs. A sign-out during the import counts too little:
+with a count of 0 nothing is asked and the rows written meanwhile are
+deleted; with a count of k the dialog names k and more are deleted. This
+breaks SO3's premise that nothing adds work behind the warning.
+
+### SO7 — no sign-out while an import is running
+
+The song list's Sign out menu item is disabled while the import is
+`ImportPicking`, `ImportAnalysing`, `ImportAwaitingDuplicateResolution` or
+`ImportCommitting`. The import is the only writer of pending work that runs
+without the user's hand on its screen; every other writer (the song editor,
+planning edits) is a screen of its own, from which no sign-out control is
+reachable. Sign out becomes available again when the import finishes or
+fails.
+
+### B3 — Delete account deletes whoever is current at confirm time (pre-existing)
+
+The Delete account dialog stays open while the user can change (a web
+sign-in in another tab). Confirming then deletes the new user's server
+account, and the `signedOut` edge purges that user's data.
+
+### SO8 — Delete account deletes only the user it asked
+
+The Account screen captures `currentUserId` before it shows the Delete
+account dialog and, after a confirmation, deletes nothing if the current
+user is no longer that user. This changes the "unchanged" Delete account
+row of the entry-point table above for this one check; the dialog and
+`AppAuthController.deleteAccount()` are otherwise unchanged.
+
 ## Rejected alternatives
 
 - **Keep the context-scoped check and add a dialog to Account only.**
@@ -442,6 +510,15 @@ the spec and are red before their task and green after.
   failure of the revocation is not reported; any other failure is reported
   exactly once and never thrown; a revocation result landing after a new
   sign-in does not change the new user's state.
+- **AC12 (B1, SO6):** a user switch while the catalog purge of the
+  signing-out user runs: the outcome is `superseded`, the planning purge and
+  `AppAuthController.signOut()` do not run, and the new user stays signed in
+  with their pending work and identity row.
+- **AC13 (B2, SO7):** the song list's Sign out item is disabled while an
+  import is picking, analysing, awaiting duplicate resolution or committing,
+  and enabled again when it is done or failed.
+- **AC14 (B3, SO8):** a user switch while the Delete account dialog is open:
+  confirming deletes nothing.
 - **AC11:** `flutter test` (full suite) and `flutter analyze` are green after
   every task. No existing test changes except the two named in
   "Intentional behaviour changes" (items 1 and 4). The ownership suite

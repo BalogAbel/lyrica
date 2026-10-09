@@ -1415,3 +1415,137 @@ git commit -m "fix(sign-out): Account sign-out warns about unsynced work (SO1, W
 - [ ] Exit criterion (spec): only unconfirmed data loss, a cross-user effect, or a view with no way out blocks. Fix blockers TDD-first (full suite each time); record everything else in `docs/deferred/2026-10-05-gate-cross-user-leaks.md` or a new deferred entry.
 - [ ] If the CI dependency audit fails on an upstream version, fix it in a separate `chore(deps)` commit with a targeted `flutter pub upgrade <package>`.
 - [ ] Push and open the PR to `main`; do not merge.
+
+---
+
+## Adversarial review follow-up (2026-10-09)
+
+The Task 8 review found B1–B3 (spec, "Adversarial review (2026-10-09)"). Tasks 9–11 fix them TDD-first with the same discipline and verification as Tasks 1–6 (full suite and analyzer after each task; the only existing tests changed are this PR's own new tests named below). Task 12 records the non-blocking findings and runs one more Opus review of the fixes.
+
+### Task 9: The sign-out sequence stops when the counted user changes (SO6, closes B1; AC12)
+
+**Files:**
+- Modify: `apps/lyron_app/lib/src/application/auth/sign_out_command.dart`
+- Modify: `apps/lyron_app/lib/src/application/auth_providers.dart` (`signOutCommandProvider`)
+- Modify: `apps/lyron_app/test/application/auth/sign_out_command_test.dart` (this PR's file)
+- Modify: `apps/lyron_app/test/application/auth/sign_out_command_provider_test.dart` (this PR's file)
+- Modify: `apps/lyron_app/test/presentation/account/account_screen_test.dart` (only this PR's `commandWith` helper)
+
+- [ ] **Step 1: Failing tests**
+  - Provider test (AC12): copy the lifetime test's setup; give `_SignedInAuthRepository` a broadcast `StreamController<AppAuthSession?>` for `watchSession()` (close it in tearDown) so the test can emit a session. Run the command with no pending work; while the gated catalog sign-out is held, emit `AppAuthSession(userId: 'user-2', email: 'user2@example.com')` and pump until `authController.state.currentUserId == 'user-2'`; release the gate. Expect outcome `SignOutOutcome.superseded`, events exactly `['catalog-created', 'catalog-sign-out', 'catalog-disposed']` (no `planning-sign-out`, no `auth-sign-out`), and `authController.state.status == AppAuthStatus.signedIn` for `user-2`.
+  - Command unit test: a sequence that returns `false` gives `superseded`; the predicate the command passes is true while the reader returns the counted user and false after it changes (assert both inside the sequence).
+  - Run: the provider test fails (planning and auth sign-out run, outcome `signedOut`); the unit tests fail to compile until Step 2 (new sequence signature).
+
+- [ ] **Step 2: Implement**
+
+In `sign_out_command.dart` replace the sign-out step's type and its call:
+
+```dart
+/// The sign-out sequence. [isStillCountedUser] is true while the current
+/// user is still the user whose work was counted and confirmed; the
+/// sequence checks it before every step after the first and returns false
+/// when it stopped because the user changed (SO6).
+typedef SignOutSequence =
+    Future<bool> Function(bool Function() isStillCountedUser);
+```
+
+`final SignOutSequence _signOut;` (constructor parameter unchanged by name). In `run`, replace the `try { await _signOut(); } catch ...` block and the final `return SignOutOutcome.signedOut;` with:
+
+```dart
+      final completed = await _runSequence(userId);
+      if (completed == null) {
+        return SignOutOutcome.failed;
+      }
+      return completed ? SignOutOutcome.signedOut : SignOutOutcome.superseded;
+```
+
+and add:
+
+```dart
+  /// Null when the sequence threw: reported once, the lock is released by
+  /// [run] (SO3).
+  Future<bool?> _runSequence(String? userId) async {
+    try {
+      return await _signOut(() => _currentUserIdReader() == userId);
+    } catch (error, stackTrace) {
+      _reportError(error, stackTrace);
+      return null;
+    }
+  }
+```
+
+In `signOutCommandProvider`:
+
+```dart
+    signOut: (isStillCountedUser) async {
+      final catalog = ref.listen(songCatalogControllerProvider, (_, _) {});
+      try {
+        await catalog.read().handleExplicitSignOut();
+        // SO6 (docs/specs/2026-10-07-sign-out-pending-work-guard.md): a
+        // session that landed meanwhile makes the holders follow the new
+        // user; stop before purging or signing that user out. Each handler
+        // takes its purge user synchronously at its start, so checking
+        // right before the call is enough.
+        if (!isStillCountedUser()) return false;
+        await ref.read(planningSyncControllerProvider).handleExplicitSignOut();
+        if (!isStillCountedUser()) return false;
+        await authController.signOut();
+        return true;
+      } finally {
+        catalog.close();
+      }
+    },
+```
+
+Update this PR's existing closures to the new signature: in `sign_out_command_test.dart` the `signOut:` closure becomes `(_) async { signOutCalls += 1; await signOutStep(); return true; }` (keep `signOutStep`), and in `account_screen_test.dart`'s `commandWith` `signOut: (_) async { onSignOut(); return true; }`.
+
+- [ ] **Step 3: Green, full suite, analyzer, format, commit** `fix(sign-out): stop the sequence when the counted user changes (SO6, B1)`.
+
+### Task 10: No sign-out while a ChordPro import runs (SO7, closes B2; AC13)
+
+**Files:**
+- Modify: `apps/lyron_app/lib/src/presentation/song_library/song_list_screen.dart`
+- Modify: `apps/lyron_app/test/presentation/song_library/song_list_screen_test.dart` (one new test; `buildApp` may get an optional `List<Override> extraOverrides = const []`, appended last)
+
+- [ ] **Step 1: Failing test.** Override `chordProImportControllerProvider` with a `ChordProImportController` subclass whose state the test sets (construct it with a `noSuchMethod` `ChordProImportService` double and `contextReader: () => null`, then assign `state`), and override `signOutCommandProvider` with a `SignOutCommand` that records its sequence (count 0, `currentUserIdReader: () => 'user-1'`, `reportError: (_, _) {}`). With the state `ImportCommitting()`: open the overflow menu, tap "Sign out", pump: the sequence did not run. Repeat for `ImportPicking()`, `ImportAnalysing()` (a loop is fine). Then set the state to `ImportIdle()`, reopen the menu, tap "Sign out": the sequence ran once. Run: red (the sequence runs during the import).
+- [ ] **Step 2: Implement.** In `song_list_screen.dart` add
+
+```dart
+  // SO7 (docs/specs/2026-10-07-sign-out-pending-work-guard.md): the import
+  // writes pending work in the background with the context it captured; a
+  // sign-out meanwhile would count too little.
+  static bool _isImportRunning(ChordProImportState state) =>
+      state is ImportPicking ||
+      state is ImportAnalysing ||
+      state is ImportAwaitingDuplicateResolution ||
+      state is ImportCommitting;
+```
+
+(as a private top-level function or a method of the state class, matching the file's style). In `itemBuilder`, the Sign out item gets `enabled: !_isImportRunning(ref.read(chordProImportControllerProvider))`; in `onSelected`, the `signOut` case returns without signing out when `_isImportRunning(ref.read(chordProImportControllerProvider))` (the state may change while the menu is open). Import the state types if needed.
+- [ ] **Step 3: Green, full suite, analyzer, format, commit** `fix(sign-out): no sign-out while an import is running (SO7, B2)`.
+
+### Task 11: Delete account deletes only the user it asked (SO8, closes B3; AC14)
+
+**Files:**
+- Modify: `apps/lyron_app/lib/src/presentation/account/account_screen.dart`
+- Modify: `apps/lyron_app/test/presentation/account/account_screen_test.dart` (one new test; keep the existing ones)
+
+- [ ] **Step 1: Failing test.** A repository double with `restoreSession()` → `user-1` and a broadcast `watchSession()` stream, and an `AppAuthController` subclass that records `deleteAccount()`. Call `restoreSession()`, pump `AccountScreen`, tap "Delete account", pump, emit a `user-2` session and pump, tap "Delete permanently", `pumpAndSettle`: `deleteAccount` was NOT called. Run: red (it is called).
+- [ ] **Step 2: Implement.** In the Delete account `onTap`, before `showDialog`:
+
+```dart
+                    // SO8 (docs/specs/2026-10-07-sign-out-pending-work-guard.md):
+                    // delete only the user this dialog asked; a user switch
+                    // while it is open (a sign-in in another tab) must not
+                    // delete the new user's account.
+                    final askedUserId = controller.state.currentUserId;
+```
+
+and change `if (confirmed == true)` to `if (confirmed == true && controller.state.currentUserId == askedUserId)`. The existing "delete confirmation triggers deleteAccount" test must stay green unchanged.
+- [ ] **Step 3: Green, full suite, analyzer, format, commit** `fix(account): delete only the user the dialog asked (SO8, B3)`.
+
+### Task 12: Residuals and re-review (orchestrator)
+
+- [ ] Create `docs/deferred/2026-10-09-sign-out-guard-residuals.md` with the non-blocking findings of the task reviews and of the Opus review (each: problem, event sequence, why non-blocking, fix sketch, trigger), and link it from the spec's "Out of scope".
+- [ ] One Opus 5.5 re-review of the Task 9–11 diff with the same adversarial question and exit criterion. Fix blockers TDD-first; record the rest.
+- [ ] Then Task 8's remaining steps: push and open the PR; do not merge.
