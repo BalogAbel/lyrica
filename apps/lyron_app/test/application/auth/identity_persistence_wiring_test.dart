@@ -79,6 +79,41 @@ void main() {
   );
 
   test(
+    'signedOut with no observed current user clears nothing (SO4)',
+    () async {
+      // SO4 (docs/specs/2026-10-07-sign-out-pending-work-guard.md): the
+      // sign-out clear takes the user who signed out. This controller has no
+      // identity store, so the null restored session maps to signedOut
+      // without any current user ever being observed; the row on file
+      // belongs to nobody this provider acted for, and an unknown
+      // signing-out user never authorises a clear.
+      identityStore.seed(
+        const LastKnownIdentity(
+          userId: 'user-2',
+          email: 'other@example.com',
+          organizationId: 'org-2',
+        ),
+      );
+      final container = ProviderContainer(
+        overrides: [
+          appAuthControllerProvider.overrideWith((_) => authController),
+          lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container.read(appAuthListenableProvider);
+      await authController.restoreSession();
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(authController.state.status, AppAuthStatus.signedOut);
+      expect(identityStore.clearCount, 0);
+      expect((await identityStore.read())?.userId, 'user-2');
+    },
+  );
+
+  test(
     'signedIn falls back to the cached organization when active lookup is unavailable',
     () async {
       authRepository.currentSession = const AppAuthSession(
@@ -334,7 +369,12 @@ void main() {
       await Future<void>.delayed(Duration.zero);
 
       expect(identityStore.writes, isEmpty);
-      expect(identityStore.clearCount, 1);
+      // SO4 (docs/specs/2026-10-07-sign-out-pending-work-guard.md,
+      // intentional change 4): user-1's identity was never written, so the
+      // sign-out clear, scoped to user-1, finds no row of user-1 and clears
+      // nothing. The subject of this test, no rewrite after the sign-out, is
+      // unchanged.
+      expect(identityStore.clearCount, 0);
       expect(authController.state.status, AppAuthStatus.signedOut);
     },
   );

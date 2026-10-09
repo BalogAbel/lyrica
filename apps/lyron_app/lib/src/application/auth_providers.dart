@@ -12,6 +12,7 @@ import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/app_auth_state.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
 import 'package:lyron_app/src/application/auth/capability_resolver.dart';
+import 'package:lyron_app/src/application/auth/current_user_ownership.dart';
 import 'package:lyron_app/src/application/auth/deep_link_listener.dart';
 import 'package:lyron_app/src/application/auth/invitation_repository.dart';
 import 'package:lyron_app/src/application/auth/last_known_identity.dart';
@@ -144,6 +145,12 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
   // ReauthPromptController.
   var resolutionChain = Future<void>.value();
 
+  // SO4 (docs/specs/2026-10-07-sign-out-pending-work-guard.md): the user an
+  // explicit sign-out clears. Fed on every notification synchronously,
+  // before the resolution is queued, because the chain can be blocked
+  // behind a pending different-user prompt.
+  final ownership = CurrentUserOwnership();
+
   bool isCurrent(
     int generation,
     AppAuthStatus expectedStatus,
@@ -164,6 +171,7 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
     AppAuthState authState,
     int generation,
     AppAuthSession? capturedSession,
+    String? signingOutUserId,
   ) async {
     if (!isCurrent(generation, authState.status, capturedSession)) return;
 
@@ -181,7 +189,16 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
         // AppAuthState). PurgeReason.userSignOut is used for both today;
         // distinguishing them would require adding a discriminator to
         // AppAuthState, out of this task's scope.
-        await lifecycle.clearIdentity(reason: PurgeReason.userSignOut);
+        //
+        // SO4 (docs/specs/2026-10-07-sign-out-pending-work-guard.md): only
+        // the row of the user who signed out (O1: this used to clear
+        // whatever row was on file, including another user's). With no
+        // observed user there is nobody to clear for.
+        if (signingOutUserId == null) return;
+        await lifecycle.clearIdentity(
+          reason: PurgeReason.userSignOut,
+          userId: signingOutUserId,
+        );
         return;
       case AppAuthStatus.sessionExpired:
         return;
@@ -641,8 +658,20 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
     final generation = epoch.invalidate();
     promptController.supersedePending();
     final capturedSession = authState.session;
+    final currentUserId = authState.currentUserId;
+    if (currentUserId != null) {
+      ownership.observe(currentUserId);
+    }
+    final signingOutUserId = authState.status == AppAuthStatus.signedOut
+        ? ownership.userId
+        : null;
     final scheduled = resolutionChain.then(
-      (_) => persistIdentity(authState, generation, capturedSession),
+      (_) => persistIdentity(
+        authState,
+        generation,
+        capturedSession,
+        signingOutUserId,
+      ),
     );
     // Keep the chain itself always-succeeding: one resolution failing must
     // not stall -- or, worse, silently poison -- every resolution queued
