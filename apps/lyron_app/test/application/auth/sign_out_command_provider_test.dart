@@ -175,6 +175,61 @@ void main() {
     expect(authController.state.status, AppAuthStatus.signedIn);
     expect(authController.state.currentUserId, 'user-2');
   });
+
+  test('a user switch during the planning purge stops before the auth '
+      'sign-out: the new user stays signed in (SO6, AC12)', () async {
+    final planningGate = Completer<void>();
+    final container = ProviderContainer(
+      overrides: [
+        appAuthControllerProvider.overrideWith((_) => authController),
+        planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
+        songCatalogDatabaseProvider.overrideWithValue(songDatabase),
+        songCatalogControllerProvider.overrideWith((ref) {
+          events.add('catalog-created');
+          ref.onDispose(() => events.add('catalog-disposed'));
+          return _GatedSongCatalogController(
+            songDatabase,
+            events,
+            Completer<void>()..complete(),
+          );
+        }),
+        planningSyncControllerProvider.overrideWith(
+          (ref) => _RecordingPlanningSyncController(events, gate: planningGate),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final run = container
+        .read(signOutCommandProvider)
+        .run(confirmDiscard: (_) async => true);
+    await pumpEventQueue();
+    expect(events, [
+      'catalog-created',
+      'catalog-sign-out',
+      'planning-sign-out',
+    ]);
+
+    // user-2's session lands while the planning purge of user-1 is held.
+    sessions.add(
+      const AppAuthSession(userId: 'user-2', email: 'user2@example.com'),
+    );
+    await pumpEventQueue();
+    expect(authController.state.currentUserId, 'user-2');
+
+    planningGate.complete();
+    expect(await run, SignOutOutcome.superseded);
+    await pumpEventQueue();
+    expect(events, [
+      'catalog-created',
+      'catalog-sign-out',
+      'planning-sign-out',
+      'catalog-disposed',
+    ]);
+    expect(events, isNot(contains('auth-sign-out')));
+    expect(authController.state.status, AppAuthStatus.signedIn);
+    expect(authController.state.currentUserId, 'user-2');
+  });
 }
 
 class _SignedInAuthRepository implements AuthRepository {
@@ -241,7 +296,7 @@ class _GatedSongCatalogController extends SongCatalogController {
 }
 
 class _RecordingPlanningSyncController extends PlanningSyncController {
-  _RecordingPlanningSyncController(this.events)
+  _RecordingPlanningSyncController(this.events, {this.gate})
     : super(
         localStore: () => _NoopPlanningLocalStore(),
         localDataLifecycle: _noopLifecycle(null),
@@ -251,10 +306,12 @@ class _RecordingPlanningSyncController extends PlanningSyncController {
       );
 
   final List<String> events;
+  final Completer<void>? gate;
 
   @override
   Future<void> handleExplicitSignOut() async {
     events.add('planning-sign-out');
+    await gate?.future;
   }
 }
 

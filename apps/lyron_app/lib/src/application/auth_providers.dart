@@ -747,7 +747,9 @@ final signOutCommandProvider = Provider<SignOutCommand>((ref) {
         // session that landed meanwhile makes the holders follow the new
         // user; stop before purging or signing that user out. Each handler
         // takes its purge user synchronously at its start, so checking
-        // right before the call is enough.
+        // right before the call is enough. The one gap left is inside
+        // AppAuthController.signOut(), between gotrue dropping the local
+        // session and its signedOut event (spec SO6 residual).
         if (!isStillCountedUser()) return false;
         await ref.read(planningSyncControllerProvider).handleExplicitSignOut();
         if (!isStillCountedUser()) return false;
