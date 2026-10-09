@@ -1042,6 +1042,10 @@ git add -A apps/lyron_app/lib apps/lyron_app/test
 git commit -m "fix(auth): sign-out completes at the local sign-out; offline revocation failure is not an error (SO3, W3)"
 ```
 
+**Executed 2026-10-09 (`34c0996`, review follow-up `6350cbe`):**
+- Harness: `_FailingHttpClient` fails at once every `/auth/v1/` request and every request that is not GET or HEAD, and leaves GET and HEAD open. A client that failed everything left PostgREST's GET retry back-off timers pending (postgrest 2.9.1 `_executeWithRetry`), the cause of the "Timer is still pending" message (not gotrue's ticker, as assumed above); and an open membership RPC (a POST, not retried) kept the sign-out's identity clear queued behind the signedIn resolution. Both fakes count `/auth/v1/logout` requests and the W3 tests assert exactly one.
+- Review fixes in `signOut()`: `signedOut` is applied only if the auth generation is unchanged since the call started; a call while another is in flight joins it; the repository call starts with `Future<void>.sync`. Three more unit tests (overlapping calls, a sign-in before the revocation settles, a synchronous throw).
+
 ---
 
 ### Task 5: The warning dialog and the song list (SO1–SO3, closes W2; AC2, AC3, AC4)

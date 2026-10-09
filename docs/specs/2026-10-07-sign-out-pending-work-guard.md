@@ -269,6 +269,14 @@ at the local sign-out:
   repository call settles, whichever is first. It then applies `signedOut`
   and resets `_isSigningOut` (the existing "signedOut is sticky" rule covers
   a late null event). The backend revocation keeps running on its own.
+- `signedOut` is applied only if no newer auth event arrived since this
+  call started (the auth generation is unchanged): the null event of this
+  sign-out has already applied it, and any other event is newer, for
+  example a sign-in, which must not be overwritten (that would fire the
+  `signedOut` purge edge for the new user). Task 4 review.
+- A call while another is in flight joins it (no second repository call),
+  and the repository call is started with `Future.sync`, so a synchronous
+  throw is a handled revocation failure too. Task 4 review.
 - The revocation's result is handled exactly once, after the local sign-out
   has been applied, so the state is already `signedOut` by construction:
   a connectivity failure (`isConnectivityFailure`, which includes
