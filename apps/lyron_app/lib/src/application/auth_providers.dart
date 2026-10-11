@@ -386,7 +386,10 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
           return true;
         }
 
-        Future<bool> wipePriorAndProceedFor(LastKnownIdentity identity) async {
+        Future<bool> wipePriorAndProceedFor(
+          LastKnownIdentity identity,
+          int? countedPendingWork,
+        ) async {
           if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
             return false;
           }
@@ -565,7 +568,7 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
             priorEmail: null,
             priorPendingCount: () async => null,
             flushSameUser: persistNewIdentity,
-            wipePriorAndProceed: () async => false,
+            wipePriorAndProceed: (_) async => false,
             confirmDifferentUser: ref
                 .read(reauthPromptControllerProvider)
                 .requestConfirmation,
@@ -580,7 +583,8 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
             priorEmail: identity.email,
             priorPendingCount: () => countPriorPendingWorkFor(identity),
             flushSameUser: persistNewIdentity,
-            wipePriorAndProceed: () => wipePriorAndProceedFor(identity),
+            wipePriorAndProceed: (countedPendingWork) =>
+                wipePriorAndProceedFor(identity, countedPendingWork),
             confirmDifferentUser: ref
                 .read(reauthPromptControllerProvider)
                 .requestConfirmation,

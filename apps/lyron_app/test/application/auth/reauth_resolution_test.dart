@@ -40,7 +40,7 @@ void main() {
           flushSameUserCalled = true;
           return true;
         },
-        wipePriorAndProceed: () async {
+        wipePriorAndProceed: (_) async {
           wipePriorAndProceedCalled = true;
           return true;
         },
@@ -71,7 +71,7 @@ void main() {
           flushSameUserCalled = true;
           return true;
         },
-        wipePriorAndProceed: () async {
+        wipePriorAndProceed: (_) async {
           wipePriorAndProceedCalled = true;
           return true;
         },
@@ -100,7 +100,7 @@ void main() {
           priorEmail: 'u1@example.com',
           priorPendingCount: () async => 2,
           flushSameUser: () async => true,
-          wipePriorAndProceed: () async {
+          wipePriorAndProceed: (_) async {
             wipePriorCalled = true;
             return true;
           },
@@ -144,7 +144,7 @@ void main() {
         priorEmail: 'u1@example.com',
         priorPendingCount: () async => 3,
         flushSameUser: () async => true,
-        wipePriorAndProceed: () async {
+        wipePriorAndProceed: (_) async {
           wipePriorAndProceedCalled = true;
           return true;
         },
@@ -180,7 +180,7 @@ void main() {
           priorEmail: 'u1@example.com',
           priorPendingCount: () async => null,
           flushSameUser: () async => true,
-          wipePriorAndProceed: () async {
+          wipePriorAndProceed: (_) async {
             wipePriorCalled = true;
             return true;
           },
@@ -227,7 +227,7 @@ void main() {
         priorEmail: 'u1@example.com',
         priorPendingCount: () async => 0,
         flushSameUser: () async => true,
-        wipePriorAndProceed: () async {
+        wipePriorAndProceed: (_) async {
           wipePriorAndProceedCalled = true;
           return true;
         },
@@ -258,7 +258,7 @@ void main() {
         priorEmail: 'u1@example.com',
         priorPendingCount: () async => 1,
         flushSameUser: () async => true,
-        wipePriorAndProceed: () async {
+        wipePriorAndProceed: (_) async {
           wipePriorAndProceedCalled = true;
           return true;
         },
@@ -290,7 +290,7 @@ void main() {
         priorEmail: 'u1@example.com',
         priorPendingCount: () async => 0,
         flushSameUser: () async => false,
-        wipePriorAndProceed: () async => true,
+        wipePriorAndProceed: (_) async => true,
         confirmDifferentUser:
             ({required String email, required int? pendingCount}) async =>
                 ReauthPromptResult.confirmed,
@@ -304,7 +304,7 @@ void main() {
         priorEmail: 'u1@example.com',
         priorPendingCount: () async => 0,
         flushSameUser: () async => true,
-        wipePriorAndProceed: () async => false,
+        wipePriorAndProceed: (_) async => false,
         confirmDifferentUser:
             ({required String email, required int? pendingCount}) async =>
                 ReauthPromptResult.confirmed,
@@ -318,13 +318,54 @@ void main() {
         priorEmail: 'u1@example.com',
         priorPendingCount: () async => 1,
         flushSameUser: () async => true,
-        wipePriorAndProceed: () async => true,
+        wipePriorAndProceed: (_) async => true,
         confirmDifferentUser:
             ({required String email, required int? pendingCount}) async =>
                 ReauthPromptResult.cancelled,
         cancelToPriorUser: () async => false,
       );
       expect(cancelOutcome, isA<ReauthSuperseded>());
+    });
+
+    group('wipe receives the decision count (RW1)', () {
+      Future<ReauthOutcome> run({
+        required int? count,
+        required void Function(int? received) onWipe,
+      }) {
+        return resolveReauth(
+          newUserId: 'u2',
+          priorUserId: 'u1',
+          priorEmail: 'u1@example.com',
+          priorPendingCount: () async => count,
+          flushSameUser: () async => true,
+          wipePriorAndProceed: (counted) async {
+            onWipe(counted);
+            return true;
+          },
+          confirmDifferentUser:
+              ({required String email, required int? pendingCount}) async =>
+                  ReauthPromptResult.confirmed,
+          cancelToPriorUser: () async => true,
+        );
+      }
+
+      test('zero pending: the wipe receives 0', () async {
+        int? received = -1;
+        await run(count: 0, onWipe: (c) => received = c);
+        expect(received, 0);
+      });
+
+      test('pending 3, confirmed: the wipe receives 3', () async {
+        int? received = -1;
+        await run(count: 3, onWipe: (c) => received = c);
+        expect(received, 3);
+      });
+
+      test('unknown, confirmed: the wipe receives null', () async {
+        int? received = -1;
+        await run(count: null, onWipe: (c) => received = c);
+        expect(received, isNull);
+      });
     });
   });
 }

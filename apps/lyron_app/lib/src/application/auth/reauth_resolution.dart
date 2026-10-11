@@ -43,6 +43,11 @@ class ReauthSuperseded extends ReauthOutcome {
 /// no wipe until confirm). Unknown is deliberately NOT treated as zero: only
 /// a count that was actually read as zero skips the prompt.
 ///
+/// The wipe receives the count the decision was made on: 0 on the no-prompt
+/// path, and on confirm the count the prompt showed (`null` included, when it
+/// could not be determined). It must not delete more than that count
+/// (docs/specs/2026-10-11-reauth-wipe-recount.md, RW1/RW2).
+///
 /// Side-effect callbacks report completion by returning `bool`: `true` if
 /// the action actually ran, `false` if a last-moment currentness guard
 /// prevented it, OR if the action's destructive part ran but a later step
@@ -65,7 +70,7 @@ Future<ReauthOutcome> resolveReauth({
   required String? priorEmail,
   required Future<int?> Function() priorPendingCount,
   required Future<bool> Function() flushSameUser,
-  required Future<bool> Function() wipePriorAndProceed,
+  required Future<bool> Function(int? countedPendingWork) wipePriorAndProceed,
   required Future<ReauthPromptResult> Function({
     required String email,
     required int? pendingCount,
@@ -95,7 +100,7 @@ Future<ReauthOutcome> resolveReauth({
 
   if (count == 0) {
     // No pending data: safe to wipe without confirmation
-    if (!await wipePriorAndProceed()) {
+    if (!await wipePriorAndProceed(count)) {
       return const ReauthSuperseded();
     }
     return const ReauthWipedPriorAndProceeded();
@@ -122,7 +127,7 @@ Future<ReauthOutcome> resolveReauth({
   return switch (promptResult) {
     ReauthPromptResult.superseded => const ReauthSuperseded(),
     ReauthPromptResult.confirmed =>
-      await wipePriorAndProceed()
+      await wipePriorAndProceed(count)
           ? const ReauthWipedPriorAndProceeded()
           : const ReauthSuperseded(),
     ReauthPromptResult.cancelled =>
