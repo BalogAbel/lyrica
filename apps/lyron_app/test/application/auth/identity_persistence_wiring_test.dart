@@ -1050,6 +1050,268 @@ void main() {
       expect(authController.state.session?.userId, 'user-2');
     });
 
+    // RW2/RW4: the wipe recounts right before deleting. [songReads] and
+    // [planningReads] answer call by call (an Object that is an int is
+    // returned, anything else is thrown); the last entry repeats.
+    Future<ProviderContainer> startDifferentUserEdge({
+      required List<Object> songReads,
+      required List<Object> planningReads,
+      Completer<void>? holdSecondSongRead,
+      void Function()? onSecondSongRead,
+      String? importRunningForUserId,
+    }) async {
+      await seedPriorUserData();
+      identityStore.seed(
+        const LastKnownIdentity(
+          userId: 'user-1',
+          email: 'user1@example.com',
+          organizationId: 'org-1',
+        ),
+      );
+      authRepository.currentSession = const AppAuthSession(
+        userId: 'user-2',
+        email: 'user2@example.com',
+      );
+      Future<int> next(List<Object> reads, int call) async {
+        final answer = reads[call < reads.length ? call : reads.length - 1];
+        if (answer is int) return answer;
+        throw StateError('count unreadable');
+      }
+
+      var songCalls = 0;
+      var planningCalls = 0;
+      final counter = PendingLocalWorkCounter(
+        readPlanningPendingWorkCount: ({required userId}) =>
+            next(planningReads, planningCalls++),
+        readSongPendingWorkCount: ({required userId}) {
+          final call = songCalls++;
+          if (call == 1) onSecondSongRead?.call();
+          return call == 1 && holdSecondSongRead != null
+              ? holdSecondSongRead.future.then((_) => next(songReads, 1))
+              : next(songReads, call);
+        },
+      );
+      final container = ProviderContainer(
+        overrides: [
+          appAuthControllerProvider.overrideWith((_) => authController),
+          lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
+          songCatalogDatabaseProvider.overrideWithValue(songDatabase),
+          planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
+          pendingLocalWorkCounterProvider.overrideWithValue(counter),
+          activeOrganizationResolutionProvider.overrideWithValue(
+            () async => const ActiveOrganizationResolution.selected('org-2'),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      if (importRunningForUserId != null) {
+        container
+            .read(importRunTrackerProvider)
+            .report(Object(), userId: importRunningForUserId, running: true);
+      }
+      container.read(appAuthListenableProvider);
+      await authController.restoreSession();
+      await pump();
+      return container;
+    }
+
+    void expectNothingDeletedAndBackAsPriorUser() {
+      expect(identityStore.clearCount, 0);
+      expect(identityStore.writes, isEmpty);
+      expect(authRepository.signOutCalls, 1);
+      expect(authController.state.status, AppAuthStatus.sessionExpired);
+      expect(authController.state.lastKnownSession?.userId, 'user-1');
+    }
+
+    test('RW2: a recount lower than the confirmed count still wipes', () async {
+      final container = await startDifferentUserEdge(
+        songReads: [3, 2],
+        planningReads: [0],
+      );
+      final prompt = container.read(reauthPromptControllerProvider);
+      expect((prompt.pending! as ReauthDifferentUserPrompt).pendingCount, 3);
+
+      prompt.answer(true);
+      await pump();
+
+      expect(await priorSongsStillPresent(), isFalse);
+      expect(identityStore.writes, hasLength(1));
+      expect(identityStore.writes.single.userId, 'user-2');
+      expect(authController.state.status, AppAuthStatus.signedIn);
+      expect(authController.state.session?.userId, 'user-2');
+    });
+
+    test('RW2/RW4: a recount higher than the confirmed count deletes nothing '
+        'and returns to the prior user', () async {
+      final container = await startDifferentUserEdge(
+        songReads: [3, 4],
+        planningReads: [0],
+      );
+      container.read(reauthPromptControllerProvider).answer(true);
+      await pump();
+
+      expect(await priorSongsStillPresent(), isTrue);
+      expectNothingDeletedAndBackAsPriorUser();
+    });
+
+    test('RW2/RW4: an unreadable recount of a known count deletes nothing and '
+        'returns to the prior user', () async {
+      final container = await startDifferentUserEdge(
+        songReads: [3, StateError('x')],
+        planningReads: [0],
+      );
+      container.read(reauthPromptControllerProvider).answer(true);
+      await pump();
+
+      expect(await priorSongsStillPresent(), isTrue);
+      expectNothingDeletedAndBackAsPriorUser();
+    });
+
+    test('RW4: a newer signedIn edge superseding during the recount deletes '
+        'nothing and does not cancel', () async {
+      final recountHeld = Completer<void>();
+      final container = await startDifferentUserEdge(
+        songReads: [3, 3],
+        planningReads: [0],
+        holdSecondSongRead: recountHeld,
+      );
+      container.read(reauthPromptControllerProvider).answer(true);
+      await pump();
+
+      final newerEdgeObserved = Completer<void>();
+      void observeNewerEdge() {
+        if (authController.state.session?.userId == 'user-3' &&
+            !newerEdgeObserved.isCompleted) {
+          newerEdgeObserved.complete();
+        }
+      }
+
+      authController.addListener(observeNewerEdge);
+      addTearDown(() => authController.removeListener(observeNewerEdge));
+      authRepository.emit(
+        const AppAuthSession(userId: 'user-3', email: 'user3@example.com'),
+      );
+      await newerEdgeObserved.future;
+
+      recountHeld.complete();
+      await pump();
+
+      expect(authRepository.signOutCalls, 0);
+      expect(identityStore.clearCount, 0);
+      expect(await priorSongsStillPresent(), isTrue);
+      expect(await priorPlanningProjectionStillPresent(), isTrue);
+    });
+
+    test('RW3 check 1: an import running when the user confirms declines '
+        'before any recount', () async {
+      final owner = Object();
+      final recountHeld = Completer<void>();
+      late ProviderContainer container;
+      var recounted = false;
+      container = await startDifferentUserEdge(
+        songReads: [3, 3],
+        planningReads: [0],
+        holdSecondSongRead: recountHeld,
+        // With check 1 no recount starts; if one does, the import has ended
+        // and the count is unchanged, so only check 1 can decline.
+        onSecondSongRead: () {
+          recounted = true;
+          container
+              .read(importRunTrackerProvider)
+              .report(owner, userId: 'user-1', running: false);
+          recountHeld.complete();
+        },
+      );
+      final prompt = container.read(reauthPromptControllerProvider);
+      expect((prompt.pending! as ReauthDifferentUserPrompt).pendingCount, 3);
+      container
+          .read(importRunTrackerProvider)
+          .report(owner, userId: 'user-1', running: true);
+
+      prompt.answer(true);
+      await pump();
+
+      expect(recounted, isFalse);
+      expect(await priorSongsStillPresent(), isTrue);
+      expect(await priorPlanningProjectionStillPresent(), isTrue);
+      expectNothingDeletedAndBackAsPriorUser();
+    });
+
+    test('RW3 check 2: an import starting during the recount declines '
+        'right before the deletion', () async {
+      final owner = Object();
+      final recountHeld = Completer<void>();
+      final container = await startDifferentUserEdge(
+        songReads: [3, 3],
+        planningReads: [0],
+        holdSecondSongRead: recountHeld,
+      );
+      final prompt = container.read(reauthPromptControllerProvider);
+      expect((prompt.pending! as ReauthDifferentUserPrompt).pendingCount, 3);
+      expect(container.read(importRunTrackerProvider).isRunning, isFalse);
+
+      prompt.answer(true);
+      await pump();
+      container
+          .read(importRunTrackerProvider)
+          .report(owner, userId: 'user-1', running: true);
+      recountHeld.complete();
+      await pump();
+
+      expect(await priorSongsStillPresent(), isTrue);
+      expect(await priorPlanningProjectionStillPresent(), isTrue);
+      expectNothingDeletedAndBackAsPriorUser();
+    });
+
+    test('RW3 per user: an import running for the NEW user does not decline '
+        'a zero-count different-user resolution', () async {
+      await startDifferentUserEdge(
+        songReads: [0],
+        planningReads: [0],
+        importRunningForUserId: 'user-2',
+      );
+
+      expect(await priorSongsStillPresent(), isFalse);
+      expect(identityStore.writes, hasLength(1));
+      expect(identityStore.writes.single.userId, 'user-2');
+      expect(authController.state.status, AppAuthStatus.signedIn);
+      expect(authController.state.session?.userId, 'user-2');
+      expect(authRepository.signOutCalls, 0);
+    });
+
+    test('RW2: a confirmed unknown count is not recounted and wipes', () async {
+      final container = await startDifferentUserEdge(
+        songReads: [3],
+        planningReads: [StateError('x')],
+      );
+      final prompt = container.read(reauthPromptControllerProvider);
+      expect(
+        (prompt.pending! as ReauthDifferentUserPrompt).pendingCount,
+        isNull,
+      );
+
+      prompt.answer(true);
+      await pump();
+
+      expect(await priorSongsStillPresent(), isFalse);
+      expect(identityStore.writes, hasLength(1));
+      expect(identityStore.writes.single.userId, 'user-2');
+      expect(authController.state.status, AppAuthStatus.signedIn);
+      expect(authController.state.session?.userId, 'user-2');
+    });
+
+    test('RW2/RW4: work appearing after a zero count (no prompt shown) '
+        'deletes nothing and returns to the prior user', () async {
+      final container = await startDifferentUserEdge(
+        songReads: [0, 1],
+        planningReads: [0],
+      );
+
+      expect(container.read(reauthPromptControllerProvider).pending, isNull);
+      expect(await priorSongsStillPresent(), isTrue);
+      expectNothingDeletedAndBackAsPriorUser();
+    });
+
     test('a wipe whose song deletion throws falls back to cancel instead of '
         'stranding the prior data while presenting as the new user -- '
         'Finding 1, PR #64 review', () async {

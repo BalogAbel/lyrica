@@ -135,6 +135,7 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
   final epoch = ref.watch(lastKnownIdentityPersistenceEpochProvider);
   final promptController = ref.read(reauthPromptControllerProvider);
   final lifecycle = ref.read(localDataLifecycleProvider);
+  final importRuns = ref.read(importRunTrackerProvider);
 
   // Serializes signedIn-edge resolutions: only one persistIdentity call is
   // ever in flight at a time (see scheduleIdentityResolution below). Two
@@ -386,8 +387,65 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
           return true;
         }
 
-        Future<bool> wipePriorAndProceedFor(LastKnownIdentity identity) async {
+        // Whether the prior user's data may be wiped now
+        // (docs/specs/2026-10-11-reauth-wipe-recount.md). RW3 check 1: no
+        // import is writing the PRIOR user's work (the new user's own import
+        // writes the new user's work and is not a reason to decline). RW2:
+        // the prior user's pending work is still no more than the count the
+        // decision was made on. A confirmed unknown is not compared (the user
+        // accepted an unknown amount; D5.5 rule 3 does the same); an
+        // unreadable recount of a known count is uncertainty, which never
+        // authorises a wipe (D5).
+        // A running import for the prior user is work nobody has counted, and
+        // the counter reads two databases in parallel, so a row written in
+        // between is missed; check 1 runs before the recount (check 2 follows
+        // it synchronously, right before the deletion).
+        Future<bool> priorWorkSafeToWipe(
+          LastKnownIdentity identity,
+          int? countedPendingWork,
+        ) async {
+          if (importRuns.isRunningFor(identity.userId)) return false;
+          if (countedPendingWork == null) return true;
+          try {
+            final current = await ref
+                .read(pendingLocalWorkCounterProvider)
+                .count(userId: identity.userId);
+            return current <= countedPendingWork;
+          } catch (_) {
+            return false;
+          }
+        }
+
+        Future<bool> wipePriorAndProceedFor(
+          LastKnownIdentity identity,
+          int? countedPendingWork,
+        ) async {
           if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
+            return false;
+          }
+          final safeToWipe = await priorWorkSafeToWipe(
+            identity,
+            countedPendingWork,
+          );
+          if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
+            return false;
+          }
+          // Synchronous with the deletion below (ADR-029 D3): no await between
+          // this check and the purge calls.
+          if (!safeToWipe || importRuns.isRunningFor(identity.userId)) {
+            // RW4 (not safe to wipe: work grew or the recount was
+            // unreadable) or RW3 (an import is writing the prior user's work): delete nothing,
+            // return to the prior user exactly as Cancel does. `false`
+            // reports ReauthSuperseded -- it understates what ran (a
+            // cancel), never overstates it.
+            if (kDebugMode) {
+              debugPrint(
+                'lastKnownIdentityPersistenceProvider: different-user wipe '
+                'declined: ${identity.userId}\'s pending work changed after it '
+                'was counted, or an import is writing it',
+              );
+            }
+            await cancelToPriorUserFor(identity);
             return false;
           }
           final priorUserId = identity.userId;
@@ -565,7 +623,7 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
             priorEmail: null,
             priorPendingCount: () async => null,
             flushSameUser: persistNewIdentity,
-            wipePriorAndProceed: () async => false,
+            wipePriorAndProceed: (_) async => false,
             confirmDifferentUser: ref
                 .read(reauthPromptControllerProvider)
                 .requestConfirmation,
@@ -580,7 +638,8 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
             priorEmail: identity.email,
             priorPendingCount: () => countPriorPendingWorkFor(identity),
             flushSameUser: persistNewIdentity,
-            wipePriorAndProceed: () => wipePriorAndProceedFor(identity),
+            wipePriorAndProceed: (countedPendingWork) =>
+                wipePriorAndProceedFor(identity, countedPendingWork),
             confirmDifferentUser: ref
                 .read(reauthPromptControllerProvider)
                 .requestConfirmation,
@@ -625,13 +684,17 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
             // current, correct prior identity is already queued directly
             // behind this one: nothing here needs to retry it.
             //
-            // Two paths reach ReauthSuperseded WITHOUT a newer edge queued
-            // behind it, both inside wipePriorAndProceedFor's two catches
-            // above: Finding 1's destructive-part failure (recovers via
-            // cancelToPriorUser) and Finding A's persistNewIdentity-only
-            // failure (recovers by leaving the live state untouched and the
-            // identity store empty, 2026-08-06 remediation round). Both
-            // call sites already reported their failure unconditionally via
+            // Three paths reach ReauthSuperseded WITHOUT a newer edge queued
+            // behind it, all inside wipePriorAndProceedFor: Finding 1's
+            // destructive-part failure (recovers via cancelToPriorUser),
+            // Finding A's persistNewIdentity-only failure (recovers by leaving
+            // the live state untouched and the identity store empty,
+            // 2026-08-06 remediation round), and the RW4/RW3 decline (the
+            // prior user's work grew since it was counted, or an import is
+            // running: cancelled to the prior user, nothing deleted; it logs
+            // only via kDebugMode, being a legitimate outcome, not a failure).
+            // The first two call sites already reported their failure
+            // unconditionally via
             // FlutterError.reportError before returning false, specifically
             // because THIS branch cannot distinguish "benign, self-healing
             // supersession" (the normal case) from "a genuine failure that
@@ -648,7 +711,8 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
             if (kDebugMode) {
               debugPrint(
                 'lastKnownIdentityPersistenceProvider: reauth resolution '
-                'for ${session.userId} was superseded before it could act',
+                'for ${session.userId} was superseded or declined before it '
+                'could act',
               );
             }
         }

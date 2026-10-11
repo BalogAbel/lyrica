@@ -9,9 +9,11 @@
 // the organization lookup and the remote fetches. The two read gates only
 // pause the real Drift reads for user A, to pin an interleaving.
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/active_organization_resolution.dart';
@@ -19,12 +21,16 @@ import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
 import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/auth/membership_gate_decision.dart';
+import 'package:lyron_app/src/application/auth/pending_local_work_counter.dart';
+import 'package:lyron_app/src/application/auth/reauth_prompt_controller.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/planning/planning_remote_refresh_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_payload.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/app_foreground_state.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
+import 'package:lyron_app/src/application/song_library/drift_song_mutation_store.dart';
+import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
@@ -33,6 +39,7 @@ import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/infrastructure/song_library/supabase_song_repository.dart';
 import 'package:lyron_app/src/offline/auth/drift_last_known_identity_store.dart';
+import 'package:lyron_app/src/offline/auth/drift_pending_local_work_reader.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
@@ -40,6 +47,7 @@ import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 import 'package:lyron_app/src/presentation/auth/membership_gate.dart';
 import 'package:lyron_app/src/presentation/auth/reauth_banner.dart';
 import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
+import 'package:lyron_app/src/presentation/song_library/chordpro_import_controller.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../support/drift_test_setup.dart';
@@ -516,6 +524,319 @@ void main() {
       expect(await fixture.identityStore.read(), isNull);
     });
   });
+
+  // docs/specs/2026-10-11-reauth-wipe-recount.md: the
+  // different-user wipe must not delete more of the prior user's pending
+  // work than the user confirmed, and must not delete work written after a
+  // zero count without asking. The import is the real ChordProImportController
+  // over the real import service; only the platform file picker answers from
+  // the test, and two gates pin the interleaving.
+  group('the different-user wipe deletes only counted work', () {
+    const importedTitles = ['Imported one', 'Imported two', 'Imported three'];
+
+    test('rows the import writes behind the prompt are not deleted by the '
+        'confirmation that named fewer', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final fixture = await _Fixture.create(
+        seedSongsForA: true,
+        seedPlanningForA: true,
+      );
+      await fixture.coldStartAsA();
+      expect(fixture.catalogContextUserId, _userA);
+
+      // A's import reaches its commit and waits before its first row.
+      fixture.songWriteGate.hold();
+      final importRun = fixture.startImport(importedTitles);
+      await _settle();
+      expect(fixture.importState, isA<ImportCommitting>());
+
+      await fixture.signInAs(_sessionB);
+      final prompt = fixture.container.read(reauthPromptControllerProvider);
+      expect(
+        (prompt.pending as ReauthDifferentUserPrompt?)?.pendingCount,
+        1,
+        reason: 'A\'s one plan edit',
+      );
+
+      // The import keeps writing A's rows behind the prompt.
+      fixture.songWriteGate.release();
+      await importRun;
+      await _settle();
+      expect(await fixture.pendingSongCount(_userA), importedTitles.length);
+
+      prompt.answer(true);
+      await _settle();
+
+      expect(
+        await fixture.pendingSongCount(_userA),
+        importedTitles.length,
+        reason:
+            'the confirmation named 1 item; the 3 imported rows written '
+            'after it must not be deleted by it',
+      );
+      expect(fixture.auth.state.status, AppAuthStatus.sessionExpired);
+      expect(fixture.auth.state.currentUserId, _userA);
+      expect((await fixture.identityStore.read())?.userId, _userA);
+      expect(await fixture.pendingPlanningMutationCount(_userA), 1);
+    });
+
+    test('rows written between a zero count and the wipe are not deleted '
+        'without a prompt', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final fixture = await _Fixture.create(
+        seedSongsForA: true,
+        seedPlanningForA: true,
+        seedPendingPlanningForA: false,
+        gatePendingCount: true,
+      );
+      await fixture.coldStartAsA();
+      expect(fixture.catalogContextUserId, _userA);
+
+      fixture.songWriteGate.hold();
+      final importRun = fixture.startImport(importedTitles);
+      await _settle();
+      expect(fixture.importState, isA<ImportCommitting>());
+
+      // The count reads zero and is paused before the resolution acts on it.
+      fixture.pendingCountGate.hold();
+      await fixture.signInAs(_sessionB);
+      expect(
+        fixture.container.read(reauthPromptControllerProvider).pending,
+        isNull,
+      );
+
+      // The import writes A's rows after the count.
+      fixture.songWriteGate.release();
+      await importRun;
+      await _settle();
+      expect(await fixture.pendingSongCount(_userA), importedTitles.length);
+
+      fixture.pendingCountGate.release();
+      await _settle();
+
+      expect(
+        await fixture.pendingSongCount(_userA),
+        importedTitles.length,
+        reason:
+            'nobody was asked about these rows; a zero count must not '
+            'authorise deleting work written after it',
+      );
+      expect(fixture.auth.state.status, AppAuthStatus.sessionExpired);
+      expect(fixture.auth.state.currentUserId, _userA);
+      expect((await fixture.identityStore.read())?.userId, _userA);
+    });
+  });
+
+  group('the import guard protects only the prior user\'s work (AC10)', () {
+    test('B\'s own import running during B\'s zero-count resolution does not '
+        'decline B\'s sign-in, and B\'s files stay in B\'s catalog', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final fixture = await _Fixture.create(
+        seedSongsForA: true,
+        seedPlanningForA: true,
+        seedPendingPlanningForA: false,
+        seedSongsForB: true,
+        lookupAnswersFor: const {_userB},
+        gatePendingCount: true,
+      );
+      await fixture.coldStartAsA();
+
+      // A's count is held after its reads returned zero.
+      fixture.pendingCountGate.hold();
+      await fixture.signInAs(_sessionB);
+      expect(fixture.catalogContextUserId, _userB);
+      expect(
+        fixture.container.read(reauthPromptControllerProvider).pending,
+        isNull,
+      );
+
+      // B starts an import in B's own context; it waits at its first write.
+      fixture.songWriteGate.hold(user: _userB);
+      final importRun = fixture.startImport(const ['B one', 'B two']);
+      await _settle();
+      expect(fixture.importState, isA<ImportCommitting>());
+
+      fixture.pendingCountGate.release();
+      await _settle();
+
+      expect(
+        fixture.auth.state.status,
+        AppAuthStatus.signedIn,
+        reason: 'B\'s own import is not the prior user\'s work',
+      );
+      expect(fixture.auth.state.currentUserId, _userB);
+      expect((await fixture.identityStore.read())?.userId, _userB);
+      expect(
+        fixture.container.read(reauthPromptControllerProvider).pending,
+        isNull,
+      );
+
+      fixture.songWriteGate.release();
+      await importRun;
+      await _settle();
+      expect(await fixture.pendingSongCount(_userB), 2);
+      expect(await fixture.pendingSongCount(_userA), 0);
+    });
+  });
+
+  // RW3 (docs/specs/2026-10-11-reauth-wipe-recount.md): a running import is
+  // work nobody has counted yet, so the wipe declines while one runs; and the
+  // guard must never stick once the import ended in any way.
+  group('no different-user wipe while an import runs', () {
+    const importedTitles = ['Imported one', 'Imported two', 'Imported three'];
+
+    test('AC3: a confirmation made while the import is held deletes nothing '
+        'and returns to A', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final fixture = await _Fixture.create(
+        seedSongsForA: true,
+        seedPlanningForA: true,
+      );
+      await fixture.coldStartAsA();
+
+      fixture.songWriteGate.hold();
+      final importRun = fixture.startImport(importedTitles);
+      await _settle();
+      expect(fixture.importState, isA<ImportCommitting>());
+
+      await fixture.signInAs(_sessionB);
+      final prompt = fixture.container.read(reauthPromptControllerProvider);
+      expect((prompt.pending as ReauthDifferentUserPrompt?)?.pendingCount, 1);
+
+      prompt.answer(true);
+      await _settle();
+
+      expect(fixture.auth.state.status, AppAuthStatus.sessionExpired);
+      expect(fixture.auth.state.currentUserId, _userA);
+      expect((await fixture.identityStore.read())?.userId, _userA);
+      expect(await fixture.pendingPlanningMutationCount(_userA), 1);
+
+      fixture.songWriteGate.release();
+      await importRun;
+      await _settle();
+      expect(await fixture.pendingSongCount(_userA), importedTitles.length);
+      expect(await fixture.pendingPlanningMutationCount(_userA), 1);
+      expect((await fixture.identityStore.read())?.userId, _userA);
+    });
+
+    test('AC4: a zero count while the import is held asks nobody and '
+        'deletes nothing', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final fixture = await _Fixture.create(
+        seedSongsForA: true,
+        seedPlanningForA: true,
+        seedPendingPlanningForA: false,
+      );
+      await fixture.coldStartAsA();
+
+      fixture.songWriteGate.hold();
+      final importRun = fixture.startImport(importedTitles);
+      await _settle();
+      expect(fixture.importState, isA<ImportCommitting>());
+
+      await fixture.signInAs(_sessionB);
+
+      expect(
+        fixture.container.read(reauthPromptControllerProvider).pending,
+        isNull,
+      );
+      expect(fixture.auth.state.status, AppAuthStatus.sessionExpired);
+      expect(fixture.auth.state.currentUserId, _userA);
+      expect((await fixture.identityStore.read())?.userId, _userA);
+
+      fixture.songWriteGate.release();
+      await importRun;
+      await _settle();
+      expect(await fixture.pendingSongCount(_userA), importedTitles.length);
+      expect((await fixture.identityStore.read())?.userId, _userA);
+    });
+
+    Future<void> expectWipeRunsAfterImportEnded(_Fixture fixture) async {
+      expect(
+        fixture.container.read(importRunTrackerProvider).isRunning,
+        isFalse,
+      );
+      await fixture.signInAs(_sessionB);
+      expect(
+        fixture.container.read(reauthPromptControllerProvider).pending,
+        isNull,
+        reason: 'a zero count asks nobody',
+      );
+      expect(fixture.auth.state.status, AppAuthStatus.signedIn);
+      expect(fixture.auth.state.currentUserId, _userB);
+      expect((await fixture.identityStore.read())?.userId, _userB);
+    }
+
+    test('AC9: a cancelled picker does not block the wipe', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final fixture = await _Fixture.create(
+        seedSongsForA: true,
+        seedPlanningForA: true,
+        seedPendingPlanningForA: false,
+      );
+      await fixture.coldStartAsA();
+
+      await fixture.startImport(importedTitles, cancelPicker: true);
+      await _settle();
+      expect(fixture.importState, isA<ImportIdle>());
+
+      await expectWipeRunsAfterImportEnded(fixture);
+    });
+
+    test(
+      'AC9: an import whose every write failed does not block the wipe',
+      () async {
+        TestWidgetsFlutterBinding.ensureInitialized();
+        final fixture = await _Fixture.create(
+          seedSongsForA: true,
+          seedPlanningForA: true,
+          seedPendingPlanningForA: false,
+        );
+        await fixture.coldStartAsA();
+
+        fixture.songWriteGate.failFor(_userA);
+        await fixture.startImport(importedTitles);
+        await _settle();
+        expect(fixture.importState, isA<ImportDone>());
+        expect(await fixture.pendingSongCount(_userA), 0);
+
+        await expectWipeRunsAfterImportEnded(fixture);
+      },
+    );
+
+    test('AC9: an import whose controller was disposed mid-commit does not '
+        'block the wipe', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final fixture = await _Fixture.create(
+        seedSongsForA: true,
+        seedPlanningForA: true,
+        seedPendingPlanningForA: false,
+      );
+      await fixture.coldStartAsA();
+
+      fixture.songWriteGate.hold();
+      final importRun = fixture.startImport(importedTitles);
+      await _settle();
+      expect(fixture.importState, isA<ImportCommitting>());
+      expect(
+        fixture.container.read(importRunTrackerProvider).isRunning,
+        isTrue,
+      );
+
+      // The run holds the provider alive; closing the listener and
+      // invalidating disposes the controller while the commit is paused.
+      fixture.importSubscription!.close();
+      fixture.container.invalidate(chordProImportControllerProvider);
+      await _settle();
+
+      await expectWipeRunsAfterImportEnded(fixture);
+
+      // The orphaned run resumes into a disposed notifier. Its rows written
+      // after the wipe are R10 orphans; only the failure is pinned.
+      fixture.songWriteGate.release();
+      await expectLater(importRun, throwsStateError);
+    });
+  });
 }
 
 class _Fixture {
@@ -525,10 +846,13 @@ class _Fixture {
     required this.authRepository,
     required this.identityStore,
     required this.planningDatabase,
+    required this.songDatabase,
     required this.songStore,
     required this.planningStore,
     required this.catalogReadGate,
     required this.planningReadGate,
+    required this.songWriteGate,
+    required this.pendingCountGate,
   });
 
   final ProviderContainer container;
@@ -536,10 +860,19 @@ class _Fixture {
   final _ControllableAuthRepository authRepository;
   final DriftLastKnownIdentityStore identityStore;
   final PlanningLocalDatabase planningDatabase;
+  final SongCatalogDatabase songDatabase;
   final SongCatalogStore songStore;
   final PlanningLocalStore planningStore;
   final _ReadGate catalogReadGate;
   final _ReadGate planningReadGate;
+
+  /// Pauses the real song writes for user A (the ChordPro import's rows).
+  final _ReadGate songWriteGate;
+
+  /// Pauses the different-user count for user A after its real Drift reads
+  /// returned, before the resolution acts on it. Only wired when the fixture
+  /// was created with `gatePendingCount: true`.
+  final _ReadGate pendingCountGate;
 
   /// [lookupAnswersFor] lists the users whose organization lookup (catalog
   /// and planning) answers; for everyone else it hits a dropped connection.
@@ -550,9 +883,13 @@ class _Fixture {
     Set<String> membershipAnswersFor = const {_userA, _userB},
     bool seedSongsForB = false,
     bool seedPendingPlanningForB = false,
+    bool seedPendingPlanningForA = true,
+    bool gatePendingCount = false,
   }) async {
     final catalogReadGate = _ReadGate();
     final planningReadGate = _ReadGate();
+    final songWriteGate = _ReadGate();
+    final pendingCountGate = _ReadGate();
     final songDatabase = SongCatalogDatabase.inMemory();
     addTearDown(songDatabase.close);
     final songStore = _GatedSongCatalogStore(songDatabase, catalogReadGate);
@@ -622,20 +959,22 @@ class _Fixture {
     }
     // A's unsynced work: a different-user sign-in must ask before wiping it,
     // so the reauth prompt stays pending (ADR-029 D3).
-    await planningDatabase
-        .into(planningDatabase.cachedPlanningMutations)
-        .insert(
-          CachedPlanningMutationsCompanion.insert(
-            userId: _userA,
-            organizationId: _orgA,
-            aggregateType: 'plan',
-            aggregateId: 'plan-a-edit',
-            mutationKind: PlanningMutationKind.planEdit.value,
-            syncStatus: PlanningMutationSyncStatus.pending.value,
-            orderKey: 1,
-            updatedAt: DateTime.utc(2026, 10, 1, 12),
-          ),
-        );
+    if (seedPendingPlanningForA) {
+      await planningDatabase
+          .into(planningDatabase.cachedPlanningMutations)
+          .insert(
+            CachedPlanningMutationsCompanion.insert(
+              userId: _userA,
+              organizationId: _orgA,
+              aggregateType: 'plan',
+              aggregateId: 'plan-a-edit',
+              mutationKind: PlanningMutationKind.planEdit.value,
+              syncStatus: PlanningMutationSyncStatus.pending.value,
+              orderKey: 1,
+              updatedAt: DateTime.utc(2026, 10, 1, 12),
+            ),
+          );
+    }
     await identityStore.write(
       const LastKnownIdentity(
         userId: _userA,
@@ -671,6 +1010,23 @@ class _Fixture {
         planningLocalDatabaseProvider.overrideWithValue(planningDatabase),
         songCatalogStoreProvider.overrideWithValue(songStore),
         planningLocalStoreProvider.overrideWithValue(planningStore),
+        songMutationStoreProvider.overrideWithValue(
+          _GatedSongMutationStore(
+            songCatalogStore: songStore,
+            planningLocalStore: planningStore,
+            gate: songWriteGate,
+          ),
+        ),
+        if (gatePendingCount)
+          pendingLocalWorkCounterProvider.overrideWithValue(
+            _gatedPendingLocalWorkCounter(
+              DriftPendingLocalWorkReader(
+                planningDatabase: planningDatabase,
+                songDatabase: songDatabase,
+              ),
+              pendingCountGate,
+            ),
+          ),
         lastKnownIdentityStoreProvider.overrideWithValue(identityStore),
         localDataLifecycleProvider.overrideWithValue(lifecycle),
         appForegroundStateProvider.overrideWithValue(_ForegroundState()),
@@ -732,10 +1088,13 @@ class _Fixture {
       authRepository: authRepository,
       identityStore: identityStore,
       planningDatabase: planningDatabase,
+      songDatabase: songDatabase,
       songStore: songStore,
       planningStore: planningStore,
       catalogReadGate: catalogReadGate,
       planningReadGate: planningReadGate,
+      songWriteGate: songWriteGate,
+      pendingCountGate: pendingCountGate,
     );
   }
 
@@ -806,7 +1165,58 @@ class _Fixture {
     authRepository.emit(null);
     await _settle();
   }
+
+  /// [userId]'s pending song rows, read by the production counter's reader.
+  Future<int> pendingSongCount(String userId) {
+    return DriftPendingLocalWorkReader(
+      planningDatabase: planningDatabase,
+      songDatabase: songDatabase,
+    ).countSongPendingWork(userId: userId);
+  }
+
+  /// Starts a real ChordPro import of [titles] in the current catalog
+  /// context. The platform file picker answers with one file per title; the
+  /// returned future completes when the run ends.
+  Future<void> startImport(List<String> titles, {bool cancelPicker = false}) {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(_filePickerChannel, (call) async {
+          if (cancelPicker) return null;
+          return [
+            for (final (index, title) in titles.indexed)
+              {
+                'name': 'import-$index.cho',
+                'path': null,
+                'bytes': Uint8List.fromList(
+                  utf8.encode('{title: $title}\n[C]la'),
+                ),
+                'size': title.length,
+              },
+          ];
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(_filePickerChannel, null),
+    );
+    importSubscription = container.listen(
+      chordProImportControllerProvider,
+      (_, _) {},
+    );
+    addTearDown(importSubscription!.close);
+    return container
+        .read(chordProImportControllerProvider.notifier)
+        .startImport();
+  }
+
+  /// The listener keeping the import controller alive; set by [startImport].
+  ProviderSubscription<ChordProImportState>? importSubscription;
+
+  ChordProImportState get importState =>
+      container.read(chordProImportControllerProvider);
 }
+
+const _filePickerChannel = MethodChannel(
+  'miguelruivo.flutter.plugins.filepicker',
+);
 
 Future<void> _settle() async {
   for (var i = 0; i < 5; i++) {
@@ -814,11 +1224,23 @@ Future<void> _settle() async {
   }
 }
 
-/// Pauses the real Drift reads for user A while held.
+/// Pauses (while held) or fails (after [failFor]) the gated Drift call for
+/// user A: a read or a write, depending on where the gate is wired.
 class _ReadGate {
   Completer<void>? _held;
 
-  void hold() => _held = Completer<void>();
+  final _failing = <String>{};
+
+  String _heldUser = _userA;
+
+  /// Pauses the gated call for [user] (default A) until [release].
+  void hold({String user = _userA}) {
+    _held = Completer<void>();
+    _heldUser = user;
+  }
+
+  /// A mode in which [passFor] throws for [userId] instead of pausing.
+  void failFor(String userId) => _failing.add(userId);
 
   void release() {
     _held?.complete();
@@ -826,8 +1248,11 @@ class _ReadGate {
   }
 
   Future<void> passFor(String userId) async {
+    if (_failing.contains(userId)) {
+      throw StateError('simulated write failure for $userId');
+    }
     final held = _held;
-    if (held != null && userId == _userA) {
+    if (held != null && userId == _heldUser) {
       await held.future;
     }
   }
@@ -864,6 +1289,45 @@ class _GatedPlanningLocalStore extends DriftPlanningLocalStore {
     await _gate.passFor(userId);
     return super.hasProjection(userId: userId, organizationId: organizationId);
   }
+}
+
+class _GatedSongMutationStore extends DriftSongMutationStore {
+  const _GatedSongMutationStore({
+    required super.songCatalogStore,
+    required super.planningLocalStore,
+    required this.gate,
+  });
+
+  final _ReadGate gate;
+
+  @override
+  Future<void> upsertSong({
+    required String userId,
+    required SongMutationRecord record,
+  }) async {
+    await gate.passFor(userId);
+    return super.upsertSong(userId: userId, record: record);
+  }
+}
+
+/// The production counter over the production reader; [gate] only pauses
+/// after both real reads returned.
+PendingLocalWorkCounter _gatedPendingLocalWorkCounter(
+  DriftPendingLocalWorkReader reader,
+  _ReadGate gate,
+) {
+  return PendingLocalWorkCounter(
+    readPlanningPendingWorkCount: ({required userId}) async {
+      final count = await reader.countPlanningPendingWork(userId: userId);
+      await gate.passFor(userId);
+      return count;
+    },
+    readSongPendingWorkCount: ({required userId}) async {
+      final count = await reader.countSongPendingWork(userId: userId);
+      await gate.passFor(userId);
+      return count;
+    },
+  );
 }
 
 class _ControllableAuthRepository implements AuthRepository {

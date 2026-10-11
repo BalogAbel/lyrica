@@ -33,9 +33,9 @@ class ReauthSuperseded extends ReauthOutcome {
 /// - priorUserId == null || priorUserId == newUserId → await flushSameUser(); return ReauthProceededSameUser().
 /// - different user:
 ///   - count = await priorPendingCount();
-///   - if count == 0 → await wipePriorAndProceed(); return ReauthWipedPriorAndProceeded(). (nothing to lose, no prompt)
+///   - if count == 0 → await wipePriorAndProceed(count); return ReauthWipedPriorAndProceeded(). (nothing to lose, no prompt)
 ///   - if count > 0 OR count == null (unknown) → confirmed = await confirmDifferentUser(email: priorEmail ?? '', pendingCount: count);
-///      - confirmed true → await wipePriorAndProceed(); return ReauthWipedPriorAndProceeded();
+///      - confirmed true → await wipePriorAndProceed(count); return ReauthWipedPriorAndProceeded();
 ///      - confirmed false → await cancelToPriorUser(); return ReauthCancelledKeptPriorUser();
 ///
 /// CRITICAL: wipePriorAndProceed MUST NOT be called before confirmDifferentUser
@@ -43,12 +43,20 @@ class ReauthSuperseded extends ReauthOutcome {
 /// no wipe until confirm). Unknown is deliberately NOT treated as zero: only
 /// a count that was actually read as zero skips the prompt.
 ///
+/// The wipe receives the count the decision was made on: 0 on the no-prompt
+/// path, and on confirm the count the prompt showed (`null` included, when it
+/// could not be determined). It must not delete more than that count
+/// (docs/specs/2026-10-11-reauth-wipe-recount.md, RW1/RW2).
+///
 /// Side-effect callbacks report completion by returning `bool`: `true` if
 /// the action actually ran, `false` if a last-moment currentness guard
 /// prevented it, OR if the action's destructive part ran but a later step
 /// failed in a way that makes the outcome unsafe to claim (for example
 /// `wipePriorAndProceedFor` returning `false` after the wipe genuinely ran
-/// but the terminal identity write then threw). A `false` report resolves
+/// but the terminal identity write then threw), OR if the wipe declined and
+/// cancelled to the prior user because the prior user's pending work grew
+/// since it was counted or an import is running (RW3/RW4; nothing was
+/// deleted). A `false` report resolves
 /// as [ReauthSuperseded], so the outcome never claims a wipe or
 /// cancellation that did not actually complete -- it may understate what
 /// ran, but it never overstates it.
@@ -65,7 +73,7 @@ Future<ReauthOutcome> resolveReauth({
   required String? priorEmail,
   required Future<int?> Function() priorPendingCount,
   required Future<bool> Function() flushSameUser,
-  required Future<bool> Function() wipePriorAndProceed,
+  required Future<bool> Function(int? countedPendingWork) wipePriorAndProceed,
   required Future<ReauthPromptResult> Function({
     required String email,
     required int? pendingCount,
@@ -95,7 +103,7 @@ Future<ReauthOutcome> resolveReauth({
 
   if (count == 0) {
     // No pending data: safe to wipe without confirmation
-    if (!await wipePriorAndProceed()) {
+    if (!await wipePriorAndProceed(count)) {
       return const ReauthSuperseded();
     }
     return const ReauthWipedPriorAndProceeded();
@@ -122,7 +130,7 @@ Future<ReauthOutcome> resolveReauth({
   return switch (promptResult) {
     ReauthPromptResult.superseded => const ReauthSuperseded(),
     ReauthPromptResult.confirmed =>
-      await wipePriorAndProceed()
+      await wipePriorAndProceed(count)
           ? const ReauthWipedPriorAndProceeded()
           : const ReauthSuperseded(),
     ReauthPromptResult.cancelled =>

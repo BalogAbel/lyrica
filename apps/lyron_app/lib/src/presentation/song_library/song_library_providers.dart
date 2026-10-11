@@ -284,5 +284,6 @@ final chordProImportControllerProvider =
         importService: ref.watch(chordProImportServiceProvider),
         contextReader: () => ref.read(activeCatalogContextProvider),
         keepAlive: ref.keepAlive,
+        runTracker: ref.watch(importRunTrackerProvider),
       );
     });
