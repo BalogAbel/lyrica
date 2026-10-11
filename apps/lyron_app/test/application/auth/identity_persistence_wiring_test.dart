@@ -1058,6 +1058,7 @@ void main() {
       required List<Object> planningReads,
       Completer<void>? holdSecondSongRead,
       void Function()? onSecondSongRead,
+      String? importRunningForUserId,
     }) async {
       await seedPriorUserData();
       identityStore.seed(
@@ -1103,6 +1104,11 @@ void main() {
         ],
       );
       addTearDown(container.dispose);
+      if (importRunningForUserId != null) {
+        container
+            .read(importRunTrackerProvider)
+            .report(Object(), userId: importRunningForUserId, running: true);
+      }
       container.read(appAuthListenableProvider);
       await authController.restoreSession();
       await pump();
@@ -1212,13 +1218,15 @@ void main() {
           recounted = true;
           container
               .read(importRunTrackerProvider)
-              .report(owner, running: false);
+              .report(owner, userId: 'user-1', running: false);
           recountHeld.complete();
         },
       );
       final prompt = container.read(reauthPromptControllerProvider);
       expect((prompt.pending! as ReauthDifferentUserPrompt).pendingCount, 3);
-      container.read(importRunTrackerProvider).report(owner, running: true);
+      container
+          .read(importRunTrackerProvider)
+          .report(owner, userId: 'user-1', running: true);
 
       prompt.answer(true);
       await pump();
@@ -1244,13 +1252,31 @@ void main() {
 
       prompt.answer(true);
       await pump();
-      container.read(importRunTrackerProvider).report(owner, running: true);
+      container
+          .read(importRunTrackerProvider)
+          .report(owner, userId: 'user-1', running: true);
       recountHeld.complete();
       await pump();
 
       expect(await priorSongsStillPresent(), isTrue);
       expect(await priorPlanningProjectionStillPresent(), isTrue);
       expectNothingDeletedAndBackAsPriorUser();
+    });
+
+    test('RW3 per user: an import running for the NEW user does not decline '
+        'a zero-count different-user resolution', () async {
+      await startDifferentUserEdge(
+        songReads: [0],
+        planningReads: [0],
+        importRunningForUserId: 'user-2',
+      );
+
+      expect(await priorSongsStillPresent(), isFalse);
+      expect(identityStore.writes, hasLength(1));
+      expect(identityStore.writes.single.userId, 'user-2');
+      expect(authController.state.status, AppAuthStatus.signedIn);
+      expect(authController.state.session?.userId, 'user-2');
+      expect(authRepository.signOutCalls, 0);
     });
 
     test('RW2: a confirmed unknown count is not recounted and wipes', () async {

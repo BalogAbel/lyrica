@@ -389,20 +389,22 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
 
         // Whether the prior user's data may be wiped now
         // (docs/specs/2026-10-11-reauth-wipe-recount.md). RW3 check 1: no
-        // import is running. RW2: the prior user's pending work is still no
-        // more than the count the decision was made on. A confirmed unknown
-        // is not compared (the user accepted an unknown amount; D5.5 rule 3
-        // does the same); an unreadable recount of a known count is
-        // uncertainty, which never authorises a wipe (D5).
-        // A running import is work nobody has counted, and the counter reads
-        // two databases in parallel, so a row written in between is missed;
-        // check 1 runs before the recount (check 2 follows it synchronously,
-        // right before the deletion).
+        // import is writing the PRIOR user's work (the new user's own import
+        // writes the new user's work and is not a reason to decline). RW2:
+        // the prior user's pending work is still no more than the count the
+        // decision was made on. A confirmed unknown is not compared (the user
+        // accepted an unknown amount; D5.5 rule 3 does the same); an
+        // unreadable recount of a known count is uncertainty, which never
+        // authorises a wipe (D5).
+        // A running import for the prior user is work nobody has counted, and
+        // the counter reads two databases in parallel, so a row written in
+        // between is missed; check 1 runs before the recount (check 2 follows
+        // it synchronously, right before the deletion).
         Future<bool> priorWorkSafeToWipe(
           LastKnownIdentity identity,
           int? countedPendingWork,
         ) async {
-          if (importRuns.isRunning) return false;
+          if (importRuns.isRunningFor(identity.userId)) return false;
           if (countedPendingWork == null) return true;
           try {
             final current = await ref
@@ -430,9 +432,9 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
           }
           // Synchronous with the deletion below (ADR-029 D3): no await between
           // this check and the purge calls.
-          if (!safeToWipe || importRuns.isRunning) {
+          if (!safeToWipe || importRuns.isRunningFor(identity.userId)) {
             // RW4 (not safe to wipe: work grew or the recount was
-            // unreadable) or RW3 (an import is running): delete nothing,
+            // unreadable) or RW3 (an import is writing the prior user's work): delete nothing,
             // return to the prior user exactly as Cancel does. `false`
             // reports ReauthSuperseded -- it understates what ran (a
             // cancel), never overstates it.
@@ -440,7 +442,7 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
               debugPrint(
                 'lastKnownIdentityPersistenceProvider: different-user wipe '
                 'declined: ${identity.userId}\'s pending work changed after it '
-                'was counted, or an import is running',
+                'was counted, or an import is writing it',
               );
             }
             await cancelToPriorUserFor(identity);

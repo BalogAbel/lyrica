@@ -78,6 +78,9 @@ class ChordProImportController extends StateNotifier<ChordProImportState> {
   final ImportRunTracker? _runTracker;
   KeepAliveLink? _runLink;
 
+  /// RW3: the user of the catalog context the current run captured.
+  String? _runUserId;
+
   @override
   set state(ChordProImportState value) {
     // SO7: a run keeps the provider alive until it ends, so the state the
@@ -95,13 +98,13 @@ class ChordProImportController extends StateNotifier<ChordProImportState> {
       _runLink?.close();
       _runLink = null;
     }
-    _runTracker?.report(this, running: running && mounted);
+    _runTracker?.report(this, userId: _runUserId, running: running && mounted);
     super.state = value;
   }
 
   @override
   void dispose() {
-    _runTracker?.report(this, running: false);
+    _runTracker?.report(this, userId: null, running: false);
     super.dispose();
   }
 
@@ -125,6 +128,7 @@ class ChordProImportController extends StateNotifier<ChordProImportState> {
       return;
     }
 
+    _runUserId = context.userId;
     state = const ImportPicking();
 
     FilePickerResult? picked;
@@ -218,6 +222,7 @@ class ChordProImportController extends StateNotifier<ChordProImportState> {
         state = const ImportFailed(AppStrings.songImportNoContextMessage);
         return;
       }
+      _runUserId = context.userId;
       await _commit(
         context: context,
         successes: successes,
@@ -234,7 +239,7 @@ class ChordProImportController extends StateNotifier<ChordProImportState> {
   /// different-user wipe's refusal can stay engaged after the run.
   void _endRun() {
     if (!mounted) {
-      _runTracker?.report(this, running: false);
+      _runTracker?.report(this, userId: null, running: false);
       return;
     }
     if (isImportRunning(state)) {

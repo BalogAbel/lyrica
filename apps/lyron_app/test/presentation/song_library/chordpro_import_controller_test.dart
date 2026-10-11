@@ -202,6 +202,9 @@ void main() {
         subscription = s;
       });
       expect(container.read(importRunTrackerProvider).isRunning, isTrue);
+      final tracker = container.read(importRunTrackerProvider);
+      expect(tracker.isRunningFor('user-1'), isTrue);
+      expect(tracker.isRunningFor('user-2'), isFalse);
 
       subscription.close();
       commit.complete(emptyResult);
@@ -209,6 +212,8 @@ void main() {
       await container.pump();
 
       expect(container.read(importRunTrackerProvider).isRunning, isFalse);
+      expect(tracker.isRunningFor('user-1'), isFalse);
+      expect(tracker.isRunningFor('user-2'), isFalse);
     });
 
     test('a failed commit leaves the tracker idle', () async {

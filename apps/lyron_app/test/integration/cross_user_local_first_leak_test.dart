@@ -627,6 +627,58 @@ void main() {
     });
   });
 
+  group('the import guard protects only the prior user\'s work (AC10)', () {
+    test('B\'s own import running during B\'s zero-count resolution does not '
+        'decline B\'s sign-in, and B\'s files stay in B\'s catalog', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final fixture = await _Fixture.create(
+        seedSongsForA: true,
+        seedPlanningForA: true,
+        seedPendingPlanningForA: false,
+        seedSongsForB: true,
+        lookupAnswersFor: const {_userB},
+        gatePendingCount: true,
+      );
+      await fixture.coldStartAsA();
+
+      // A's count is held after its reads returned zero.
+      fixture.pendingCountGate.hold();
+      await fixture.signInAs(_sessionB);
+      expect(fixture.catalogContextUserId, _userB);
+      expect(
+        fixture.container.read(reauthPromptControllerProvider).pending,
+        isNull,
+      );
+
+      // B starts an import in B's own context; it waits at its first write.
+      fixture.songWriteGate.hold(user: _userB);
+      final importRun = fixture.startImport(const ['B one', 'B two']);
+      await _settle();
+      expect(fixture.importState, isA<ImportCommitting>());
+
+      fixture.pendingCountGate.release();
+      await _settle();
+
+      expect(
+        fixture.auth.state.status,
+        AppAuthStatus.signedIn,
+        reason: 'B\'s own import is not the prior user\'s work',
+      );
+      expect(fixture.auth.state.currentUserId, _userB);
+      expect((await fixture.identityStore.read())?.userId, _userB);
+      expect(
+        fixture.container.read(reauthPromptControllerProvider).pending,
+        isNull,
+      );
+
+      fixture.songWriteGate.release();
+      await importRun;
+      await _settle();
+      expect(await fixture.pendingSongCount(_userB), 2);
+      expect(await fixture.pendingSongCount(_userA), 0);
+    });
+  });
+
   // RW3 (docs/specs/2026-10-11-reauth-wipe-recount.md): a running import is
   // work nobody has counted yet, so the wipe declines while one runs; and the
   // guard must never stick once the import ended in any way.
@@ -1179,7 +1231,13 @@ class _ReadGate {
 
   final _failing = <String>{};
 
-  void hold() => _held = Completer<void>();
+  String _heldUser = _userA;
+
+  /// Pauses the gated call for [user] (default A) until [release].
+  void hold({String user = _userA}) {
+    _held = Completer<void>();
+    _heldUser = user;
+  }
 
   /// A mode in which [passFor] throws for [userId] instead of pausing.
   void failFor(String userId) => _failing.add(userId);
@@ -1194,7 +1252,7 @@ class _ReadGate {
       throw StateError('simulated write failure for $userId');
     }
     final held = _held;
-    if (held != null && userId == _userA) {
+    if (held != null && userId == _heldUser) {
       await held.future;
     }
   }
