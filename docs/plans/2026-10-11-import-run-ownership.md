@@ -516,8 +516,8 @@ service is called with `runContext`).
 
    ```dart
      static const songImportContextChangedMessage =
-         'The import was stopped because the signed-in account or library '
-         'changed. Nothing was imported.';
+         'The account or workspace changed, so the import was stopped and '
+         'nothing was imported. Start the import again.';
    ```
 
 2. `chordpro_import_controller.dart`, at the start of `_commit`, replace

@@ -186,8 +186,10 @@ exactly what R16 and the "after the sign-out ends" part of R10 describe:
 ## What the user sees
 
 - **A's duplicate dialog open, B signs in, the dialog answered:** one snackbar,
-  "The import was stopped because the signed-in account or library changed.
-  Nothing was imported." Nothing is written for either user.
+  "The account or workspace changed, so the import was stopped and nothing was
+  imported. Start the import again." (`AppStrings.songImportContextChangedMessage`;
+  it says the import has to be restarted, not only that it failed). Nothing is
+  written for either user.
 - **The same, but B cancelled back to A before the answer:** A's files are
   imported as before.
 - **A re-authenticates as A while the dialog is open:** unchanged.
@@ -266,14 +268,20 @@ A failing existing test outside this list stops the work (see the plan).
 
 - **R18, the open duplicate dialog outlives the user switch.** The dialog is a
   modal route owned by the navigator, not by the screen. After B signed in it
-  still shows A's picked file names and the titles of A's songs they collide
-  with, until it is answered, and the answer is then refused (IR2). This is
-  presentation only; nothing is written. Fix sketch: the host keeps the route
-  handle of its own dialog (pushing a `DialogRoute` itself) and removes that
-  route when the awaiting run's context stops being the active one; it must
-  not pop the top route (R9 is the same hazard with the reauth dialog stacked
-  on top). Trigger: the next change to the duplicate dialog host or to
-  `ReauthPromptHost`, or a field report. Recorded in the residuals entry.
+  is still on screen until it is answered, and the answer is then refused
+  (IR2). It lists the titles of the files A had just picked (`incomingTitle`
+  of each duplicate; it shows no file names and no catalog entries), each of
+  which equals a title A's catalog already holds. Deferred, with the reasons
+  stated: it is presentation only; the answer is refused and nothing is
+  written; what it shows comes from local files A picked moments earlier, not
+  from a list of A's synced catalog; and closing a dialog from code is the R9
+  hazard (`showDialog` hands back no route, so a programmatic pop removes
+  whatever is on top, for example the reauth dialog stacked above it). A
+  correct close needs the host to push its own `DialogRoute` and keep the
+  handle, which is a redesign of the host. Trigger: a redesign of the
+  duplicate dialog host, or the session-transition coordinator
+  (`docs/deferred/2026-10-11-session-transition-coordinator.md`). Recorded in
+  the residuals entry.
 - **R10, narrowed** as described in IR4.
 
 ## Documentation updates (in the implementation PR)

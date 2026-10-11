@@ -170,16 +170,28 @@ purged. **Fix sketch:** catch, report once, show a message.
 ## R18 - the open duplicate dialog outlives the user switch
 
 The duplicate dialog is a modal route owned by the navigator, not by the
-screen. After another user signed in it still shows the first user's picked
-file names and the titles of their songs they collide with, until it is
-answered. The answer is then refused (IR2 of
-`docs/specs/2026-10-11-import-run-ownership.md`) and nothing is written, so
-this is presentation only. **Fix sketch:** the host pushes its own
-`DialogRoute`, keeps the route handle, and removes that route when the
-awaiting run's context stops being the active one. It must not pop the top
-route (R9 is the same hazard with the reauth dialog stacked on top).
-**Trigger:** the next change to the duplicate dialog host or to
-`ReauthPromptHost`, or a field report.
+screen. After another user signed in it is still on screen until it is
+answered. It lists the titles of the files the first user had just picked
+(`incomingTitle` of each duplicate; it shows no file names and no catalog
+entries), and each of those equals a title the first user's catalog already
+holds. The answer is then refused (IR2 of
+`docs/specs/2026-10-11-import-run-ownership.md`) and nothing is written.
+
+**Why it stays deferred:**
+
+- it is presentation only: the answer is refused and nothing is written;
+- what it shows comes from local files the first user picked moments
+  earlier, not from a list of that user's synced catalog;
+- closing the dialog from code is the R9 hazard: `showDialog` hands back no
+  route, so a programmatic pop removes whatever is on top (the reauth dialog
+  stacked above it, among others).
+
+**Fix sketch:** the host pushes its own `DialogRoute`, keeps the route handle,
+and removes that route when the awaiting run's context stops being the active
+one. It never pops the top route. That is a redesign of the host, not a small
+fix. **Trigger:** a redesign of the duplicate dialog host, or the
+session-transition coordinator
+(`docs/deferred/2026-10-11-session-transition-coordinator.md`).
 
 ## Trigger
 
