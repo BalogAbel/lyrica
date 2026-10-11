@@ -87,9 +87,9 @@ The commit takes its context as an argument; it no longer chooses one.
   `ChordProImportService.commitImport`), and the dialog host
   (`SongListScreen._resolveImportDuplicates`) hands back the context of the
   awaiting state the dialog was opened for. `commitWithResolutions` itself no
-  longer reads the live context. The controller reads it in two places only:
-  when a run starts (to capture) and at the start of `_commit` (IR2's check,
-  to compare).
+  longer reads the live context. The controller reads it in three places only:
+  when a run starts (to capture), after the analysis before the run parks
+  (IR2's parking check) and at the start of `_commit` (IR2's commit check).
 - `_runUserId` follows the given context, so the tracker reports a resumed
   commit for the run's user, which is the user whose work it writes (RW3: a
   guard keyed to the protected user).
@@ -251,7 +251,8 @@ Controller (unit, no auth stack):
   the dialog for, not the live one (widget test).
 
 Each guard must be pinned individually: removing IR2's check at the start of
-`_commit` fails AC1–AC3 and AC6–AC8, and removing the parking check fails
+`_commit` fails AC1–AC3, AC6 and AC7 (AC8 is refused by either check and
+fails only when both are removed), and removing the parking check fails
 AC10; making `commitWithResolutions` ignore its argument and read the live
 context fails AC1, AC2 and AC5; making the host pass the live context fails
 AC9 (the plan lists all three as mutation checks).

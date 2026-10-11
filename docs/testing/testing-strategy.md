@@ -519,7 +519,7 @@ plans through a local-first path". Rules for extending it:
   pending rows and on what a sync pass sends
   (`docs/specs/2026-10-11-import-run-ownership.md`). The fixture helpers are
   `resolveDuplicates`, `syncSongs` (a pass over a recording stand-in for the
-  backend) and `startImport(holdPickerUntil:)` (keeps the picker open, so a
+  backend), `startImport(holdPickerUntil:)` (keeps the picker open, so a
   run can be started before and finished after a user change) and
   `catalogReadGate` (pauses the analysis's catalog read, so the user can change
   while the run is in `ImportAnalysing`).

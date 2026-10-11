@@ -207,7 +207,9 @@ IR2 compares the live catalog context with the run's. After a cancelled
 reauth returns the app to A there is a gap (one local read) in which the live
 context is `null` until A's context is re-established. A dialog answered inside
 that gap is refused with "The account or workspace changed ..." although the
-user is the same. Nothing is written and starting the import again works.
+user is the same. A run whose analysis ends inside the gap is refused at the
+parking check, with no dialog and the same message. Nothing is written and
+starting the import again works.
 **Fix sketch:** distinguish "no context yet" from "another context" in the
 message, or wait for the establishment. **Trigger:** a field report.
 
