@@ -26,6 +26,11 @@
 > import writes behind its prompt
 > (`docs/deferred/2026-10-09-reauth-wipe-uncounted-import-rows.md`, found by
 > the sign-out guard's review), then S0 PR 2, then S5a.
+> The sign-out guard PR merged as #87 (`d5fd3de`, 2026-10-09). The reauth
+> wipe fix is in progress on `fix/reauth-wipe-recount`
+> (`docs/specs/2026-10-11-reauth-wipe-recount.md`); the session-transition
+> coordinator it surfaced stays deferred
+> (`docs/deferred/2026-10-11-session-transition-coordinator.md`).
 
 ## Purpose
 
