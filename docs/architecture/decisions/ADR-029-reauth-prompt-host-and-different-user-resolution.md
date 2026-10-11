@@ -530,15 +530,23 @@ and acceptance criteria: `docs/specs/2026-10-11-reauth-wipe-recount.md`.
   and removes only itself); the controller reports from its state setter;
   an exception escaping a run ends it through `_endRun` in a `finally`,
   recorded as `ImportFailed(AppStrings.songImportInterruptedMessage)`; and
-  `dispose` removes the instance.
+  `dispose` removes the instance. Accepted residual: a controller disposed
+  while its run's service call is still writing leaves the tracker idle while
+  those rows land. The keep-alive link prevents that disposal in the app
+  (only a container teardown, or a rebuild of the provider's store
+  dependencies, could cause it); an unreachable window is preferred to a
+  reachable dead end, since a stuck tracker would decline every later wipe.
 - **RW4.** A declined wipe is a cancel: nothing is deleted, the app returns
   to the prior user exactly as Cancel does. The coordinator reports it as
   `ReauthSuperseded`, which understates what ran and never overstates it.
 
-Rejected: asking the user again with the new count. It adds a second prompt
-on a path whose point is that nobody is interacting, and a decline that
-deletes nothing is the safe default; the prior user keeps their work and can
-retry.
+Rejected: asking the user again with the new count. While an import runs the
+count can grow with every row, so a second prompt can be stale when
+answered. Avoiding that means waiting for the import inside the serial
+resolution chain; that wait is unbounded (the picking phase waits on the OS
+picker) and blocks every later auth edge, including the sign-out identity
+clear (R3). Asking again cannot be shown to terminate; cancelling always
+does.
 
 Accepted: the recount compares counts, not row identities. If sync removed
 counted rows while an import that has since ended added the same number, the
