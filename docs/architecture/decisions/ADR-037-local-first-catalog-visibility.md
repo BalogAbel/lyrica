@@ -214,7 +214,8 @@ the OS picker could also commit after the sign-out had purged (R16).
   as an argument: the awaiting state carries it and the dialog host hands it
   back. `commitWithResolutions` never reads the live context; the only reads are
   the capture when a run starts, IR2's parking check after the analysis and
-  IR2's comparison at the start of `_commit`. The import tracker reports the run's own user.
+  IR2's comparison at the start of `_commit`. The import tracker reports the
+  run's own user.
 - **A commit starts only while its context is active (IR2).** `_commit`, the
   one method every write passes through, refuses to start when the active
   catalog context is no longer the run's. Nothing is written and the run ends

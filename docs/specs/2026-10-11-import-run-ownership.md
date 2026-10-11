@@ -244,15 +244,15 @@ Controller (unit, no auth stack):
 - **AC7 (IR2):** the same when the live context is the same user's other
   organization, and when it is `null`.
 - **AC8 (IR2, no duplicates):** a run without duplicates whose context changed
-  while the picker was open is refused at its commit (the service is not
+  while the picker was open is refused before it writes (the service is not
   called, `ImportFailed`).
 - **AC9 (IR1, host):** the duplicate dialog host calls
   `commitWithResolutions` with the context of the awaiting state it opened
   the dialog for, not the live one (widget test).
 
 Each guard must be pinned individually: removing IR2's check at the start of
-`_commit` fails AC1–AC3, AC6 and AC7 (AC8 is refused by either check and
-fails only when both are removed), and removing the parking check fails
+`_commit` fails AC1, AC2, AC6 and AC7 (AC3 and AC8 are refused by either
+check and fail only when both are removed), and removing the parking check fails
 AC10; making `commitWithResolutions` ignore its argument and read the live
 context fails AC1, AC2 and AC5; making the host pass the live context fails
 AC9 (the plan lists all three as mutation checks).
