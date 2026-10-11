@@ -38,7 +38,7 @@
 - group "the different-user wipe deletes only counted work" with (a) and (b),
   both `skip: 'red until Task 3'`.
 
-## Task 1 — `ImportRunTracker` (RW3 seam, AC8)
+## Task 1 — `ImportRunTracker`, never stuck (RW3 seam; AC8, AC9 unit part)
 
 **Test first** (`test/presentation/song_library/chordpro_import_controller_test.dart`):
 
@@ -46,14 +46,34 @@
   an optional `ImportRunTracker? runTracker` passed to `super`, and build the
   probe with a tracker the test holds.
 - New tests:
-  - for every running state: `setImportState(running)` → `tracker.isRunning`
-    is `true`; then every end state → `false` (reuse the existing
-    `runningStates` × `endStates` loop shape);
+  - for every running state, `setImportState(running)` makes
+    `tracker.isRunning` `true`, and every end state then makes it `false`
+    (reuse the existing `runningStates` × `endStates` loop shape);
   - the throwing-listener path: after the `ImportDone` that throws in a
     listener, `tracker.isRunning` is `false`;
+  - **dispose:** `setImportState(ImportCommitting())`, then dispose the
+    controller (close the subscription and `container.invalidate(probeProvider)`,
+    or dispose the container) → `tracker.isRunning` is `false`. A
+    `setImportState(ImportAnalysing())` on the disposed instance (it throws a
+    debug `StateError`; wrap it in `expect(..., throwsStateError)`) leaves
+    `tracker.isRunning` `false`;
+  - **per instance:** two controllers on one tracker; A running, B goes from
+    running to idle → still running; A ends → idle;
   - through the real provider (group "a commit through the real provider"):
-    while `ImportCommitting`, `container.read(importRunTrackerProvider).isRunning`
-    is `true`; after `commit.complete(emptyResult)` it is `false`.
+    - while `ImportCommitting`, `container.read(importRunTrackerProvider).isRunning`
+      is `true`;
+    - after `commit.complete(emptyResult)` it is `false`;
+    - after `commit.completeError(...)` (`ImportFailed`) it is `false`;
+  - **escaped exception:** a `startImport` whose analysis returns a result
+    whose `duplicates` getter throws. The picker channel
+    `miguelruivo.flutter.plugins.filepicker` is mocked as in the integration
+    fixture. The returned future fails, the state is `ImportFailed` with
+    `AppStrings.songImportInterruptedMessage`, the tracker is idle, and the
+    provider is released once unlistened;
+  - **picker cancel:** the picker channel answers `null` → `ImportIdle`, and
+    the tracker is idle;
+  - `commitWithResolutions` is refused while a commit is running (the state
+    stays `ImportCommitting`, the service is called once).
 
 **Implementation:**
 
@@ -66,16 +86,22 @@
    /// docs/specs/2026-10-07-sign-out-pending-work-guard.md).
    ///
    /// The import controller is a presentation-layer notifier; this is the
-   /// application layer's view of its run, so the different-user wipe can
-   /// refuse to start while a run may be writing. The controller reports
-   /// every state change; nothing else writes it.
+   /// application layer's view of its runs, so the different-user wipe can
+   /// refuse to start while one may be writing. Keyed by the reporting
+   /// controller instance: each instance adds and removes only itself, and a
+   /// disposed instance removes itself, so "running" can never outlive the
+   /// instance that reported it.
    class ImportRunTracker {
-     bool _running = false;
+     final _running = <Object>{};
 
-     bool get isRunning => _running;
+     bool get isRunning => _running.isNotEmpty;
 
-     void report({required bool running}) {
-       _running = running;
+     void report(Object owner, {required bool running}) {
+       if (running) {
+         _running.add(owner);
+       } else {
+         _running.remove(owner);
+       }
      }
    }
    ```
@@ -94,16 +120,16 @@
    plus the import of `import_run_tracker.dart`.
 
 3. `lib/src/presentation/song_library/chordpro_import_controller.dart`:
-   - constructor gains `this._runTracker,` after `this._keepAlive,`; field
-     `final ImportRunTracker? _runTracker;`;
+   - the constructor gains `this._runTracker,` after `this._keepAlive,`, with
+     the field `final ImportRunTracker? _runTracker;`;
    - the state setter becomes:
 
      ```dart
      @override
      set state(ChordProImportState value) {
-       // ...existing SO7 comment, extended with one sentence: RW3 -- the
-       // tracker follows the same transitions, settled before the listeners
-       // run for the same reason.
+       // ...existing SO7 comment, plus: RW3 -- the tracker follows the same
+       // transitions, settled before the listeners run for the same reason,
+       // and a disposed instance never reports running again.
        final running = isImportRunning(value);
        if (running) {
          _runLink ??= _keepAlive?.call();
@@ -111,12 +137,42 @@
          _runLink?.close();
          _runLink = null;
        }
-       _runTracker?.report(running: running);
+       _runTracker?.report(this, running: running && mounted);
        super.state = value;
      }
      ```
 
-4. `lib/src/presentation/song_library/song_library_providers.dart`,
+   - `dispose()` override: `_runTracker?.report(this, running: false);` then
+     `super.dispose();`;
+   - `startImport`: the SO7 refusal stays first; the rest of the body moves
+     to `Future<void> _runImport()`, called as
+     `try { await _runImport(); } finally { _endRun(); }`;
+   - `commitWithResolutions`: first
+     `if (isImportRunning(state)) return;` (one run at a time, as
+     `startImport`), then the existing body inside
+     `try { ... } finally { _endRun(); }`;
+   - new:
+
+     ```dart
+     /// RW3: whatever ended the run -- a normal end, a caught failure, a
+     /// picker cancel, a throw nothing caught, or a dispose -- leaves no
+     /// running phase behind, so neither SO7's sign-out refusal nor the
+     /// different-user wipe's refusal can stay engaged after the run.
+     void _endRun() {
+       if (!mounted) {
+         _runTracker?.report(this, running: false);
+         return;
+       }
+       if (isImportRunning(state)) {
+         state = const ImportFailed(AppStrings.songImportInterruptedMessage);
+       }
+     }
+     ```
+
+4. `lib/src/shared/app_strings.dart`, next to the other `songImport*`
+   strings: `static const songImportInterruptedMessage =
+   'The import stopped before it finished.';`
+5. `lib/src/presentation/song_library/song_library_providers.dart`,
    `chordProImportControllerProvider`: add
    `runTracker: ref.watch(importRunTrackerProvider),` (the barrel
    `application/providers.dart` it already imports exports
@@ -245,7 +301,11 @@ Commit: `refactor(reauth): pass the decision count to the wipe (RW1)`.
 
 Commit: `fix(reauth): recount before the different-user wipe (RW2, RW4)`.
 
-## Task 4 — no wipe while an import is running (RW3; AC3, AC4)
+## Task 4 — no wipe while an import is running; never stuck (RW3; AC3, AC4, AC9)
+
+The tracker's lifetime rules (spec RW3, "never stays running") are built and
+unit-tested in Task 1. This task wires the guard and proves end to end that
+a finished, failed or disposed import never blocks a later wipe.
 
 **Test first** (`cross_user_local_first_leak_test.dart`, same group):
 
@@ -258,6 +318,25 @@ Commit: `fix(reauth): recount before the different-user wipe (RW2, RW4)`.
   A; release the import → A has 3 pending songs, identity row A's.
 
 Both fail after Task 3 (the recount is `<= k` / 0, so the wipe runs).
+
+- **AC9, the guard never sticks.** One test per end path. A has no pending
+  work (`seedPendingPlanningForA: false`). The import ends in one of these
+  ways:
+  - the picker answers `null` (cancel);
+  - every row write fails (the song-write gate throws for A instead of
+    pausing; the run ends `ImportDone` with errors and writes nothing);
+  - the controller is disposed mid-commit (held at the write gate, then
+    `container.invalidate(chordProImportControllerProvider)` after the
+    subscription is closed; release the gate and expect the run's future to
+    fail with the debug `StateError`; A's rows written after the disposal
+    are orphans, which is R10).
+
+  After each, `container.read(importRunTrackerProvider).isRunning` is
+  `false`. B then signs in, and the wipe runs: A's identity row is gone, B
+  is `signedIn`, and a zero count means no prompt.
+
+  The fixture's song-write gate gains a `failFor(userId)` mode for the second
+  case.
 
 **Implementation** (`lib/src/application/auth_providers.dart`):
 

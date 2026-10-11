@@ -120,7 +120,7 @@ resolution lives in the application layer, which does not import
 presentation. A small application-layer seam carries the run state:
 
 - `ImportRunTracker` (`application/song_library/import_run_tracker.dart`):
-  `isRunning` plus a `report({required bool running})` method;
+  `isRunning` plus `report(owner, running: ...)`;
 - `importRunTrackerProvider` (in `song_catalog_providers.dart`): app-scoped,
   not autoDispose;
 - the controller reports `isImportRunning(value)` from its state setter,
@@ -129,6 +129,41 @@ presentation. A small application-layer seam carries the run state:
 
 SO7's sign-out refusal keeps reading the controller state; it is not moved to
 the tracker in this PR.
+
+#### The tracker never stays "running" (added at the design gate)
+
+A tracker stuck at "running" would decline every later different-user wipe.
+The new user could then never sign in on this device: every attempt would
+fall back to the prior user, a view with no way out. This is the same class
+of defect as #87's duplicate dialog with no presenter. So the running state
+is tied to the controller instance's lifetime and cleared on every exit
+path:
+
+- **Per instance.** The tracker holds the set of controller instances that
+  are running (`isRunning` = the set is non-empty). A controller adds and
+  removes only itself, so one instance can never clear, or be blocked by,
+  another's entry.
+- **Normal and caught ends.** Done, Failed, a picker cancel or picker error
+  (Idle), and awaiting duplicates are all reported by the state setter.
+- **Any other exit.** `startImport` and `commitWithResolutions` run their
+  body in `try/finally`. If the body exits with a running phase still set
+  (a throw that no branch catches), the `finally` ends the run as
+  `ImportFailed(AppStrings.songImportInterruptedMessage)`. That releases
+  SO7's keep-alive link and unblocks SO7's sign-out refusal too. The
+  original exception still propagates.
+- **Dispose.** `dispose()` removes the instance from the tracker. The state
+  setter reports "running" only while the instance is mounted, so a disposed
+  instance whose run is still in flight can never add itself back. The
+  `finally` of a disposed instance only removes it.
+- **One run at a time.** `commitWithResolutions` is refused while a run is
+  running, as `startImport` already is (SO7). Otherwise its `finally` could
+  end a different run.
+
+**Accepted:** an instance disposed while its run's service call is still
+writing leaves the tracker idle while those rows land. The keep-alive link
+prevents that disposal in the app; only a container teardown, or a rebuild
+of the provider's store dependencies (none happens at runtime), can do it.
+An unreachable window is preferred to a reachable dead end.
 
 ### RW4 — a declined wipe cancels to the prior user
 
@@ -194,6 +229,13 @@ sign-out side).
   and exactly the prompt's count (including `null`) on confirm.
 - **AC8 (RW3):** the tracker reports running for exactly the running phases,
   through every transition, including the throwing-listener path.
+- **AC9 (RW3, never stuck):** after an import that ends any of these ways,
+  the tracker is idle and a later different-user wipe runs:
+  - a failure (`ImportFailed`);
+  - a picker cancel;
+  - an exception that escapes the run (it ends as `ImportFailed`);
+  - a disposal of the controller (a disposed instance that later sets a
+    running state does not re-register).
 
 ## Intentional test changes
 
