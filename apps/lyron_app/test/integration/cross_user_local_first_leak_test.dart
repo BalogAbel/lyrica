@@ -1467,6 +1467,7 @@ class _Fixture {
     return container
         .read(chordProImportControllerProvider.notifier)
         .commitWithResolutions(
+          context: awaiting.context,
           successes: awaiting.successes,
           resolvedDuplicates: [
             for (final duplicate in awaiting.result.duplicates)

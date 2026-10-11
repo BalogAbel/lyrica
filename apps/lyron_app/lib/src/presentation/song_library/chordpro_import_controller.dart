@@ -26,10 +26,19 @@ class ImportAnalysing extends ChordProImportState {
 }
 
 class ImportAwaitingDuplicateResolution extends ChordProImportState {
-  const ImportAwaitingDuplicateResolution(this.result, this.successes);
+  const ImportAwaitingDuplicateResolution(
+    this.result,
+    this.successes, {
+    required this.context,
+  });
 
   final ImportBatchResult result;
   final List<ImportSuccess> successes;
+
+  /// IR1 (docs/specs/2026-10-11-import-run-ownership.md): the catalog
+  /// context the run analysed these files against. The commit that resumes
+  /// the run is given this context and writes into it and nothing else.
+  final ActiveCatalogContext context;
 }
 
 class ImportCommitting extends ChordProImportState {
@@ -192,6 +201,7 @@ class ChordProImportController extends StateNotifier<ChordProImportState> {
       state = ImportAwaitingDuplicateResolution(
         analysisResult,
         analysisResult.successes,
+        context: context,
       );
       return;
     }
@@ -208,7 +218,11 @@ class ChordProImportController extends StateNotifier<ChordProImportState> {
     );
   }
 
+  /// IR1: [context] is the context of the run whose duplicates were
+  /// resolved (the awaiting state's), never read from the live provider
+  /// here; the live context is only compared against it, in [_commit].
   Future<void> commitWithResolutions({
+    required ActiveCatalogContext context,
     required List<ImportSuccess> successes,
     required List<ResolvedDuplicate> resolvedDuplicates,
   }) async {
@@ -217,11 +231,6 @@ class ChordProImportController extends StateNotifier<ChordProImportState> {
       return;
     }
     try {
-      final context = _contextReader();
-      if (context == null) {
-        state = const ImportFailed(AppStrings.songImportNoContextMessage);
-        return;
-      }
       _runUserId = context.userId;
       await _commit(
         context: context,
