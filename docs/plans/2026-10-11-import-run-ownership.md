@@ -535,8 +535,9 @@ service is called with `runContext`).
        // only into the catalog it analysed against, and only while that is
        // still the active one. The user, the organization or the context
        // itself may have changed while the dialog or the picker was open
-       // (R17, R16). Nothing is written; the state leaves its running phase,
-       // so the tracker and SO7's link release as for any other end.
+       // (R17, R16). Nothing is written; the state becomes ImportFailed, so
+       // a run that was in a running phase releases the tracker and SO7's
+       // link through the state setter as for any other end.
        if (_contextReader() != context) {
          state = const ImportFailed(AppStrings.songImportContextChangedMessage);
          return;

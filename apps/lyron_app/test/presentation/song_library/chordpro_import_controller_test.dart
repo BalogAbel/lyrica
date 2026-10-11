@@ -591,6 +591,10 @@ void main() {
         userId: 'user-a',
         organizationId: 'org-2',
       ),
+      'another user, same organization': ActiveCatalogContext(
+        userId: 'user-b',
+        organizationId: 'org-a',
+      ),
       'no context': null,
     };
     for (final entry in changedContexts.entries) {
