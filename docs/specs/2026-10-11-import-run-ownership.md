@@ -126,6 +126,18 @@ change; IR1's argument does).
 `ActiveCatalogContext` compares by value, so a context that was re-established
 for the same user and organization is the same context.
 
+**A second check point: where a run parks.** The same comparison runs in
+`_runImport` once the analysis returned, before the run leaves the analysing
+phase: before it enters `ImportAwaitingDuplicateResolution`, and before it ends
+`ImportDone` when nothing was left to import. Without it the duplicate dialog
+(or the summary) could OPEN after the user switch, because the OS picker or the
+analysis straddled the auth edge, and list the first user's titles to the
+current user. Reproduced by the probe of the adversarial review (B signs in
+while A's picker is open; the picker answers; the dialog opens for `user-a`
+while `user-b` is current). A run that never parks needs no pop, so the R9
+hazard that keeps R18's "outlives the switch" shape deferred does not apply.
+The write is still guarded by the first check point at the start of `_commit`.
+
 **Why the active context, not `AppAuthState.currentUserId`.** The starting
 proposal compared the current user with the run's user. The active catalog
 context is the better signal:
@@ -193,6 +205,8 @@ exactly what R16 and the "after the sign-out ends" part of R10 describe:
   written for either user.
 - **The same, but B cancelled back to A before the answer:** A's files are
   imported as before.
+- **The user switched while the picker was open or the analysis ran:** no
+  dialog opens; the same snackbar.
 - **A re-authenticates as A while the dialog is open:** unchanged.
 - **The user signed out while the dialog was open, then answers it:** the same
   snackbar (before: "Sign in before importing songs."; the new text says what
@@ -209,6 +223,10 @@ Integration (the reproduction suite, red on `main`):
 - **AC3 (IR2, R10/R16):** an import whose picker answers after the real sign-out
   command completed writes no row for the signed-out user and ends
   `ImportFailed`.
+- **AC10 (IR2, parking):** an auth edge while the picker is open, or while the
+  analysis runs, leaves no dialog: the run never enters
+  `ImportAwaitingDuplicateResolution`, ends `ImportFailed` with the message,
+  and writes nothing (integration: both variants; unit: the picker variant).
 - **AC4 (guards, green before and after):** A re-authenticating as A while the
   dialog is open, and B's prompt cancelled before the answer, both import A's
   files into A's catalog (two new songs and the overwritten one: three
@@ -232,8 +250,9 @@ Controller (unit, no auth stack):
   `commitWithResolutions` with the context of the awaiting state it opened
   the dialog for, not the live one (widget test).
 
-Each guard must be pinned individually: removing IR2's check fails AC1–AC3 and
-AC6–AC8; making `commitWithResolutions` ignore its argument and read the live
+Each guard must be pinned individually: removing IR2's check at the start of
+`_commit` fails AC1–AC3 and AC6–AC8, and removing the parking check fails
+AC10; making `commitWithResolutions` ignore its argument and read the live
 context fails AC1, AC2 and AC5; making the host pass the live context fails
 AC9 (the plan lists all three as mutation checks).
 
@@ -285,12 +304,13 @@ A failing existing test outside this list stops the work (see the plan).
   the residuals entry.
 - **R10, narrowed** as described in IR4.
 - **Found by the adversarial review of this fix** (none blocking; recorded in
-  the residuals entry): R18 widened (the dialog can also open after the user
-  switch when the picker or the analysis straddles the auth edge; a
-  three-line guard before entering the awaiting state would close that
-  shape), R19 (a same-user context gap refuses with the account-changed
-  message), R20 (an answer dropped silently while a run is running), and R9
-  extended (the reauth host's pop can reach the duplicate dialog).
+  the residuals entry): R18's second shape (the dialog can also open after the
+  user switch when the picker or the analysis straddles the auth edge) is
+  closed in this PR by IR2's second check point, at the user's request; the
+  already open dialog (R18 as written) stays deferred. R19 (a same-user
+  context gap refuses with the account-changed message), R20 (an answer
+  dropped silently while a run is running) and R9 extended (the reauth host's
+  pop can reach the duplicate dialog) are recorded.
 
 ## Documentation updates (in the implementation PR)
 

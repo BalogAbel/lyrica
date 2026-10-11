@@ -1,6 +1,6 @@
 # Plan: An Import Run Writes Only Into the Catalog It Analysed Against
 
-- Spec: `docs/specs/2026-10-11-import-run-ownership.md` (IR1–IR4, AC1–AC9)
+- Spec: `docs/specs/2026-10-11-import-run-ownership.md` (IR1–IR4, AC1–AC10)
 - Branch: `fix/import-run-ownership` (from `main` at `22864df`)
 - Execution: subagent-driven. Implementer Sonnet 5.5 (medium effort), task
   review Haiku 4.5. One adversarial Opus 5.5 (high) whole-diff review before
@@ -593,6 +593,105 @@ active (IR2, R17, R16)`.
 Verify: markdown only; full suite not required, but run `flutter analyze`
 once at the end of the PR anyway. Commit: `docs: import run ownership (ADR-037
 amendment, architecture, testing strategy)`.
+
+## Task 4 — a run parks only while its context is active (IR2, second check point; AC10)
+
+Added after the adversarial review, at the user's request: the duplicate dialog
+could also OPEN after the user switch (the OS picker or the analysis straddled
+the auth edge). Never opening needs no pop, so the R9 argument that keeps the
+"outlives the switch" shape deferred does not apply.
+
+**Test first.**
+
+`test/presentation/song_library/chordpro_import_controller_test.dart`, in the
+group "a run is bound to the catalog context it analysed against (IR1, IR2)":
+
+```dart
+    test('IR2: a run whose context changed while the picker was open never '
+        'reaches the dialog', () async {
+      final seen = <ChordProImportState>[];
+      controller.addListener(seen.add, fireImmediately: false);
+      pickerOpen = Completer<void>();
+      final run = controller.startImport();
+      await pumpEventQueue();
+      expect(controller.currentState, isA<ImportPicking>());
+
+      live = ActiveCatalogContext(userId: 'user-b', organizationId: 'org-b');
+      pickerOpen!.complete();
+      await run;
+
+      expect(seen.whereType<ImportAwaitingDuplicateResolution>(), isEmpty);
+      expect(
+        controller.currentState,
+        isA<ImportFailed>().having(
+          (s) => s.message,
+          'message',
+          AppStrings.songImportContextChangedMessage,
+        ),
+      );
+      expect(service.committedWith, isEmpty);
+      expect(tracker.isRunning, isFalse);
+    });
+```
+
+(`service.reportDuplicates` defaults to `true`, so the analysis finds a
+duplicate and, without the new check, the run parks.)
+
+`test/integration/cross_user_local_first_leak_test.dart`, two tests in the
+group "a duplicate resolution never writes into another user's catalog (R17)"
+(the probe of the review is the first one):
+
+- **picker variant.** Fixture as in test b (`seedSongsForA`, `seedPlanningForA`,
+  `seedSongsForB`, `lookupAnswersFor: {_userB}`; A has unsynced work, so B's
+  sign-in asks and B's context is live). Cold start as A. Add a listener
+  (`fixture.container.listen(chordProImportControllerProvider, (_, next) =>
+  seen.add(next))`) before starting. `fixture.startImport(incomingForA,
+  holdPickerUntil: pickerAnswer.future)`; expect `ImportPicking`. `signInAs(B)`;
+  expect the prompt pending and `catalogContextUserId == _userB`. Complete the
+  picker, await the run, `_settle()`. Expect: no `ImportAwaitingDuplicateResolution`
+  in `seen`, `importState` is `ImportFailed`, `pendingSongCount` is 0 for A and B.
+- **analysis variant.** Same fixture and listener. `fixture.catalogReadGate.hold()`
+  after the cold start, then `fixture.startImport(incomingForA)`; expect
+  `ImportAnalysing` (the run is blocked in the analysis's read; if the gate does
+  not hold the read, STOP and report). `signInAs(B)`, `catalogReadGate.release()`,
+  await the run, `_settle()`. Same expectations.
+
+Expected before the change: all three fail (the run enters
+`ImportAwaitingDuplicateResolution`).
+
+**Implementation** (`lib/src/presentation/song_library/chordpro_import_controller.dart`,
+`_runImport`): directly after the `try/catch` that builds `analysisResult` and
+before `if (analysisResult.duplicates.isNotEmpty)`, add
+
+```dart
+    // IR2 (docs/specs/2026-10-11-import-run-ownership.md): a run parks at the
+    // dialog, or ends in the summary, only while it is still in the catalog it
+    // analysed against. The picker or the analysis may have straddled a user
+    // switch, and the dialog would list this run's titles to whoever is
+    // current now. Nothing is written; _commit checks again before it writes.
+    if (_contextReader() != context) {
+      state = const ImportFailed(AppStrings.songImportContextChangedMessage);
+      return;
+    }
+```
+
+**Mutation check (report the result; revert after):** delete this block: the
+unit test and both integration tests fail; `_commit`'s own check stays.
+
+**Verify:** full `flutter test` and `flutter analyze` clean. Commit (code and
+tests only): `fix(import): a run parks at the dialog only while its context is
+active (IR2, R18 second shape)`.
+
+**Documentation (second commit):** ADR-037 amendment, the IR2 bullet: add one
+sentence that the same comparison runs where a run parks at the dialog;
+`architecture.md`: in the one inserted sentence say that a run parks at the
+dialog, and `_commit` starts, only while the live context still equals the run's;
+`docs/testing/testing-strategy.md`: the bullet names `catalogReadGate` (pause the
+analysis) next to `holdPickerUntil`; `docs/deferred/2026-10-09-sign-out-guard-residuals.md`:
+remove the paragraph "A second shape" from R18 (the already open dialog stays),
+and add to the "Closed since this entry was written" note that R18's second
+shape was closed in the same PR. Commit: `docs(import): the dialog never opens
+for a changed context (R18 second shape)`.
 
 ## Final review and PR
 
