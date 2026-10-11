@@ -577,9 +577,10 @@ active (IR2, R17, R16)`.
   `PurgeReason`, ADR-035 unchanged. Link the spec.
 - `docs/architecture/architecture.md`: in the offline-authenticated paragraph,
   after the sentence about a ChordPro import writing the prior user's work,
-  add: an import run is bound to the catalog context it analysed against, it
-  never re-reads the live context, and a commit starts only while that
-  context is still the active one (ADR-037 amendment 2026-10-11).
+  add: an import run is bound to the catalog context it analysed against, the
+  commit is given that context as an argument and `commitWithResolutions`
+  never reads the live context, and `_commit` starts only while the live
+  context still equals it (ADR-037 amendment 2026-10-11).
 - `docs/testing/testing-strategy.md`, "Cross-user ownership pattern": add the
   rule "answer a duplicate dialog the way the host does
   (`fixture.resolveDuplicates`), after the user changed, and assert on the

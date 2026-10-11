@@ -86,9 +86,10 @@ The commit takes its context as an argument; it no longer chooses one.
   `ActiveCatalogContext context` (the same name and shape as
   `ChordProImportService.commitImport`), and the dialog host
   (`SongListScreen._resolveImportDuplicates`) hands back the context of the
-  awaiting state the dialog was opened for. The controller no longer reads the
-  live context on this path at all: `_contextReader` is used when a run
-  starts (to capture) and in IR2's check (to compare).
+  awaiting state the dialog was opened for. `commitWithResolutions` itself no
+  longer reads the live context. The controller reads it in two places only:
+  when a run starts (to capture) and at the start of `_commit` (IR2's check,
+  to compare).
 - `_runUserId` follows the given context, so the tracker reports a resumed
   commit for the run's user, which is the user whose work it writes (RW3: a
   guard keyed to the protected user).
