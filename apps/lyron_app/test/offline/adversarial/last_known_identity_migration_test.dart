@@ -77,4 +77,65 @@ void main() {
     await db.close();
     openDb = null;
   });
+
+  test('an existing v2 identity database gains capabilityCodes on upgrade '
+      'and keeps its row and marker intact (SG6)', () async {
+    final file = await createRelaunchDbFile('identity-migration-v2-v3');
+    LastKnownIdentityDatabase? openDb;
+    addTearDown(() async {
+      await openDb?.close();
+      if (await file.parent.exists()) {
+        await file.parent.delete(recursive: true);
+      }
+    });
+
+    // The exact v2 schema: v1 plus membership_revoked_at.
+    final rawDb = sqlite3.sqlite3.open(file.path);
+    rawDb.execute('''
+        CREATE TABLE "last_known_identity_rows" (
+          "row_id" INTEGER NOT NULL,
+          "user_id" TEXT NOT NULL,
+          "email" TEXT NOT NULL,
+          "organization_id" TEXT,
+          "updated_at" INTEGER,
+          "membership_revoked_at" INTEGER,
+          PRIMARY KEY ("row_id")
+        );
+      ''');
+    rawDb.execute('''
+        INSERT INTO last_known_identity_rows
+          (row_id, user_id, email, organization_id, updated_at,
+           membership_revoked_at)
+        VALUES (1, 'user-1', 'user-1@example.com', 'org-1', 1700000000,
+                1700000500);
+      ''');
+    rawDb.execute('PRAGMA user_version = 2;');
+    rawDb.close();
+
+    final db = LastKnownIdentityDatabase.connect(openRelaunchExecutor(file));
+    openDb = db;
+
+    final row = await (db.select(
+      db.lastKnownIdentityRows,
+    )..where((t) => t.rowId.equals(1))).getSingle();
+    expect(row.userId, 'user-1');
+    expect(row.organizationId, 'org-1');
+    expect(row.membershipRevokedAt, isNotNull);
+    expect(row.capabilityCodes, isNull);
+
+    await (db.update(
+      db.lastKnownIdentityRows,
+    )..where((t) => t.rowId.equals(1))).write(
+      const LastKnownIdentityRowsCompanion(
+        capabilityCodes: Value('["canEditSongs"]'),
+      ),
+    );
+    final updated = await (db.select(
+      db.lastKnownIdentityRows,
+    )..where((t) => t.rowId.equals(1))).getSingle();
+    expect(updated.capabilityCodes, '["canEditSongs"]');
+
+    await db.close();
+    openDb = null;
+  });
 }

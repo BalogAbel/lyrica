@@ -15,6 +15,14 @@ class LastKnownIdentityRows extends Table {
   // measured on a monotonic clock in LocalDataLifecycle, not here).
   DateTimeColumn get membershipRevokedAt => dateTime().nullable()();
 
+  // SG6 (docs/specs/2026-10-05-offline-first-startup-gate.md): the last
+  // successfully resolved capability codes for exactly this row's
+  // (userId, organizationId), as a JSON array of strings. Null means none
+  // stored. Living on the identity row means every identity clear
+  // (sign-out, D5 purge, different-user wipe) removes it, with no new
+  // PurgeTarget.
+  TextColumn get capabilityCodes => text().nullable()();
+
   @override
   Set<Column<Object>> get primaryKey => {rowId};
 }
