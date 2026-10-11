@@ -959,6 +959,100 @@ void main() {
       expect(fixture.importState, isA<ImportFailed>());
     });
 
+    test(
+      'the dialog does not open when the picker straddled the sign-in of B (R18, second shape)',
+      () async {
+        TestWidgetsFlutterBinding.ensureInitialized();
+        final fixture = await _Fixture.create(
+          seedSongsForA: true,
+          seedPlanningForA: true,
+          seedSongsForB: true,
+          lookupAnswersFor: const {_userB},
+        );
+        await fixture.coldStartAsA();
+        final seen = <ChordProImportState>[];
+        final seenSubscription = fixture.container.listen(
+          chordProImportControllerProvider,
+          (_, next) => seen.add(next),
+        );
+        addTearDown(seenSubscription.close);
+
+        final pickerAnswer = Completer<void>();
+        final importRun = fixture.startImport(
+          incomingForA,
+          holdPickerUntil: pickerAnswer.future,
+        );
+        await _settle();
+        expect(fixture.importState, isA<ImportPicking>());
+
+        // A has unsynced work, so B's sign-in asks and B's context is live.
+        await fixture.signInAs(_sessionB);
+        final prompt = fixture.container.read(reauthPromptControllerProvider);
+        expect(prompt.pending, isA<ReauthDifferentUserPrompt>());
+        expect(fixture.catalogContextUserId, _userB);
+
+        pickerAnswer.complete();
+        await importRun;
+        await _settle();
+
+        expect(
+          seen.whereType<ImportAwaitingDuplicateResolution>(),
+          isEmpty,
+          reason: 'the dialog must not list A\'s titles to B',
+        );
+        expect(fixture.importState, isA<ImportFailed>());
+        expect(await fixture.pendingSongCount(_userA), 0);
+        expect(await fixture.pendingSongCount(_userB), 0);
+      },
+    );
+
+    test(
+      'the dialog does not open when the analysis straddled the sign-in of B (R18, second shape)',
+      () async {
+        TestWidgetsFlutterBinding.ensureInitialized();
+        final fixture = await _Fixture.create(
+          seedSongsForA: true,
+          seedPlanningForA: true,
+          seedSongsForB: true,
+          lookupAnswersFor: const {_userB},
+        );
+        await fixture.coldStartAsA();
+        final seen = <ChordProImportState>[];
+        final seenSubscription = fixture.container.listen(
+          chordProImportControllerProvider,
+          (_, next) => seen.add(next),
+        );
+        addTearDown(seenSubscription.close);
+
+        fixture.catalogReadGate.hold();
+        final importRun = fixture.startImport(incomingForA);
+        await _settle();
+        expect(
+          fixture.importState,
+          isA<ImportAnalysing>(),
+          reason: 'the run is blocked in the analysis\'s catalog read',
+        );
+
+        await fixture.signInAs(_sessionB);
+        final prompt = fixture.container.read(reauthPromptControllerProvider);
+        expect(prompt.pending, isA<ReauthDifferentUserPrompt>());
+        expect(fixture.catalogContextUserId, _userB);
+
+        fixture.catalogReadGate.release();
+        await importRun;
+        await _settle();
+
+        expect(
+          seen.whereType<ImportAwaitingDuplicateResolution>(),
+          isEmpty,
+          reason: 'the dialog must not list A\'s titles to B',
+        );
+        expect(fixture.importState, isA<ImportFailed>());
+        expect(await fixture.pendingSongCount(_userA), 0);
+        expect(await fixture.pendingSongCount(_userB), 0);
+      },
+    );
+
     test('A re-authenticating while the dialog is open still imports into '
         'A\'s catalog', () async {
       TestWidgetsFlutterBinding.ensureInitialized();

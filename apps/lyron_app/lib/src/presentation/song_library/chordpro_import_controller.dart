@@ -197,6 +197,16 @@ class ChordProImportController extends StateNotifier<ChordProImportState> {
       return;
     }
 
+    // IR2 (docs/specs/2026-10-11-import-run-ownership.md): a run parks at the
+    // dialog, or ends in the summary, only while it is still in the catalog it
+    // analysed against. The picker or the analysis may have straddled a user
+    // switch, and the dialog would list this run's titles to whoever is
+    // current now. Nothing is written; _commit checks again before it writes.
+    if (_contextReader() != context) {
+      state = const ImportFailed(AppStrings.songImportContextChangedMessage);
+      return;
+    }
+
     if (analysisResult.duplicates.isNotEmpty) {
       state = ImportAwaitingDuplicateResolution(
         analysisResult,

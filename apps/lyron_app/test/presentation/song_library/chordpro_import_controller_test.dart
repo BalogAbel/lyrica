@@ -618,6 +618,32 @@ void main() {
       });
     }
 
+    test('IR2: a run whose context changed while the picker was open never '
+        'reaches the dialog', () async {
+      final seen = <ChordProImportState>[];
+      controller.addListener(seen.add, fireImmediately: false);
+      pickerOpen = Completer<void>();
+      final run = controller.startImport();
+      await pumpEventQueue();
+      expect(controller.currentState, isA<ImportPicking>());
+
+      live = ActiveCatalogContext(userId: 'user-b', organizationId: 'org-b');
+      pickerOpen!.complete();
+      await run;
+
+      expect(seen.whereType<ImportAwaitingDuplicateResolution>(), isEmpty);
+      expect(
+        controller.currentState,
+        isA<ImportFailed>().having(
+          (s) => s.message,
+          'message',
+          AppStrings.songImportContextChangedMessage,
+        ),
+      );
+      expect(service.committedWith, isEmpty);
+      expect(tracker.isRunning, isFalse);
+    });
+
     test('IR2: a run without duplicates whose context changed while the '
         'picker was open is refused at its commit', () async {
       service.reportDuplicates = false;
