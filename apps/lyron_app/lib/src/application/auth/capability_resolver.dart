@@ -152,7 +152,10 @@ class CapabilityResolver extends ChangeNotifier {
         return null;
       }
       return Capability.values.where((c) => codes.contains(c.code)).toSet();
-    } catch (_) {
+    } catch (error) {
+      debugPrint(
+        'CapabilityResolver: could not read stored capabilities: $error',
+      );
       return null;
     }
   }

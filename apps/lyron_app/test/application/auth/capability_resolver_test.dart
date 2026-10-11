@@ -42,6 +42,14 @@ class _FakeSnapshotStore implements CapabilitySnapshotStore {
   }
 }
 
+class _ThrowingReadStore extends _FakeSnapshotStore {
+  @override
+  Future<Set<String>?> readCapabilityCodes({
+    required String userId,
+    required String organizationId,
+  }) async => throw StateError('disk');
+}
+
 class _ScriptedGateway implements CapabilityGateway {
   _ScriptedGateway(this.answer);
 
@@ -185,6 +193,18 @@ void main() {
 
       expect(await resolver.capabilitiesFor('org-1'), {Capability.editSongs});
       expect(store.rows['user-1|org-1'], {'canEditSongs'});
+    });
+
+    test('a failing store read falls back to the gateway answer', () async {
+      final gateway = _ScriptedGateway(() async => {Capability.viewSongs});
+      final resolver = CapabilityResolver(
+        gateway: gateway,
+        snapshotStore: _ThrowingReadStore(),
+        readUserId: () => 'user-1',
+      );
+
+      expect(await resolver.capabilitiesFor('org-1'), {Capability.viewSongs});
+      expect(gateway.calls, 1);
     });
 
     test('an answer arriving after invalidate is never persisted', () async {
