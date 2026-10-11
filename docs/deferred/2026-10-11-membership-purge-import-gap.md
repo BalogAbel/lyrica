@@ -21,6 +21,12 @@ The same per-user `ImportRunTracker.isRunningFor(userId)` check before the
 purge's recount and again synchronously before its deletion. It needs an
 ADR-035 amendment, which is why it was not done in the reauth slice.
 
+Use `isRunningFor(userId)`, not the user-agnostic `ImportRunTracker.isRunning`
+getter. That getter is kept only for the controller's own tests, and a
+user-agnostic check is exactly the defect the reauth slice's final review
+found: the new user's own import declined their sign-in. Remove the getter
+when this entry is picked up, unless a production reader needs it by then.
+
 ## Trigger
 
 The next change to the membership purge or to ADR-035.
