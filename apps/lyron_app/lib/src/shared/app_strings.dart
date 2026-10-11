@@ -308,6 +308,8 @@ class AppStrings {
   static const songImportSummaryErrorsLabel = 'Errors';
   static const songImportSummaryDoneAction = 'Done';
   static const songImportNoContextMessage = 'Sign in before importing songs.';
+  static const songImportInterruptedMessage =
+      'The import stopped before it finished.';
   static const songImportReadErrorReason = 'Unreadable';
   static const songImportUtf8ErrorReason = 'Invalid encoding';
   static const songImportEmptyFileReason = 'Empty file';

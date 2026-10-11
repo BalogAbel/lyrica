@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/misc.dart' show KeepAliveLink;
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/chordpro_import_service.dart';
 import 'package:lyron_app/src/application/song_library/chordpro_import_types.dart';
+import 'package:lyron_app/src/application/song_library/import_run_tracker.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 sealed class ChordProImportState {
@@ -68,11 +69,13 @@ class ChordProImportController extends StateNotifier<ChordProImportState> {
     required this._importService,
     required this._contextReader,
     this._keepAlive,
+    this._runTracker,
   }) : super(const ImportIdle());
 
   final ChordProImportService _importService;
   final ActiveCatalogContext? Function() _contextReader;
   final KeepAliveLink Function()? _keepAlive;
+  final ImportRunTracker? _runTracker;
   KeepAliveLink? _runLink;
 
   @override
@@ -82,13 +85,24 @@ class ChordProImportController extends StateNotifier<ChordProImportState> {
     // The link is settled before the listeners run: StateNotifier notifies
     // them synchronously and rethrows a listener's error afterwards, which
     // must not skip the release.
-    if (isImportRunning(value)) {
+    // RW3: the tracker follows the same transitions, settled before the
+    // listeners run for the same reason, and a disposed instance never
+    // reports running again.
+    final running = isImportRunning(value);
+    if (running) {
       _runLink ??= _keepAlive?.call();
     } else {
       _runLink?.close();
       _runLink = null;
     }
+    _runTracker?.report(this, running: running && mounted);
     super.state = value;
+  }
+
+  @override
+  void dispose() {
+    _runTracker?.report(this, running: false);
+    super.dispose();
   }
 
   Future<void> startImport() async {
@@ -97,6 +111,14 @@ class ChordProImportController extends StateNotifier<ChordProImportState> {
     if (isImportRunning(state)) {
       return;
     }
+    try {
+      await _runImport();
+    } finally {
+      _endRun();
+    }
+  }
+
+  Future<void> _runImport() async {
     final context = _contextReader();
     if (context == null) {
       state = const ImportFailed(AppStrings.songImportNoContextMessage);
@@ -186,16 +208,38 @@ class ChordProImportController extends StateNotifier<ChordProImportState> {
     required List<ImportSuccess> successes,
     required List<ResolvedDuplicate> resolvedDuplicates,
   }) async {
-    final context = _contextReader();
-    if (context == null) {
-      state = const ImportFailed(AppStrings.songImportNoContextMessage);
+    // One run at a time, as startImport.
+    if (isImportRunning(state)) {
       return;
     }
-    await _commit(
-      context: context,
-      successes: successes,
-      resolvedDuplicates: resolvedDuplicates,
-    );
+    try {
+      final context = _contextReader();
+      if (context == null) {
+        state = const ImportFailed(AppStrings.songImportNoContextMessage);
+        return;
+      }
+      await _commit(
+        context: context,
+        successes: successes,
+        resolvedDuplicates: resolvedDuplicates,
+      );
+    } finally {
+      _endRun();
+    }
+  }
+
+  /// RW3: whatever ended the run -- a normal end, a caught failure, a
+  /// picker cancel, a throw nothing caught, or a dispose -- leaves no
+  /// running phase behind, so neither SO7's sign-out refusal nor the
+  /// different-user wipe's refusal can stay engaged after the run.
+  void _endRun() {
+    if (!mounted) {
+      _runTracker?.report(this, running: false);
+      return;
+    }
+    if (isImportRunning(state)) {
+      state = const ImportFailed(AppStrings.songImportInterruptedMessage);
+    }
   }
 
   void reset() {

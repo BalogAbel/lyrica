@@ -12,6 +12,7 @@ import 'package:lyron_app/src/application/song_library/active_catalog_context.da
 import 'package:lyron_app/src/application/song_library/app_foreground_state.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
+import 'package:lyron_app/src/application/song_library/import_run_tracker.dart';
 import 'package:lyron_app/src/application/song_library/song_catalog_controller.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
 import 'package:lyron_app/src/infrastructure/song_library/supabase_song_repository.dart';
@@ -71,6 +72,12 @@ final appForegroundStateProvider = Provider<AppForegroundState>((ref) {
   final foregroundState = WidgetsBindingAppForegroundState();
   ref.onDispose(foregroundState.dispose);
   return foregroundState;
+});
+
+/// RW3: app-scoped, never autoDispose -- the different-user wipe reads it
+/// while no import screen may be mounted.
+final importRunTrackerProvider = Provider<ImportRunTracker>((ref) {
+  return ImportRunTracker();
 });
 
 final songCatalogControllerProvider =
