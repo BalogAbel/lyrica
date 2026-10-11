@@ -1,4 +1,4 @@
-# Sign-Out Guard Residuals (R1–R15, R18)
+# Sign-Out Guard Residuals (R1–R15, R18–R20)
 
 **Slice:** `fix/sign-out-pending-work-guard`
 (`docs/specs/2026-10-07-sign-out-pending-work-guard.md`). Found by the
@@ -10,7 +10,7 @@ per-task reviews and the adversarial whole-diff review (2026-10-09).
 **Closed since this entry was written:** R16 and R17
 (`docs/specs/2026-10-11-import-run-ownership.md`, `fix/import-run-ownership`);
 R10 is narrowed there. The numbering is kept: R16 and R17 no longer appear,
-and R18 was found by that fix.
+and R18–R20 were found by that fix and its adversarial review.
 
 **Status:** none of these is reachable through an ordinary user action, and
 none was judged to delete unsynced work without a confirmation or to touch
@@ -114,7 +114,13 @@ UX pass on the account screen.
 If the sign-out warning is open when a different-user reauth prompt arrives,
 `ReauthPromptHost._closeOpenDialog` pops the top route: the sign-out warning
 answers Cancel (the safe direction) and the reauth dialog can stay open until
-answered. **Trigger:** the next change to `ReauthPromptHost`.
+answered. The same pop can reach the duplicate dialog of a ChordPro import
+(found by the review of `docs/specs/2026-10-11-import-run-ownership.md`, not
+reproduced): it returns `null`, the host resets the run, and nothing is
+written or stuck; a result of another type delivered by a race of two pops
+would surface as an unawaited `TypeError` and leave the run in
+`ImportAwaitingDuplicateResolution`, which is not a running phase.
+**Trigger:** the next change to `ReauthPromptHost`.
 
 ## R10 - import rows of a signed-out user (narrowed 2026-10-11)
 
@@ -192,6 +198,37 @@ one. It never pops the top route. That is a redesign of the host, not a small
 fix. **Trigger:** a redesign of the duplicate dialog host, or the
 session-transition coordinator
 (`docs/deferred/2026-10-11-session-transition-coordinator.md`).
+
+**A second shape (found by the adversarial review of that fix):** the dialog
+can also open after the switch. If the auth edge lands while the OS picker is
+open or while the analysis runs (milliseconds), the run still reaches
+`ImportAwaitingDuplicateResolution` with the first user's context and the host
+shows the dialog to the current user. Reproduced with a probe over the
+integration harness: B signs in while A's picker is open, the picker answers,
+the dialog opens for `user-a` while `user-b` is current, the answer is
+refused, nothing is written. The R9 argument above does not apply to this
+shape, because never opening a dialog needs no pop. **Fix sketch:** before
+`_runImport` enters `ImportAwaitingDuplicateResolution`, apply IR2's
+comparison (`_contextReader() != context` ends the run as
+`ImportFailed(AppStrings.songImportContextChangedMessage)`): three lines and
+one test, no host change. It would leave only the "outlives" shape above.
+
+## R19 - a same-user context gap refuses an import with the account-changed message
+
+IR2 compares the live catalog context with the run's. After a cancelled
+reauth returns the app to A there is a gap (one local read) in which the live
+context is `null` until A's context is re-established. A dialog answered inside
+that gap is refused with "The account or workspace changed ..." although the
+user is the same. Nothing is written and starting the import again works.
+**Fix sketch:** distinguish "no context yet" from "another context" in the
+message, or wait for the establishment. **Trigger:** a field report.
+
+## R20 - a duplicate answer dropped without a message while a run is running
+
+`commitWithResolutions` returns without a message when a run is running (the
+one-run-at-a-time rule of SO7), so such an answer is dropped silently.
+Unreachable behind the modal dialog, and pre-existing since RW3. **Trigger:**
+the next change to the import controller's state machine.
 
 ## Trigger
 

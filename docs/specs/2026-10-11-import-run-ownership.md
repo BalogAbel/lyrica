@@ -284,6 +284,13 @@ A failing existing test outside this list stops the work (see the plan).
   (`docs/deferred/2026-10-11-session-transition-coordinator.md`). Recorded in
   the residuals entry.
 - **R10, narrowed** as described in IR4.
+- **Found by the adversarial review of this fix** (none blocking; recorded in
+  the residuals entry): R18 widened (the dialog can also open after the user
+  switch when the picker or the analysis straddles the auth edge; a
+  three-line guard before entering the awaiting state would close that
+  shape), R19 (a same-user context gap refuses with the account-changed
+  message), R20 (an answer dropped silently while a run is running), and R9
+  extended (the reauth host's pop can reach the duplicate dialog).
 
 ## Documentation updates (in the implementation PR)
 
