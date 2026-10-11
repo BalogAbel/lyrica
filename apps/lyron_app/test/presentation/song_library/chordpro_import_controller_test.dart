@@ -13,15 +13,15 @@ import 'package:lyron_app/src/application/song_library/import_run_tracker.dart';
 import 'package:lyron_app/src/presentation/song_library/chordpro_import_controller.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
-/// SO7 (docs/specs/2026-10-07-sign-out-pending-work-guard.md): a running
-/// import writes pending work in the background, so the state the sign-out
-/// guard reads must stay truthful for as long as the run lasts, and the run
-/// must always release the provider when it ends.
 const _testContext = ActiveCatalogContext(
   userId: 'user-1',
   organizationId: 'org-1',
 );
 
+/// SO7 (docs/specs/2026-10-07-sign-out-pending-work-guard.md): a running
+/// import writes pending work in the background, so the state the sign-out
+/// guard reads must stay truthful for as long as the run lasts, and the run
+/// must always release the provider when it ends.
 void main() {
   const success = ImportSuccess(
     title: 'Egy út',
@@ -580,6 +580,76 @@ void main() {
       expect(service.committedWith, hasLength(1));
       expect(service.committedWith.single, same(runContext));
       expect(controller.currentState, isA<ImportDone>());
+    });
+
+    final changedContexts = <String, ActiveCatalogContext?>{
+      'another user': ActiveCatalogContext(
+        userId: 'user-b',
+        organizationId: 'org-b',
+      ),
+      'the same user, another organization': ActiveCatalogContext(
+        userId: 'user-a',
+        organizationId: 'org-2',
+      ),
+      'no context': null,
+    };
+    for (final entry in changedContexts.entries) {
+      test('IR2: ${entry.key} while the dialog was open writes nothing and '
+          'fails the run', () async {
+        await controller.startImport();
+        live = entry.value;
+
+        await answerDialog();
+
+        expect(service.committedWith, isEmpty);
+        expect(
+          controller.currentState,
+          isA<ImportFailed>().having(
+            (s) => s.message,
+            'message',
+            AppStrings.songImportContextChangedMessage,
+          ),
+        );
+        expect(tracker.isRunning, isFalse);
+      });
+    }
+
+    test('IR2: a run without duplicates whose context changed while the '
+        'picker was open is refused at its commit', () async {
+      service.reportDuplicates = false;
+      pickerOpen = Completer<void>();
+      final run = controller.startImport();
+      await pumpEventQueue();
+      expect(controller.currentState, isA<ImportPicking>());
+      expect(tracker.isRunningFor('user-a'), isTrue);
+
+      live = ActiveCatalogContext(userId: 'user-b', organizationId: 'org-b');
+      pickerOpen!.complete();
+      await run;
+
+      expect(service.committedWith, isEmpty);
+      expect(
+        controller.currentState,
+        isA<ImportFailed>().having(
+          (s) => s.message,
+          'message',
+          AppStrings.songImportContextChangedMessage,
+        ),
+      );
+      expect(tracker.isRunning, isFalse);
+    });
+
+    test('IR2: a refused commit leaves the controller usable', () async {
+      await controller.startImport();
+      live = ActiveCatalogContext(userId: 'user-b', organizationId: 'org-b');
+      await answerDialog();
+      expect(controller.currentState, isA<ImportFailed>());
+
+      live = runContext;
+      await controller.startImport();
+
+      expect(controller.currentState, isA<ImportAwaitingDuplicateResolution>());
+      expect(tracker.isRunning, isFalse);
     });
   });
 }

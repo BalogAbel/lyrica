@@ -308,6 +308,9 @@ class AppStrings {
   static const songImportSummaryErrorsLabel = 'Errors';
   static const songImportSummaryDoneAction = 'Done';
   static const songImportNoContextMessage = 'Sign in before importing songs.';
+  static const songImportContextChangedMessage =
+      'The account or workspace changed, so the import was stopped and '
+      'nothing was imported. Start the import again.';
   static const songImportInterruptedMessage =
       'The import stopped before it finished.';
   static const songImportReadErrorReason = 'Unreadable';

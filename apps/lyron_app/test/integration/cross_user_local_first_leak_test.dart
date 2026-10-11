@@ -901,7 +901,7 @@ void main() {
         reason: 'the sync sends B\'s pending work to B\'s organization',
       );
       expect(fixture.importState, isA<ImportFailed>());
-    }, skip: 'red until Task 2');
+    });
 
     test('b: B\'s files, resolved after B\'s prompt was cancelled, are not '
         'queued in A\'s catalog', () async {
@@ -957,7 +957,7 @@ void main() {
         reason: 'the sync sends A\'s pending work to A\'s organization',
       );
       expect(fixture.importState, isA<ImportFailed>());
-    }, skip: 'red until Task 2');
+    });
 
     test('A re-authenticating while the dialog is open still imports into '
         'A\'s catalog', () async {
@@ -1063,7 +1063,6 @@ void main() {
         );
         expect(fixture.importState, isA<ImportFailed>());
       },
-      skip: 'red until Task 2',
     );
   });
 }

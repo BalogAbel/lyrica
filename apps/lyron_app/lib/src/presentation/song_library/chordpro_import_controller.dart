@@ -270,6 +270,16 @@ class ChordProImportController extends StateNotifier<ChordProImportState> {
     required List<ImportSuccess> successes,
     required List<ResolvedDuplicate> resolvedDuplicates,
   }) async {
+    // IR2 (docs/specs/2026-10-11-import-run-ownership.md): the run writes
+    // only into the catalog it analysed against, and only while that is
+    // still the active one. The user, the organization or the context
+    // itself may have changed while the dialog or the picker was open
+    // (R17, R16). Nothing is written; the state leaves its running phase,
+    // so the tracker and SO7's link release as for any other end.
+    if (_contextReader() != context) {
+      state = const ImportFailed(AppStrings.songImportContextChangedMessage);
+      return;
+    }
     state = const ImportCommitting();
 
     final skippedCount = resolvedDuplicates
