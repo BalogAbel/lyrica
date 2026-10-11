@@ -519,8 +519,12 @@ and acceptance criteria: `docs/specs/2026-10-11-reauth-wipe-recount.md`.
   uncertainty never authorises a wipe). A confirmed unknown (`null`) is not
   recounted (the user accepted an unknown amount; same rule as D5.5 rule 3).
   The spec holds the full table.
-- **RW3.** The wipe is also declined while a ChordPro import is in a running
-  phase. Two checks: one before the recount, and one synchronously right
+- **RW3.** The wipe is also declined while a ChordPro import for the prior
+  user is in a running phase. The guard is per user (`isRunningFor`; a run
+  of unknown user counts for everyone): the final review showed that a
+  user-agnostic check let the new user's own import decline the new user's
+  sign-in and then, via the live-context read (R17), land the new user's files
+  in the prior user's catalog. Two checks: one before the recount, and one synchronously right
   before the deletion (no await in between, D3's currentness rule). The
   import controller is a presentation-layer notifier and the application
   layer does not import presentation, so the run state crosses through an
@@ -595,7 +599,8 @@ the existing cancel path.
   decision count (RW1)"); the RW2/RW3/RW4 wiring tests in
   `identity_persistence_wiring_test.dart` (recount lower/higher/unreadable,
   supersession during the recount, both import checks, confirmed unknown,
-  work appearing after a zero count); the integration groups "the
+  work appearing after a zero count, and an import running for the NEW user
+  not declining); `import_run_tracker_test.dart` (per-user running); the integration groups "the
   different-user wipe deletes only counted work" and "no different-user wipe
   while an import runs" in `cross_user_local_first_leak_test.dart`; and the
   tracker tests (reporting, idle after failure/cancel, escaped run, dispose)

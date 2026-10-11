@@ -98,9 +98,10 @@ removed counted rows while an import that has since ended added the same
 number, the wipe deletes no more items than were confirmed, but not the same
 items.
 
-### RW3 — no wipe while an import is running
+### RW3 — no wipe while an import is running for the prior user
 
-The wipe is declined while a ChordPro import run is in a running phase
+The wipe is declined while a ChordPro import run for the PRIOR user is in a
+running phase
 (`isImportRunning`: picking, analysing, committing; SO7's definition, and
 for the same reason `ImportAwaitingDuplicateResolution` does not count).
 Checked twice:
@@ -120,12 +121,26 @@ resolution lives in the application layer, which does not import
 presentation. A small application-layer seam carries the run state:
 
 - `ImportRunTracker` (`application/song_library/import_run_tracker.dart`):
-  `isRunning` plus `report(owner, running: ...)`;
+  `isRunning`, `isRunningFor(userId)` and
+  `report(owner, userId: ..., running: ...)`; each running instance stores
+  the user of the catalog context it captured, and a run whose user is not
+  known counts for every user (conservative);
 - `importRunTrackerProvider` (in `song_catalog_providers.dart`): app-scoped,
   not autoDispose;
 - the controller reports `isImportRunning(value)` from its state setter,
   next to SO7's keep-alive link, so the tracker and the link always follow
   the same transitions.
+
+#### Found by the final review: the guard is per user
+
+A user-agnostic check was wrong: the NEW user's own import (started in the
+new user's catalog context while the new user's resolution was still
+counting) declined the new user's sign-in, and the cancel re-established the
+prior user's context, so the live-context read at duplicate resolution (R17)
+then wrote the new user's files into the prior user's catalog. The guard
+therefore asks "is an import running for the prior user", exactly as the
+counter is keyed by the prior user; both checks use
+`isRunningFor(identity.userId)`.
 
 SO7's sign-out refusal keeps reading the controller state; it is not moved to
 the tracker in this PR.
@@ -229,6 +244,10 @@ sign-out side).
   and exactly the prompt's count (including `null`) on confirm.
 - **AC8 (RW3):** the tracker reports running for exactly the running phases,
   through every transition, including the throwing-listener path.
+- **AC10 (RW3, per user):** the new user's own import is running when the new
+  user's zero-count resolution acts. The wipe is not declined: the new user is
+  `signedIn`, the identity row is the new user's, and the import's rows land
+  in the new user's catalog, none in the prior user's.
 - **AC9 (RW3, never stuck):** after an import that ends any of these ways,
   the tracker is idle and a later different-user wipe runs:
   - a failure (`ImportFailed`);
@@ -264,6 +283,21 @@ stops the work (see the plan).
   the app shows the prior user again, with no explanation. Fix sketch: a
   snackbar from the reauth host when a confirmed resolution ends in a
   decline. Trigger: the next UX pass on the reauth prompt, together with R8.
+- **RW-R3, a decline can overlap the new user's explicit sign-out.** A
+  decline (RW4) can overlap the new user's explicit sign-out inside gotrue's
+  local removeItem await (milliseconds) and reproduce R1/R2 (the cancel
+  branch consumes the sign-out's null). RW4 makes the cancel reachable without
+  a Cancel tap, but it needs an RW2 decline with no running prior-user import
+  plus the millisecond window. Pointer:
+  `docs/deferred/2026-10-09-sign-out-guard-residuals.md` R1/R2 and the
+  coordinator entry.
+- **RW-R4, the decline holds the serial chain.** The decline awaits
+  `cancelReauthToPriorSession`, which awaits gotrue's backend sign-out,
+  holding the serial resolution chain for that call while `_isSigningOut`
+  stays true. Pre-existing on the Cancel path (R2/R3); RW4 only adds an
+  automatic entry into it.
+- **RW-R5, the membership purge has the same import gap.** See
+  `docs/deferred/2026-10-11-membership-purge-import-gap.md`.
 - **RW-R2, single-row writers.** The song editor's save and the planning
   reorder tails (R11) can finish one row inside the recount window. They are
   not background batches, and the recount still sees anything written before
