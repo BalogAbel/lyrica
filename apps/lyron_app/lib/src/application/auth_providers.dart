@@ -390,9 +390,10 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
         // Whether the prior user's data may be wiped now
         // (docs/specs/2026-10-11-reauth-wipe-recount.md). RW3 check 1: no
         // import is running. RW2: the prior user's pending work is still no
-        // more than the count the decision was made on. A confirmed unknown is not compared (the user accepted an
-        // unknown amount; D5.5 rule 3 does the same); an unreadable recount of a
-        // known count is uncertainty, which never authorises a wipe (D5).
+        // more than the count the decision was made on. A confirmed unknown
+        // is not compared (the user accepted an unknown amount; D5.5 rule 3
+        // does the same); an unreadable recount of a known count is
+        // uncertainty, which never authorises a wipe (D5).
         // A running import is work nobody has counted, and the counter reads
         // two databases in parallel, so a row written in between is missed;
         // check 1 runs before the recount (check 2 follows it synchronously,
@@ -430,10 +431,11 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
           // Synchronous with the deletion below (ADR-029 D3): no await between
           // this check and the purge calls.
           if (!safeToWipe || importRuns.isRunning) {
-            // RW4 (not safe to wipe: work grew or the recount was unreadable)
-            // or RW3 (an import is running): delete nothing, return to the prior user exactly as
-            // Cancel does. `false` reports ReauthSuperseded -- it understates
-            // what ran (a cancel), never overstates it.
+            // RW4 (not safe to wipe: work grew or the recount was
+            // unreadable) or RW3 (an import is running): delete nothing,
+            // return to the prior user exactly as Cancel does. `false`
+            // reports ReauthSuperseded -- it understates what ran (a
+            // cancel), never overstates it.
             if (kDebugMode) {
               debugPrint(
                 'lastKnownIdentityPersistenceProvider: different-user wipe '

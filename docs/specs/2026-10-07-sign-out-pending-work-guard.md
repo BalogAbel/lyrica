@@ -499,8 +499,8 @@ same rule `signOut()` follows (SO3).
   `docs/deferred/2026-10-09-sign-out-guard-residuals.md`.
 - The different-user reauth wipe does not recount rows a running import
   writes behind its prompt (pre-existing, ADR-029 path, found by the second
-  review round; a separate PR by the user's decision):
-  `docs/deferred/2026-10-09-reauth-wipe-uncounted-import-rows.md`.
+  review round; a separate PR by the user's decision; since closed by
+  `docs/specs/2026-10-11-reauth-wipe-recount.md`).
 
 ## Acceptance criteria
 

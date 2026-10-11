@@ -27,6 +27,11 @@
   a cancel, the cancelled user's catalog context could stay on screen for
   the prior user, and the prior user's later sign-out could purge the
   cancelled user's catalog.
+- Amended: 2026-10-11 — the confirmed (or zero-count) different-user wipe
+  deleted whatever the prior user had at deletion time, so rows a running
+  ChordPro import wrote after the count were deleted unconfirmed. Closed by
+  RW1–RW4 of `docs/specs/2026-10-11-reauth-wipe-recount.md`; see "Amendment
+  2026-10-11" below.
 
 ## Context
 
@@ -497,6 +502,51 @@ fix (`AppAuthStatus.signedIn` as `user-2`, the identity store left empty,
 the failure still reported unconditionally). The existing 23-test suite
 (22 plus this one) stayed green.
 
+## Amendment 2026-10-11: the wipe deletes only counted work
+
+Defect: the wipe ran on the count taken when the decision was made. A
+ChordPro import running behind the prompt (or started after a zero count)
+wrote rows that were deleted without having been counted or confirmed. Detail
+and acceptance criteria: `docs/specs/2026-10-11-reauth-wipe-recount.md`.
+
+- **RW1.** `resolveReauth` passes the decision count to
+  `wipePriorAndProceed(int? countedPendingWork)`: `0` on the no-prompt path,
+  the prompted count (`null` included) on the confirm path. The wipe acts on
+  the number the user saw, as a compile-checked contract.
+- **RW2.** `wipePriorAndProceedFor` recounts the prior user's user-wide
+  pending work immediately before deleting and proceeds only if the recount
+  is `<=` the decision count. A recount that is unreadable declines (D5:
+  uncertainty never authorises a wipe). A confirmed unknown (`null`) is not
+  recounted (the user accepted an unknown amount; same rule as D5.5 rule 3).
+  The spec holds the full table.
+- **RW3.** The wipe is also declined while a ChordPro import is in a running
+  phase. Two checks: one before the recount, and one synchronously right
+  before the deletion (no await in between, D3's currentness rule). The
+  import controller is a presentation-layer notifier and the application
+  layer does not import presentation, so the run state crosses through an
+  application-layer seam, `ImportRunTracker` (`importRunTrackerProvider`,
+  app-scoped). Never-stuck rules, because a stuck "running" would decline
+  every later wipe: the tracker is keyed per controller instance (each adds
+  and removes only itself); the controller reports from its state setter;
+  an exception escaping a run ends it through `_endRun` in a `finally`,
+  recorded as `ImportFailed(AppStrings.songImportInterruptedMessage)`; and
+  `dispose` removes the instance.
+- **RW4.** A declined wipe is a cancel: nothing is deleted, the app returns
+  to the prior user exactly as Cancel does. The coordinator reports it as
+  `ReauthSuperseded`, which understates what ran and never overstates it.
+
+Rejected: asking the user again with the new count. It adds a second prompt
+on a path whose point is that nobody is interacting, and a decline that
+deletes nothing is the safe default; the prior user keeps their work and can
+retry.
+
+Accepted: the recount compares counts, not row identities. If sync removed
+counted rows while an import that has since ended added the same number, the
+wipe deletes no more items than were confirmed, but not the same items.
+
+No new purge, `PurgeReason` or ADR-035 change was needed: the decline reuses
+the existing cancel path.
+
 ## Testing
 
 - `reauth_prompt_controller_test.dart` — publishing a prompt with a known or
@@ -533,6 +583,15 @@ the failure still reported unconditionally). The existing 23-test suite
   readers, failure propagation, every destructive-work status, and
   cross-organization rows for one user without crossing into another user's
   rows.
+- RW1–RW4 (2026-10-11): `reauth_resolution_test.dart` ("wipe receives the
+  decision count (RW1)"); the RW2/RW3/RW4 wiring tests in
+  `identity_persistence_wiring_test.dart` (recount lower/higher/unreadable,
+  supersession during the recount, both import checks, confirmed unknown,
+  work appearing after a zero count); the integration groups "the
+  different-user wipe deletes only counted work" and "no different-user wipe
+  while an import runs" in `cross_user_local_first_leak_test.dart`; and the
+  tracker tests (reporting, idle after failure/cancel, escaped run, dispose)
+  in `chordpro_import_controller_test.dart`.
 
 ## Consequences
 

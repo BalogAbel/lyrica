@@ -219,6 +219,10 @@ Commit: `refactor(reauth): pass the decision count to the wipe (RW1)`.
 
 ## Task 3 — recount before the deletion; decline cancels (RW2, RW4; AC1, AC2, AC5, AC6)
 
+> Note: the helper excerpted below as `priorWorkStillAsCounted` /
+> `stillAsCounted` was renamed `priorWorkSafeToWipe` / `safeToWipe` in
+> Task 4's fix round, because it also covers RW3 check 1.
+
 **Test first:**
 
 - Unskip (a) and (b) in `cross_user_local_first_leak_test.dart` and extend
@@ -302,6 +306,9 @@ Commit: `refactor(reauth): pass the decision count to the wipe (RW1)`.
 Commit: `fix(reauth): recount before the different-user wipe (RW2, RW4)`.
 
 ## Task 4 — no wipe while an import is running; never stuck (RW3; AC3, AC4, AC9)
+
+> Note: `priorWorkStillAsCounted` is `priorWorkSafeToWipe` in the code (see
+> the note at the top of Task 3).
 
 The tracker's lifetime rules (spec RW3, "never stays running") are built and
 unit-tested in Task 1. This task wires the guard and proves end to end that

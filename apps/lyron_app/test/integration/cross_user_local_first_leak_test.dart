@@ -525,7 +525,7 @@ void main() {
     });
   });
 
-  // docs/deferred/2026-10-09-reauth-wipe-uncounted-import-rows.md: the
+  // docs/specs/2026-10-11-reauth-wipe-recount.md: the
   // different-user wipe must not delete more of the prior user's pending
   // work than the user confirmed, and must not delete work written after a
   // zero count without asking. The import is the real ChordProImportController
