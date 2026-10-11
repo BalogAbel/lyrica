@@ -712,7 +712,7 @@ void main() {
       );
       expect(fixture.auth.state.status, AppAuthStatus.signedIn);
       expect(fixture.auth.state.currentUserId, _userB);
-      expect((await fixture.identityStore.read())?.userId, isNot(_userA));
+      expect((await fixture.identityStore.read())?.userId, _userB);
     }
 
     test('AC9: a cancelled picker does not block the wipe', () async {
@@ -782,7 +782,7 @@ void main() {
       // The orphaned run resumes into a disposed notifier. Its rows written
       // after the wipe are R10 orphans; only the failure is pinned.
       fixture.songWriteGate.release();
-      await expectLater(importRun, throwsA(anything));
+      await expectLater(importRun, throwsStateError);
     });
   });
 }
@@ -1172,7 +1172,8 @@ Future<void> _settle() async {
   }
 }
 
-/// Pauses the real Drift reads for user A while held.
+/// Pauses (while held) or fails (after [failFor]) the gated Drift call for
+/// user A: a read or a write, depending on where the gate is wired.
 class _ReadGate {
   Completer<void>? _held;
 

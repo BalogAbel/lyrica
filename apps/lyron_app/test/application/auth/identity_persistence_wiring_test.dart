@@ -1057,6 +1057,7 @@ void main() {
       required List<Object> songReads,
       required List<Object> planningReads,
       Completer<void>? holdSecondSongRead,
+      void Function()? onSecondSongRead,
     }) async {
       await seedPriorUserData();
       identityStore.seed(
@@ -1081,10 +1082,13 @@ void main() {
       final counter = PendingLocalWorkCounter(
         readPlanningPendingWorkCount: ({required userId}) =>
             next(planningReads, planningCalls++),
-        readSongPendingWorkCount: ({required userId}) =>
-            songCalls++ == 1 && holdSecondSongRead != null
-            ? holdSecondSongRead.future.then((_) => next(songReads, 1))
-            : next(songReads, songCalls - 1),
+        readSongPendingWorkCount: ({required userId}) {
+          final call = songCalls++;
+          if (call == 1) onSecondSongRead?.call();
+          return call == 1 && holdSecondSongRead != null
+              ? holdSecondSongRead.future.then((_) => next(songReads, 1))
+              : next(songReads, call);
+        },
       );
       final container = ProviderContainer(
         overrides: [
@@ -1189,6 +1193,64 @@ void main() {
       expect(authRepository.signOutCalls, 0);
       expect(identityStore.clearCount, 0);
       expect(await priorSongsStillPresent(), isTrue);
+      expect(await priorPlanningProjectionStillPresent(), isTrue);
+    });
+
+    test('RW3 check 1: an import running when the user confirms declines '
+        'before any recount', () async {
+      final owner = Object();
+      final recountHeld = Completer<void>();
+      late ProviderContainer container;
+      var recounted = false;
+      container = await startDifferentUserEdge(
+        songReads: [3, 3],
+        planningReads: [0],
+        holdSecondSongRead: recountHeld,
+        // With check 1 no recount starts; if one does, the import has ended
+        // and the count is unchanged, so only check 1 can decline.
+        onSecondSongRead: () {
+          recounted = true;
+          container
+              .read(importRunTrackerProvider)
+              .report(owner, running: false);
+          recountHeld.complete();
+        },
+      );
+      final prompt = container.read(reauthPromptControllerProvider);
+      expect((prompt.pending! as ReauthDifferentUserPrompt).pendingCount, 3);
+      container.read(importRunTrackerProvider).report(owner, running: true);
+
+      prompt.answer(true);
+      await pump();
+
+      expect(recounted, isFalse);
+      expect(await priorSongsStillPresent(), isTrue);
+      expect(await priorPlanningProjectionStillPresent(), isTrue);
+      expectNothingDeletedAndBackAsPriorUser();
+    });
+
+    test('RW3 check 2: an import starting during the recount declines '
+        'right before the deletion', () async {
+      final owner = Object();
+      final recountHeld = Completer<void>();
+      final container = await startDifferentUserEdge(
+        songReads: [3, 3],
+        planningReads: [0],
+        holdSecondSongRead: recountHeld,
+      );
+      final prompt = container.read(reauthPromptControllerProvider);
+      expect((prompt.pending! as ReauthDifferentUserPrompt).pendingCount, 3);
+      expect(container.read(importRunTrackerProvider).isRunning, isFalse);
+
+      prompt.answer(true);
+      await pump();
+      container.read(importRunTrackerProvider).report(owner, running: true);
+      recountHeld.complete();
+      await pump();
+
+      expect(await priorSongsStillPresent(), isTrue);
+      expect(await priorPlanningProjectionStillPresent(), isTrue);
+      expectNothingDeletedAndBackAsPriorUser();
     });
 
     test('RW2: a confirmed unknown count is not recounted and wipes', () async {

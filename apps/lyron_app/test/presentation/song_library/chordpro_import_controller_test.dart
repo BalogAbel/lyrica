@@ -450,7 +450,7 @@ void main() {
 
       expect(
         () => controller.setImportState(const ImportAnalysing()),
-        throwsA(anything),
+        throwsStateError,
       );
       expect(tracker.isRunning, isFalse);
     });
