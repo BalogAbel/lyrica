@@ -1,9 +1,13 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
+import 'package:lyron_app/src/application/auth/capability_snapshot_store.dart';
 import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 
 import 'last_known_identity_database.dart';
 
-class DriftLastKnownIdentityStore implements LastKnownIdentityStore {
+class DriftLastKnownIdentityStore
+    implements LastKnownIdentityStore, CapabilitySnapshotStore {
   const DriftLastKnownIdentityStore(this._database);
 
   final LastKnownIdentityDatabase _database;
@@ -47,6 +51,10 @@ class DriftLastKnownIdentityStore implements LastKnownIdentityStore {
     await _database.transaction(() async {
       final existing = await _readRow();
       final sameUser = existing != null && existing.userId == identity.userId;
+      // SG6: stored capabilities belong to exactly one (userId,
+      // organizationId); any other identity starts without them.
+      final sameContext =
+          sameUser && existing.organizationId == identity.organizationId;
       await _database
           .into(_database.lastKnownIdentityRows)
           .insertOnConflictUpdate(
@@ -57,6 +65,9 @@ class DriftLastKnownIdentityStore implements LastKnownIdentityStore {
               organizationId: Value(identity.organizationId),
               updatedAt: Value(identity.updatedAt?.toUtc()),
               membershipRevokedAt: sameUser
+                  ? const Value.absent()
+                  : const Value(null),
+              capabilityCodes: sameContext
                   ? const Value.absent()
                   : const Value(null),
             ),
@@ -137,6 +148,52 @@ class DriftLastKnownIdentityStore implements LastKnownIdentityStore {
     }
     final marker = row.membershipRevokedAt;
     return marker != null && marker.isAtSameMomentAs(markedAt);
+  }
+
+  @override
+  Future<Set<String>?> readCapabilityCodes({
+    required String userId,
+    required String organizationId,
+  }) async {
+    final row = await _readRow();
+    if (row == null ||
+        row.userId != userId ||
+        row.organizationId != organizationId) {
+      return null;
+    }
+    final encoded = row.capabilityCodes;
+    if (encoded == null) {
+      return null;
+    }
+    final decoded = jsonDecode(encoded);
+    if (decoded is! List) {
+      return null;
+    }
+    return decoded.whereType<String>().toSet();
+  }
+
+  @override
+  Future<bool> writeCapabilityCodes({
+    required String userId,
+    required String organizationId,
+    required Set<String> codes,
+  }) async {
+    final sorted = codes.toList()..sort();
+    // One conditional UPDATE: if the row was cleared or now belongs to
+    // another user or organization, nothing matches and nothing is written.
+    final updated =
+        await (_database.update(_database.lastKnownIdentityRows)..where(
+              (table) =>
+                  table.rowId.equals(1) &
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId),
+            ))
+            .write(
+              LastKnownIdentityRowsCompanion(
+                capabilityCodes: Value(jsonEncode(sorted)),
+              ),
+            );
+    return updated > 0;
   }
 
   Future<LastKnownIdentityRow?> _readRow() {
