@@ -12,6 +12,7 @@ import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/app_auth_state.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
 import 'package:lyron_app/src/application/auth/capability_resolver.dart';
+import 'package:lyron_app/src/application/auth/capability_snapshot_store.dart';
 import 'package:lyron_app/src/application/auth/current_user_ownership.dart';
 import 'package:lyron_app/src/application/auth/deep_link_listener.dart';
 import 'package:lyron_app/src/application/auth/invitation_repository.dart';
@@ -78,6 +79,16 @@ final lastKnownIdentityDatabaseProvider = Provider<LastKnownIdentityDatabase>((
 });
 
 final lastKnownIdentityStoreProvider = Provider<LastKnownIdentityStore>((ref) {
+  return DriftLastKnownIdentityStore(
+    ref.watch(lastKnownIdentityDatabaseProvider),
+  );
+});
+
+/// SG6: the last known capabilities live on the identity row, so every
+/// identity clear removes them with no new purge target.
+final capabilitySnapshotStoreProvider = Provider<CapabilitySnapshotStore>((
+  ref,
+) {
   return DriftLastKnownIdentityStore(
     ref.watch(lastKnownIdentityDatabaseProvider),
   );
@@ -1102,6 +1113,8 @@ final capabilityResolverProvider = ChangeNotifierProvider<CapabilityResolver>((
   final client = ref.watch(supabaseClientProvider);
   final resolver = CapabilityResolver(
     gateway: SupabaseCapabilityGateway(client),
+    snapshotStore: ref.watch(capabilitySnapshotStoreProvider),
+    readUserId: () => ref.read(appAuthControllerProvider).state.currentUserId,
   );
   // Invalidate on any auth state change (sign-in, sign-out, token refresh).
   ref.listen<AppAuthController>(

@@ -466,4 +466,21 @@ void main() {
       MembershipGateView.home,
     );
   });
+
+  test('the capability resolver reads and writes the identity database '
+      '(SG6)', () async {
+    final harness = await _harness(
+      session: _session,
+      identity: const LastKnownIdentity(
+        userId: 'user-1',
+        email: 'demo@lyron.local',
+        organizationId: 'org-1',
+      ),
+      resolution: _never,
+    );
+
+    final store = harness.container.read(capabilitySnapshotStoreProvider);
+
+    expect(store, isA<DriftLastKnownIdentityStore>());
+  });
 }
