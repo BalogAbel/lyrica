@@ -3,11 +3,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/auth/sign_out_command.dart';
 import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/chordpro_import_service.dart';
 import 'package:lyron_app/src/application/song_library/chordpro_import_types.dart';
 import 'package:lyron_app/src/presentation/auth/sign_out_flow.dart';
 import 'package:lyron_app/src/presentation/song_library/chordpro_import_controller.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
+
+const _testContext = ActiveCatalogContext(
+  userId: 'user-1',
+  organizationId: 'org-1',
+);
 
 void main() {
   Future<Future<bool>> open(WidgetTester tester, int? pendingCount) async {
@@ -147,7 +153,11 @@ void main() {
   final proceeding = <String, ChordProImportState>{
     'ImportIdle': const ImportIdle(),
     'ImportAwaitingDuplicateResolution':
-        const ImportAwaitingDuplicateResolution(emptyResult, []),
+        const ImportAwaitingDuplicateResolution(
+          emptyResult,
+          [],
+          context: _testContext,
+        ),
     'ImportDone': const ImportDone(result: emptyResult, skippedCount: 0),
     'ImportFailed': const ImportFailed('failed'),
   };

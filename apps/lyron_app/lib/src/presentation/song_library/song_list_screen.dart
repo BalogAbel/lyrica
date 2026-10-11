@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/catalog_connection_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyron_app/src/application/song_library/chordpro_import_types.dart';
@@ -87,8 +88,20 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
     ) {
       if (!mounted) return;
       switch (next) {
-        case ImportAwaitingDuplicateResolution(:final result, :final successes):
-          unawaited(_resolveImportDuplicates(context, ref, result, successes));
+        case ImportAwaitingDuplicateResolution(
+          :final result,
+          :final successes,
+          context: final runContext,
+        ):
+          unawaited(
+            _resolveImportDuplicates(
+              context,
+              ref,
+              result,
+              successes,
+              runContext,
+            ),
+          );
         case ImportDone(:final result, :final skippedCount):
           unawaited(
             showImportSummaryDialog(
@@ -327,6 +340,7 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
     WidgetRef ref,
     ImportBatchResult result,
     List<ImportSuccess> successes,
+    ActiveCatalogContext runContext,
   ) async {
     if (!mounted) return;
     final resolved = await showImportDuplicateDialog(
@@ -341,6 +355,7 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
     await ref
         .read(chordProImportControllerProvider.notifier)
         .commitWithResolutions(
+          context: runContext,
           successes: successes,
           resolvedDuplicates: resolved,
         );

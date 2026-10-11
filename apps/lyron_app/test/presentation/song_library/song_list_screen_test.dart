@@ -52,6 +52,11 @@ import 'package:lyron_app/src/shared/app_strings.dart';
 
 import '../../support/drift_test_setup.dart';
 
+const _testContext = ActiveCatalogContext(
+  userId: 'user-1',
+  organizationId: 'org-1',
+);
+
 void main() {
   suppressDriftMultipleDatabaseWarnings();
   setUp(() async {
@@ -896,6 +901,53 @@ void main() {
     expect(events, ['planning-sign-out', 'auth-sign-out']);
   });
 
+  testWidgets('the duplicate dialog hands the awaiting run\'s own context to '
+      'the commit (IR1)', (tester) async {
+    const runContext = ActiveCatalogContext(
+      userId: 'user-9',
+      organizationId: 'org-9',
+    );
+    final importController = _CommitRecordingImportController();
+    await tester.pumpWidget(
+      buildApp(
+        songs: const [
+          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
+        ],
+        extraOverrides: [
+          chordProImportControllerProvider.overrideWith(
+            (_) => importController,
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    importController.setImportState(
+      const ImportAwaitingDuplicateResolution(
+        ImportBatchResult(
+          successes: [],
+          duplicates: [
+            ImportDuplicate(
+              filename: 'old.cho',
+              incomingSource: '{title: Old}',
+              incomingTitle: 'Old',
+              existingSongId: 'song-old',
+              existingTitle: 'Old',
+            ),
+          ],
+          errors: [],
+        ),
+        [],
+        context: runContext,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(AppStrings.songImportDuplicateConfirmAction));
+    await tester.pumpAndSettle();
+
+    expect(importController.committedWith, [runContext]);
+  });
+
   testWidgets('sign out is unavailable while a ChordPro import runs (SO7)', (
     tester,
   ) async {
@@ -1058,7 +1110,11 @@ void main() {
     // modal dialog, so it never blocks (with no dialog it would block forever).
     final finished = <String, ChordProImportState>{
       'ImportAwaitingDuplicateResolution':
-          const ImportAwaitingDuplicateResolution(emptyResult, []),
+          const ImportAwaitingDuplicateResolution(
+            emptyResult,
+            [],
+            context: _testContext,
+          ),
       'ImportDone': const ImportDone(result: emptyResult, skippedCount: 0),
       'ImportFailed': const ImportFailed('failed'),
     };
@@ -1334,6 +1390,20 @@ class _StatefulImportController extends ChordProImportController {
       );
 
   void setImportState(ChordProImportState next) => state = next;
+}
+
+/// Records the context a commit was handed instead of writing.
+class _CommitRecordingImportController extends _StatefulImportController {
+  final committedWith = <ActiveCatalogContext>[];
+
+  @override
+  Future<void> commitWithResolutions({
+    required ActiveCatalogContext context,
+    required List<ImportSuccess> successes,
+    required List<ResolvedDuplicate> resolvedDuplicates,
+  }) async {
+    committedWith.add(context);
+  }
 }
 
 class _TestAuthRepository implements AuthRepository {

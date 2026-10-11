@@ -26,10 +26,19 @@ class ImportAnalysing extends ChordProImportState {
 }
 
 class ImportAwaitingDuplicateResolution extends ChordProImportState {
-  const ImportAwaitingDuplicateResolution(this.result, this.successes);
+  const ImportAwaitingDuplicateResolution(
+    this.result,
+    this.successes, {
+    required this.context,
+  });
 
   final ImportBatchResult result;
   final List<ImportSuccess> successes;
+
+  /// IR1 (docs/specs/2026-10-11-import-run-ownership.md): the catalog
+  /// context the run analysed these files against. The commit that resumes
+  /// the run is given this context and writes into it and nothing else.
+  final ActiveCatalogContext context;
 }
 
 class ImportCommitting extends ChordProImportState {
@@ -188,10 +197,21 @@ class ChordProImportController extends StateNotifier<ChordProImportState> {
       return;
     }
 
+    // IR2 (docs/specs/2026-10-11-import-run-ownership.md): a run parks at the
+    // dialog, or ends in the summary, only while it is still in the catalog it
+    // analysed against. The picker or the analysis may have straddled a user
+    // switch, and the dialog would list this run's titles to whoever is
+    // current now. Nothing is written; _commit checks again before it writes.
+    if (_contextReader() != context) {
+      state = const ImportFailed(AppStrings.songImportContextChangedMessage);
+      return;
+    }
+
     if (analysisResult.duplicates.isNotEmpty) {
       state = ImportAwaitingDuplicateResolution(
         analysisResult,
         analysisResult.successes,
+        context: context,
       );
       return;
     }
@@ -208,7 +228,11 @@ class ChordProImportController extends StateNotifier<ChordProImportState> {
     );
   }
 
+  /// IR1: [context] is the context of the run whose duplicates were
+  /// resolved (the awaiting state's), never read from the live provider
+  /// here; the live context is only compared against it, in [_commit].
   Future<void> commitWithResolutions({
+    required ActiveCatalogContext context,
     required List<ImportSuccess> successes,
     required List<ResolvedDuplicate> resolvedDuplicates,
   }) async {
@@ -217,11 +241,6 @@ class ChordProImportController extends StateNotifier<ChordProImportState> {
       return;
     }
     try {
-      final context = _contextReader();
-      if (context == null) {
-        state = const ImportFailed(AppStrings.songImportNoContextMessage);
-        return;
-      }
       _runUserId = context.userId;
       await _commit(
         context: context,
@@ -261,6 +280,17 @@ class ChordProImportController extends StateNotifier<ChordProImportState> {
     required List<ImportSuccess> successes,
     required List<ResolvedDuplicate> resolvedDuplicates,
   }) async {
+    // IR2 (docs/specs/2026-10-11-import-run-ownership.md): the run writes
+    // only into the catalog it analysed against, and only while that is
+    // still the active one. The user, the organization or the context
+    // itself may have changed while the dialog or the picker was open
+    // (R17, R16). Nothing is written; the state becomes ImportFailed, so
+    // a run that was in a running phase releases the tracker and SO7's
+    // link through the state setter as for any other end.
+    if (_contextReader() != context) {
+      state = const ImportFailed(AppStrings.songImportContextChangedMessage);
+      return;
+    }
     state = const ImportCommitting();
 
     final skippedCount = resolvedDuplicates

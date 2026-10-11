@@ -13,6 +13,11 @@ import 'package:lyron_app/src/application/song_library/import_run_tracker.dart';
 import 'package:lyron_app/src/presentation/song_library/chordpro_import_controller.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
+const _testContext = ActiveCatalogContext(
+  userId: 'user-1',
+  organizationId: 'org-1',
+);
+
 /// SO7 (docs/specs/2026-10-07-sign-out-pending-work-guard.md): a running
 /// import writes pending work in the background, so the state the sign-out
 /// guard reads must stay truthful for as long as the run lasts, and the run
@@ -37,7 +42,11 @@ void main() {
       const ImportIdle(): false,
       const ImportPicking(): true,
       const ImportAnalysing(): true,
-      const ImportAwaitingDuplicateResolution(emptyResult, []): false,
+      const ImportAwaitingDuplicateResolution(
+        emptyResult,
+        [],
+        context: _testContext,
+      ): false,
       const ImportCommitting(): true,
       const ImportDone(result: emptyResult, skippedCount: 0): false,
       const ImportFailed('failed'): false,
@@ -110,6 +119,7 @@ void main() {
       final committing = container
           .read(chordProImportControllerProvider.notifier)
           .commitWithResolutions(
+            context: _testContext,
             successes: const [success],
             resolvedDuplicates: const [],
           );
@@ -249,6 +259,7 @@ void main() {
         await container
             .read(chordProImportControllerProvider.notifier)
             .commitWithResolutions(
+              context: _testContext,
               successes: const [success],
               resolvedDuplicates: const [],
             );
@@ -372,7 +383,11 @@ void main() {
     final endStates = <String, ChordProImportState>{
       'ImportIdle': const ImportIdle(),
       'ImportAwaitingDuplicateResolution':
-          const ImportAwaitingDuplicateResolution(emptyResult, []),
+          const ImportAwaitingDuplicateResolution(
+            emptyResult,
+            [],
+            context: _testContext,
+          ),
       'ImportDone': const ImportDone(result: emptyResult, skippedCount: 0),
       'ImportFailed': const ImportFailed('failed'),
     };
@@ -404,7 +419,11 @@ void main() {
       expect(container.exists(probeProvider), isTrue);
 
       controller.setImportState(
-        const ImportAwaitingDuplicateResolution(emptyResult, []),
+        const ImportAwaitingDuplicateResolution(
+          emptyResult,
+          [],
+          context: _testContext,
+        ),
       );
       await container.pump();
 
@@ -413,7 +432,11 @@ void main() {
 
     test('reset() from AwaitingDuplicateResolution returns to idle', () {
       controller.setImportState(
-        const ImportAwaitingDuplicateResolution(emptyResult, []),
+        const ImportAwaitingDuplicateResolution(
+          emptyResult,
+          [],
+          context: _testContext,
+        ),
       );
 
       controller.reset();
@@ -473,6 +496,189 @@ void main() {
       expect(tracker.isRunning, isTrue);
 
       a.setImportState(const ImportDone(result: emptyResult, skippedCount: 0));
+      expect(tracker.isRunning, isFalse);
+    });
+  });
+
+  group('a run is bound to the catalog context it analysed against '
+      '(IR1, IR2)', () {
+    // Non-const on purpose: an equal but distinct instance must not pass for
+    // the run's own.
+    final runContext = ActiveCatalogContext(
+      userId: 'user-a',
+      organizationId: 'org-a',
+    );
+
+    late ActiveCatalogContext? live;
+    late ImportRunTracker tracker;
+    late _RecordingImportService service;
+    late _BoundRunController controller;
+    Completer<void>? pickerOpen;
+
+    setUp(() {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      live = runContext;
+      tracker = ImportRunTracker();
+      service = _RecordingImportService();
+      controller = _BoundRunController(
+        importService: service,
+        contextReader: () => live,
+        runTracker: tracker,
+      );
+      addTearDown(controller.dispose);
+      pickerOpen = null;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(_filePickerChannel, (call) async {
+            await pickerOpen?.future;
+            return [
+              {
+                'name': 'a.cho',
+                'path': null,
+                'bytes': Uint8List.fromList(utf8.encode('{title: A}')),
+                'size': 10,
+              },
+            ];
+          });
+      addTearDown(
+        () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(_filePickerChannel, null),
+      );
+    });
+
+    // What SongListScreen._resolveImportDuplicates hands the controller: the
+    // awaiting state's successes and context, and one resolution per
+    // duplicate.
+    Future<void> answerDialog() {
+      final awaiting =
+          controller.currentState as ImportAwaitingDuplicateResolution;
+      return controller.commitWithResolutions(
+        context: awaiting.context,
+        successes: awaiting.successes,
+        resolvedDuplicates: [
+          for (final duplicate in awaiting.result.duplicates)
+            ResolvedDuplicate(
+              duplicate: duplicate,
+              resolution: DuplicateResolution.overwrite,
+            ),
+        ],
+      );
+    }
+
+    test('IR1: the awaiting state carries the run\'s context and the commit '
+        'passes the instance it was given, not an equal live one', () async {
+      await controller.startImport();
+      final awaiting = controller.currentState;
+      expect(awaiting, isA<ImportAwaitingDuplicateResolution>());
+      expect(
+        (awaiting as ImportAwaitingDuplicateResolution).context,
+        same(runContext),
+      );
+
+      live = ActiveCatalogContext(userId: 'user-a', organizationId: 'org-a');
+      await answerDialog();
+
+      expect(service.committedWith, hasLength(1));
+      expect(service.committedWith.single, same(runContext));
+      expect(controller.currentState, isA<ImportDone>());
+    });
+
+    final changedContexts = <String, ActiveCatalogContext?>{
+      'another user': ActiveCatalogContext(
+        userId: 'user-b',
+        organizationId: 'org-b',
+      ),
+      'the same user, another organization': ActiveCatalogContext(
+        userId: 'user-a',
+        organizationId: 'org-2',
+      ),
+      'another user, same organization': ActiveCatalogContext(
+        userId: 'user-b',
+        organizationId: 'org-a',
+      ),
+      'no context': null,
+    };
+    for (final entry in changedContexts.entries) {
+      test('IR2: ${entry.key} while the dialog was open writes nothing and '
+          'fails the run', () async {
+        await controller.startImport();
+        live = entry.value;
+
+        await answerDialog();
+
+        expect(service.committedWith, isEmpty);
+        expect(
+          controller.currentState,
+          isA<ImportFailed>().having(
+            (s) => s.message,
+            'message',
+            AppStrings.songImportContextChangedMessage,
+          ),
+        );
+        expect(tracker.isRunning, isFalse);
+      });
+    }
+
+    test('IR2: a run whose context changed while the picker was open never '
+        'reaches the dialog', () async {
+      final seen = <ChordProImportState>[];
+      controller.addListener(seen.add, fireImmediately: false);
+      pickerOpen = Completer<void>();
+      final run = controller.startImport();
+      await pumpEventQueue();
+      expect(controller.currentState, isA<ImportPicking>());
+
+      live = ActiveCatalogContext(userId: 'user-b', organizationId: 'org-b');
+      pickerOpen!.complete();
+      await run;
+
+      expect(seen.whereType<ImportAwaitingDuplicateResolution>(), isEmpty);
+      expect(
+        controller.currentState,
+        isA<ImportFailed>().having(
+          (s) => s.message,
+          'message',
+          AppStrings.songImportContextChangedMessage,
+        ),
+      );
+      expect(service.committedWith, isEmpty);
+      expect(tracker.isRunning, isFalse);
+    });
+
+    test('IR2: a run without duplicates whose context changed while the '
+        'picker was open is refused at its commit', () async {
+      service.reportDuplicates = false;
+      pickerOpen = Completer<void>();
+      final run = controller.startImport();
+      await pumpEventQueue();
+      expect(controller.currentState, isA<ImportPicking>());
+      expect(tracker.isRunningFor('user-a'), isTrue);
+
+      live = ActiveCatalogContext(userId: 'user-b', organizationId: 'org-b');
+      pickerOpen!.complete();
+      await run;
+
+      expect(service.committedWith, isEmpty);
+      expect(
+        controller.currentState,
+        isA<ImportFailed>().having(
+          (s) => s.message,
+          'message',
+          AppStrings.songImportContextChangedMessage,
+        ),
+      );
+      expect(tracker.isRunning, isFalse);
+    });
+
+    test('IR2: a refused commit leaves the controller usable', () async {
+      await controller.startImport();
+      live = ActiveCatalogContext(userId: 'user-b', organizationId: 'org-b');
+      await answerDialog();
+      expect(controller.currentState, isA<ImportFailed>());
+
+      live = runContext;
+      await controller.startImport();
+
+      expect(controller.currentState, isA<ImportAwaitingDuplicateResolution>());
       expect(tracker.isRunning, isFalse);
     });
   });
@@ -542,6 +748,64 @@ class _SettableImportController extends ChordProImportController {
       );
 
   void setImportState(ChordProImportState next) => state = next;
+
+  ChordProImportState get currentState => state;
+}
+
+/// Records what the controller hands the import service.
+class _RecordingImportService implements ChordProImportService {
+  bool reportDuplicates = true;
+  final committedWith = <ActiveCatalogContext>[];
+
+  @override
+  Future<ImportBatchResult> analyse({
+    required ActiveCatalogContext context,
+    required List<ImportFileInput> files,
+  }) async {
+    return ImportBatchResult(
+      successes: const [
+        ImportSuccess(
+          title: 'New',
+          source: '{title: New}',
+          filename: 'new.cho',
+        ),
+      ],
+      duplicates: reportDuplicates
+          ? const [
+              ImportDuplicate(
+                filename: 'old.cho',
+                incomingSource: '{title: Old}',
+                incomingTitle: 'Old',
+                existingSongId: 'song-old',
+                existingTitle: 'Old',
+              ),
+            ]
+          : const [],
+      errors: const [],
+    );
+  }
+
+  @override
+  Future<ImportBatchResult> commitImport({
+    required ActiveCatalogContext context,
+    required List<ImportSuccess> successes,
+    required List<ResolvedDuplicate> resolvedDuplicates,
+  }) async {
+    committedWith.add(context);
+    return const ImportBatchResult(successes: [], duplicates: [], errors: []);
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// A real controller over a mutable live context, state readable.
+class _BoundRunController extends ChordProImportController {
+  _BoundRunController({
+    required super.importService,
+    required super.contextReader,
+    super.runTracker,
+  });
 
   ChordProImportState get currentState => state;
 }

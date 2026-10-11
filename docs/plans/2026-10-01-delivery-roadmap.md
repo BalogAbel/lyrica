@@ -25,11 +25,17 @@
 > for the different-user reauth wipe that does not recount rows a running
 > import writes behind its prompt
 > (found by the sign-out guard's review; closed by
-> `docs/specs/2026-10-11-reauth-wipe-recount.md`), then S0 PR 2, then S5a.
+> `docs/specs/2026-10-11-reauth-wipe-recount.md`), then a small import-run
+> ownership fix (R17; `fix/import-run-ownership`,
+> `docs/specs/2026-10-11-import-run-ownership.md`: a duplicate resolution
+> commits into the catalog context the run analysed against, and a commit
+> starts only while that context is still the active one; the final review of
+> the reauth wipe fix reached the same write from the other direction), then
+> S0 PR 2, then S5a.
 > The sign-out guard PR merged as #87 (`d5fd3de`, 2026-10-09). The reauth
-> wipe fix is implemented on `fix/reauth-wipe-recount`, PR
-> https://github.com/BalogAbel/lyrica/pull/88 (open), ADR-029 amended
-> (`docs/specs/2026-10-11-reauth-wipe-recount.md`); next is S0 PR 2; the
+> wipe fix merged as #88 (`22864df`, 2026-10-11), ADR-029 amended
+> (`docs/specs/2026-10-11-reauth-wipe-recount.md`); next is the import-run
+> ownership fix, then S0 PR 2; the
 > session-transition coordinator it surfaced stays deferred
 > (`docs/deferred/2026-10-11-session-transition-coordinator.md`); the
 > membership-revocation purge has the same import gap RW3 closes here

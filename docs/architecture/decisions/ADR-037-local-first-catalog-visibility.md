@@ -197,3 +197,44 @@ No new purge, no `PurgeReason`, no new store write or delete (ADR-035
 unchanged: its `userSignOut` is the act of the user who signed out, and the
 purge now targets exactly that user). Everything else in this amendment is in
 memory only.
+
+## Amendment: import runs hold their context (2026-10-11)
+
+Spec: `docs/specs/2026-10-11-import-run-ownership.md`.
+
+A ChordPro import analyses its files against the catalog context captured at
+its start, then may wait at the duplicate dialog for as long as the user
+takes. The answer resumed the commit with the live
+`activeCatalogContextProvider`, which by XU2 is always the current user's. So
+whoever was current when the dialog was answered received the files, and a
+sync pass sent them to that user's organization (R17). An import waiting for
+the OS picker could also commit after the sign-out had purged (R16).
+
+- **The run names its context (IR1).** The commit is given the run's context
+  as an argument: the awaiting state carries it and the dialog host hands it
+  back. `commitWithResolutions` never reads the live context; the only reads are
+  the capture when a run starts, IR2's parking check after the analysis and
+  IR2's comparison at the start of `_commit`. The import tracker reports the
+  run's own user.
+- **A commit starts only while its context is active (IR2).** `_commit`, the
+  one method every write passes through, refuses to start when the active
+  catalog context is no longer the run's. Nothing is written and the run ends
+  `ImportFailed` with a message that says the import must be restarted. The
+  active context is the signal, not `AppAuthState.currentUserId`: by XU2 it
+  implies the user, and it also covers a changed organization and a released
+  context. The same comparison runs where a run parks at the dialog or ends
+  in the summary, so the dialog never opens for a context that changed while
+  the picker or the analysis was running.
+- **No per-row check (IR3).** A commit that started while its context was
+  active finishes into it. The reauth recount (RW3, AC3 and AC4 of
+  `docs/specs/2026-10-11-reauth-wipe-recount.md`) requires that a running
+  import's rows land in the prior user's catalog while a different-user
+  sign-in resolves behind it; a per-row check would stop it after the first
+  row and leave a partial import. Those rows carry the run's own
+  `(userId, organizationId)`, never another user's.
+
+R16 is closed and R10 narrowed to a commit that began inside the sign-out
+count's await. The open duplicate dialog itself outlives a user switch (R18,
+deferred; its answer is refused). No new purge, no `PurgeReason`, no new
+store write or delete (ADR-035 unchanged): a commit that would have written
+is refused.

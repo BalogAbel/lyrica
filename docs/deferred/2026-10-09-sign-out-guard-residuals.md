@@ -1,4 +1,4 @@
-# Sign-Out Guard Residuals (R1–R17)
+# Sign-Out Guard Residuals (R1–R15, R18–R20)
 
 **Slice:** `fix/sign-out-pending-work-guard`
 (`docs/specs/2026-10-07-sign-out-pending-work-guard.md`). Found by the
@@ -6,6 +6,13 @@ per-task reviews and the adversarial whole-diff review (2026-10-09).
 **Related:** ADR-020 (amendment 2026-10-09), ADR-029, ADR-035, ADR-037
 (current-user ownership), `docs/deferred/2026-10-05-gate-cross-user-leaks.md`
 (O2, O3).
+
+**Closed since this entry was written:** R16 and R17
+(`docs/specs/2026-10-11-import-run-ownership.md`, `fix/import-run-ownership`);
+R10 is narrowed there. R18's second shape (the dialog opening after the switch) was
+closed in the same PR by the IR2 comparison before the run parks; the
+already open dialog stays. The numbering is kept: R16 and R17 no longer appear,
+and R18–R20 were found by that fix and its adversarial review.
 
 **Status:** none of these is reachable through an ordinary user action, and
 none was judged to delete unsynced work without a confirmation or to touch
@@ -109,15 +116,29 @@ UX pass on the account screen.
 If the sign-out warning is open when a different-user reauth prompt arrives,
 `ReauthPromptHost._closeOpenDialog` pops the top route: the sign-out warning
 answers Cancel (the safe direction) and the reauth dialog can stay open until
-answered. **Trigger:** the next change to `ReauthPromptHost`.
+answered. The same pop can reach the duplicate dialog of a ChordPro import
+(found by the review of `docs/specs/2026-10-11-import-run-ownership.md`, not
+reproduced): it returns `null`, the host resets the run, and nothing is
+written or stuck; a result of another type delivered by a race of two pops
+would surface as an unawaited `TypeError` and leave the run in
+`ImportAwaitingDuplicateResolution`, which is not a running phase.
+**Trigger:** the next change to `ReauthPromptHost`.
 
-## R10 - import rows of a signed-out user
+## R10 - import rows of a signed-out user (narrowed 2026-10-11)
 
-An import started inside the count's await (milliseconds) is not seen by SO7.
-It cannot write before the sign-out ends (writing needs the user to pick
-files first); its rows are then written with the signed-out user's captured
-context and stay as orphans. Not a loss. **Fix sketch:** the import re-reads
-the catalog context per row and stops when it changed.
+A commit that starts after the sign-out released the catalog context is
+refused (IR2 of `docs/specs/2026-10-11-import-run-ownership.md`; R16 went with
+it). What remains: an import started inside the count's await (milliseconds;
+SO7 did not see it) can commit before the sign-out's first step, while the
+warning is open or while the purge runs. Its rows are then deleted by the
+confirmed purge without having been named in the warning, or land after the
+purge as orphans of the signed-out user. It needs the Import tap and the
+sign-out tap inside one local count read, and it is never another user's
+data. **Fix sketch:** after the dialog the sign-out sequence re-checks
+`ImportRunTracker.isRunningFor(userId)` (application layer since RW3) and
+stops as SO7 does; that is a change to the sign-out flow. A per-row check in
+the import is not the fix (IR3 of the same spec: it would stop the commit that
+RW3's AC3 and AC4 let finish).
 
 ## R11 - single-row writes that finish after their screen popped
 
@@ -154,20 +175,50 @@ checks `auth.uid() = p_user_id` server-side (backend change).
 or RPC failure escapes as an unhandled error (the W3 analogue). Nothing is
 purged. **Fix sketch:** catch, report once, show a message.
 
-## R16 - an import started while the sign-out sequence runs
+## R18 - the open duplicate dialog outlives the user switch
 
-After the warning closes, the Import item is enabled again while the purges
-and the local sign-out run. Picking files takes seconds, so the rows are
-written after the sign-out as orphans of the signed-out user (R10). Not a
-loss.
+The duplicate dialog is a modal route owned by the navigator, not by the
+screen. After another user signed in it is still on screen until it is
+answered. It lists the titles of the files the first user had just picked
+(`incomingTitle` of each duplicate; it shows no file names and no catalog
+entries), and each of those equals a title the first user's catalog already
+holds. The answer is then refused (IR2 of
+`docs/specs/2026-10-11-import-run-ownership.md`) and nothing is written.
 
-## R17 - duplicate resolution commits into the current user's catalog
+**Why it stays deferred:**
 
-`commitWithResolutions` reads the live catalog context, not the run's. A
-user switch while the duplicate dialog is open commits the first user's
-picked files into the second user's catalog as their pending work.
-Pre-existing; nothing is deleted. **Fix sketch:** keep the run's context and
-refuse the commit if the current context belongs to another user.
+- it is presentation only: the answer is refused and nothing is written;
+- what it shows comes from local files the first user picked moments
+  earlier, not from a list of that user's synced catalog;
+- closing the dialog from code is the R9 hazard: `showDialog` hands back no
+  route, so a programmatic pop removes whatever is on top (the reauth dialog
+  stacked above it, among others).
+
+**Fix sketch:** the host pushes its own `DialogRoute`, keeps the route handle,
+and removes that route when the awaiting run's context stops being the active
+one. It never pops the top route. That is a redesign of the host, not a small
+fix. **Trigger:** a redesign of the duplicate dialog host, or the
+session-transition coordinator
+(`docs/deferred/2026-10-11-session-transition-coordinator.md`).
+
+## R19 - a same-user context gap refuses an import with the account-changed message
+
+IR2 compares the live catalog context with the run's. After a cancelled
+reauth returns the app to A there is a gap (one local read) in which the live
+context is `null` until A's context is re-established. A dialog answered inside
+that gap is refused with "The account or workspace changed ..." although the
+user is the same. A run whose analysis ends inside the gap is refused at the
+parking check, with no dialog and the same message. Nothing is written and
+starting the import again works.
+**Fix sketch:** distinguish "no context yet" from "another context" in the
+message, or wait for the establishment. **Trigger:** a field report.
+
+## R20 - a duplicate answer dropped without a message while a run is running
+
+`commitWithResolutions` returns without a message when a run is running (the
+one-run-at-a-time rule of SO7), so such an answer is dropped silently.
+Unreachable behind the modal dialog, and pre-existing since RW3. **Trigger:**
+the next change to the import controller's state machine.
 
 ## Trigger
 
