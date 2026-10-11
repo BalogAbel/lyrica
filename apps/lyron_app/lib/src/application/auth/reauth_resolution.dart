@@ -53,7 +53,10 @@ class ReauthSuperseded extends ReauthOutcome {
 /// prevented it, OR if the action's destructive part ran but a later step
 /// failed in a way that makes the outcome unsafe to claim (for example
 /// `wipePriorAndProceedFor` returning `false` after the wipe genuinely ran
-/// but the terminal identity write then threw). A `false` report resolves
+/// but the terminal identity write then threw), OR if the wipe declined and
+/// cancelled to the prior user because the prior user's pending work grew
+/// since it was counted or an import is running (RW3/RW4; nothing was
+/// deleted). A `false` report resolves
 /// as [ReauthSuperseded], so the outcome never claims a wipe or
 /// cancellation that did not actually complete -- it may understate what
 /// ran, but it never overstates it.

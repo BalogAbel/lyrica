@@ -626,6 +626,165 @@ void main() {
       expect((await fixture.identityStore.read())?.userId, _userA);
     });
   });
+
+  // RW3 (docs/specs/2026-10-11-reauth-wipe-recount.md): a running import is
+  // work nobody has counted yet, so the wipe declines while one runs; and the
+  // guard must never stick once the import ended in any way.
+  group('no different-user wipe while an import runs', () {
+    const importedTitles = ['Imported one', 'Imported two', 'Imported three'];
+
+    test('AC3: a confirmation made while the import is held deletes nothing '
+        'and returns to A', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final fixture = await _Fixture.create(
+        seedSongsForA: true,
+        seedPlanningForA: true,
+      );
+      await fixture.coldStartAsA();
+
+      fixture.songWriteGate.hold();
+      final importRun = fixture.startImport(importedTitles);
+      await _settle();
+      expect(fixture.importState, isA<ImportCommitting>());
+
+      await fixture.signInAs(_sessionB);
+      final prompt = fixture.container.read(reauthPromptControllerProvider);
+      expect((prompt.pending as ReauthDifferentUserPrompt?)?.pendingCount, 1);
+
+      prompt.answer(true);
+      await _settle();
+
+      expect(fixture.auth.state.status, AppAuthStatus.sessionExpired);
+      expect(fixture.auth.state.currentUserId, _userA);
+      expect((await fixture.identityStore.read())?.userId, _userA);
+      expect(await fixture.pendingPlanningMutationCount(_userA), 1);
+
+      fixture.songWriteGate.release();
+      await importRun;
+      await _settle();
+      expect(await fixture.pendingSongCount(_userA), importedTitles.length);
+      expect(await fixture.pendingPlanningMutationCount(_userA), 1);
+      expect((await fixture.identityStore.read())?.userId, _userA);
+    });
+
+    test('AC4: a zero count while the import is held asks nobody and '
+        'deletes nothing', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final fixture = await _Fixture.create(
+        seedSongsForA: true,
+        seedPlanningForA: true,
+        seedPendingPlanningForA: false,
+      );
+      await fixture.coldStartAsA();
+
+      fixture.songWriteGate.hold();
+      final importRun = fixture.startImport(importedTitles);
+      await _settle();
+      expect(fixture.importState, isA<ImportCommitting>());
+
+      await fixture.signInAs(_sessionB);
+
+      expect(
+        fixture.container.read(reauthPromptControllerProvider).pending,
+        isNull,
+      );
+      expect(fixture.auth.state.status, AppAuthStatus.sessionExpired);
+      expect(fixture.auth.state.currentUserId, _userA);
+      expect((await fixture.identityStore.read())?.userId, _userA);
+
+      fixture.songWriteGate.release();
+      await importRun;
+      await _settle();
+      expect(await fixture.pendingSongCount(_userA), importedTitles.length);
+      expect((await fixture.identityStore.read())?.userId, _userA);
+    });
+
+    Future<void> expectWipeRunsAfterImportEnded(_Fixture fixture) async {
+      expect(
+        fixture.container.read(importRunTrackerProvider).isRunning,
+        isFalse,
+      );
+      await fixture.signInAs(_sessionB);
+      expect(
+        fixture.container.read(reauthPromptControllerProvider).pending,
+        isNull,
+        reason: 'a zero count asks nobody',
+      );
+      expect(fixture.auth.state.status, AppAuthStatus.signedIn);
+      expect(fixture.auth.state.currentUserId, _userB);
+      expect((await fixture.identityStore.read())?.userId, isNot(_userA));
+    }
+
+    test('AC9: a cancelled picker does not block the wipe', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final fixture = await _Fixture.create(
+        seedSongsForA: true,
+        seedPlanningForA: true,
+        seedPendingPlanningForA: false,
+      );
+      await fixture.coldStartAsA();
+
+      await fixture.startImport(importedTitles, cancelPicker: true);
+      await _settle();
+      expect(fixture.importState, isA<ImportIdle>());
+
+      await expectWipeRunsAfterImportEnded(fixture);
+    });
+
+    test(
+      'AC9: an import whose every write failed does not block the wipe',
+      () async {
+        TestWidgetsFlutterBinding.ensureInitialized();
+        final fixture = await _Fixture.create(
+          seedSongsForA: true,
+          seedPlanningForA: true,
+          seedPendingPlanningForA: false,
+        );
+        await fixture.coldStartAsA();
+
+        fixture.songWriteGate.failFor(_userA);
+        await fixture.startImport(importedTitles);
+        await _settle();
+        expect(fixture.importState, isA<ImportDone>());
+        expect(await fixture.pendingSongCount(_userA), 0);
+
+        await expectWipeRunsAfterImportEnded(fixture);
+      },
+    );
+
+    test('AC9: an import whose controller was disposed mid-commit does not '
+        'block the wipe', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final fixture = await _Fixture.create(
+        seedSongsForA: true,
+        seedPlanningForA: true,
+        seedPendingPlanningForA: false,
+      );
+      await fixture.coldStartAsA();
+
+      fixture.songWriteGate.hold();
+      final importRun = fixture.startImport(importedTitles);
+      await _settle();
+      expect(fixture.importState, isA<ImportCommitting>());
+      expect(
+        fixture.container.read(importRunTrackerProvider).isRunning,
+        isTrue,
+      );
+
+      // The run holds the provider alive; closing the listener and
+      // invalidating disposes the controller while the commit is paused.
+      fixture.importSubscription!.close();
+      fixture.container.invalidate(chordProImportControllerProvider);
+      await _settle();
+
+      await expectWipeRunsAfterImportEnded(fixture);
+
+      // The orphaned run resumes into a disposed notifier. Its rows written
+      // after the wipe are R10 orphans; only the failure is pinned.
+      fixture.songWriteGate.release();
+      await expectLater(importRun, throwsA(anything));
+    });
+  });
 }
 
 class _Fixture {
@@ -966,9 +1125,10 @@ class _Fixture {
   /// Starts a real ChordPro import of [titles] in the current catalog
   /// context. The platform file picker answers with one file per title; the
   /// returned future completes when the run ends.
-  Future<void> startImport(List<String> titles) {
+  Future<void> startImport(List<String> titles, {bool cancelPicker = false}) {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_filePickerChannel, (call) async {
+          if (cancelPicker) return null;
           return [
             for (final (index, title) in titles.indexed)
               {
@@ -985,15 +1145,18 @@ class _Fixture {
       () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(_filePickerChannel, null),
     );
-    final subscription = container.listen(
+    importSubscription = container.listen(
       chordProImportControllerProvider,
       (_, _) {},
     );
-    addTearDown(subscription.close);
+    addTearDown(importSubscription!.close);
     return container
         .read(chordProImportControllerProvider.notifier)
         .startImport();
   }
+
+  /// The listener keeping the import controller alive; set by [startImport].
+  ProviderSubscription<ChordProImportState>? importSubscription;
 
   ChordProImportState get importState =>
       container.read(chordProImportControllerProvider);
@@ -1013,7 +1176,12 @@ Future<void> _settle() async {
 class _ReadGate {
   Completer<void>? _held;
 
+  final _failing = <String>{};
+
   void hold() => _held = Completer<void>();
+
+  /// A mode in which [passFor] throws for [userId] instead of pausing.
+  void failFor(String userId) => _failing.add(userId);
 
   void release() {
     _held?.complete();
@@ -1021,6 +1189,9 @@ class _ReadGate {
   }
 
   Future<void> passFor(String userId) async {
+    if (_failing.contains(userId)) {
+      throw StateError('simulated write failure for $userId');
+    }
     final held = _held;
     if (held != null && userId == _userA) {
       await held.future;

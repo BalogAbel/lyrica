@@ -1056,6 +1056,7 @@ void main() {
     Future<ProviderContainer> startDifferentUserEdge({
       required List<Object> songReads,
       required List<Object> planningReads,
+      Completer<void>? holdSecondSongRead,
     }) async {
       await seedPriorUserData();
       identityStore.seed(
@@ -1081,7 +1082,9 @@ void main() {
         readPlanningPendingWorkCount: ({required userId}) =>
             next(planningReads, planningCalls++),
         readSongPendingWorkCount: ({required userId}) =>
-            next(songReads, songCalls++),
+            songCalls++ == 1 && holdSecondSongRead != null
+            ? holdSecondSongRead.future.then((_) => next(songReads, 1))
+            : next(songReads, songCalls - 1),
       );
       final container = ProviderContainer(
         overrides: [
@@ -1152,6 +1155,40 @@ void main() {
 
       expect(await priorSongsStillPresent(), isTrue);
       expectNothingDeletedAndBackAsPriorUser();
+    });
+
+    test('RW4: a newer signedIn edge superseding during the recount deletes '
+        'nothing and does not cancel', () async {
+      final recountHeld = Completer<void>();
+      final container = await startDifferentUserEdge(
+        songReads: [3, 3],
+        planningReads: [0],
+        holdSecondSongRead: recountHeld,
+      );
+      container.read(reauthPromptControllerProvider).answer(true);
+      await pump();
+
+      final newerEdgeObserved = Completer<void>();
+      void observeNewerEdge() {
+        if (authController.state.session?.userId == 'user-3' &&
+            !newerEdgeObserved.isCompleted) {
+          newerEdgeObserved.complete();
+        }
+      }
+
+      authController.addListener(observeNewerEdge);
+      addTearDown(() => authController.removeListener(observeNewerEdge));
+      authRepository.emit(
+        const AppAuthSession(userId: 'user-3', email: 'user3@example.com'),
+      );
+      await newerEdgeObserved.future;
+
+      recountHeld.complete();
+      await pump();
+
+      expect(authRepository.signOutCalls, 0);
+      expect(identityStore.clearCount, 0);
+      expect(await priorSongsStillPresent(), isTrue);
     });
 
     test('RW2: a confirmed unknown count is not recounted and wipes', () async {
