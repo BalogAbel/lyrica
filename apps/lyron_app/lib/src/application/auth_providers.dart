@@ -386,11 +386,52 @@ final lastKnownIdentityPersistenceProvider = Provider<void>((ref) {
           return true;
         }
 
+        // RW2 (docs/specs/2026-10-11-reauth-wipe-recount.md): whether the prior
+        // user's pending work is still no more than the count the decision was
+        // made on. A confirmed unknown is not compared (the user accepted an
+        // unknown amount; D5.5 rule 3 does the same); an unreadable recount of a
+        // known count is uncertainty, which never authorises a wipe (D5).
+        Future<bool> priorWorkStillAsCounted(
+          LastKnownIdentity identity,
+          int? countedPendingWork,
+        ) async {
+          if (countedPendingWork == null) return true;
+          try {
+            final current = await ref
+                .read(pendingLocalWorkCounterProvider)
+                .count(userId: identity.userId);
+            return current <= countedPendingWork;
+          } catch (_) {
+            return false;
+          }
+        }
+
         Future<bool> wipePriorAndProceedFor(
           LastKnownIdentity identity,
           int? countedPendingWork,
         ) async {
           if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
+            return false;
+          }
+          final stillAsCounted = await priorWorkStillAsCounted(
+            identity,
+            countedPendingWork,
+          );
+          if (!isCurrent(generation, AppAuthStatus.signedIn, session)) {
+            return false;
+          }
+          if (!stillAsCounted) {
+            // RW4: delete nothing, return to the prior user exactly as Cancel
+            // does. `false` reports ReauthSuperseded -- it understates what ran
+            // (a cancel), never overstates it.
+            if (kDebugMode) {
+              debugPrint(
+                'lastKnownIdentityPersistenceProvider: different-user wipe '
+                'declined: ${identity.userId}\'s pending work changed after it '
+                'was counted',
+              );
+            }
+            await cancelToPriorUserFor(identity);
             return false;
           }
           final priorUserId = identity.userId;

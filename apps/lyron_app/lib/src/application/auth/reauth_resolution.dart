@@ -33,9 +33,9 @@ class ReauthSuperseded extends ReauthOutcome {
 /// - priorUserId == null || priorUserId == newUserId → await flushSameUser(); return ReauthProceededSameUser().
 /// - different user:
 ///   - count = await priorPendingCount();
-///   - if count == 0 → await wipePriorAndProceed(); return ReauthWipedPriorAndProceeded(). (nothing to lose, no prompt)
+///   - if count == 0 → await wipePriorAndProceed(count); return ReauthWipedPriorAndProceeded(). (nothing to lose, no prompt)
 ///   - if count > 0 OR count == null (unknown) → confirmed = await confirmDifferentUser(email: priorEmail ?? '', pendingCount: count);
-///      - confirmed true → await wipePriorAndProceed(); return ReauthWipedPriorAndProceeded();
+///      - confirmed true → await wipePriorAndProceed(count); return ReauthWipedPriorAndProceeded();
 ///      - confirmed false → await cancelToPriorUser(); return ReauthCancelledKeptPriorUser();
 ///
 /// CRITICAL: wipePriorAndProceed MUST NOT be called before confirmDifferentUser

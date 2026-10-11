@@ -534,98 +534,97 @@ void main() {
   group('the different-user wipe deletes only counted work', () {
     const importedTitles = ['Imported one', 'Imported two', 'Imported three'];
 
-    test(
-      'rows the import writes behind the prompt are not deleted by the '
-      'confirmation that named fewer',
-      skip: 'red until Task 3',
-      () async {
-        TestWidgetsFlutterBinding.ensureInitialized();
-        final fixture = await _Fixture.create(
-          seedSongsForA: true,
-          seedPlanningForA: true,
-        );
-        await fixture.coldStartAsA();
-        expect(fixture.catalogContextUserId, _userA);
+    test('rows the import writes behind the prompt are not deleted by the '
+        'confirmation that named fewer', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final fixture = await _Fixture.create(
+        seedSongsForA: true,
+        seedPlanningForA: true,
+      );
+      await fixture.coldStartAsA();
+      expect(fixture.catalogContextUserId, _userA);
 
-        // A's import reaches its commit and waits before its first row.
-        fixture.songWriteGate.hold();
-        final importRun = fixture.startImport(importedTitles);
-        await _settle();
-        expect(fixture.importState, isA<ImportCommitting>());
+      // A's import reaches its commit and waits before its first row.
+      fixture.songWriteGate.hold();
+      final importRun = fixture.startImport(importedTitles);
+      await _settle();
+      expect(fixture.importState, isA<ImportCommitting>());
 
-        await fixture.signInAs(_sessionB);
-        final prompt = fixture.container.read(reauthPromptControllerProvider);
-        expect(
-          (prompt.pending as ReauthDifferentUserPrompt?)?.pendingCount,
-          1,
-          reason: 'A\'s one plan edit',
-        );
+      await fixture.signInAs(_sessionB);
+      final prompt = fixture.container.read(reauthPromptControllerProvider);
+      expect(
+        (prompt.pending as ReauthDifferentUserPrompt?)?.pendingCount,
+        1,
+        reason: 'A\'s one plan edit',
+      );
 
-        // The import keeps writing A's rows behind the prompt.
-        fixture.songWriteGate.release();
-        await importRun;
-        await _settle();
-        expect(await fixture.pendingSongCount(_userA), importedTitles.length);
+      // The import keeps writing A's rows behind the prompt.
+      fixture.songWriteGate.release();
+      await importRun;
+      await _settle();
+      expect(await fixture.pendingSongCount(_userA), importedTitles.length);
 
-        prompt.answer(true);
-        await _settle();
+      prompt.answer(true);
+      await _settle();
 
-        expect(
-          await fixture.pendingSongCount(_userA),
-          importedTitles.length,
-          reason:
-              'the confirmation named 1 item; the 3 imported rows written '
-              'after it must not be deleted by it',
-        );
-      },
-    );
+      expect(
+        await fixture.pendingSongCount(_userA),
+        importedTitles.length,
+        reason:
+            'the confirmation named 1 item; the 3 imported rows written '
+            'after it must not be deleted by it',
+      );
+      expect(fixture.auth.state.status, AppAuthStatus.sessionExpired);
+      expect(fixture.auth.state.currentUserId, _userA);
+      expect((await fixture.identityStore.read())?.userId, _userA);
+      expect(await fixture.pendingPlanningMutationCount(_userA), 1);
+    });
 
-    test(
-      'rows written between a zero count and the wipe are not deleted '
-      'without a prompt',
-      skip: 'red until Task 3',
-      () async {
-        TestWidgetsFlutterBinding.ensureInitialized();
-        final fixture = await _Fixture.create(
-          seedSongsForA: true,
-          seedPlanningForA: true,
-          seedPendingPlanningForA: false,
-          gatePendingCount: true,
-        );
-        await fixture.coldStartAsA();
-        expect(fixture.catalogContextUserId, _userA);
+    test('rows written between a zero count and the wipe are not deleted '
+        'without a prompt', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final fixture = await _Fixture.create(
+        seedSongsForA: true,
+        seedPlanningForA: true,
+        seedPendingPlanningForA: false,
+        gatePendingCount: true,
+      );
+      await fixture.coldStartAsA();
+      expect(fixture.catalogContextUserId, _userA);
 
-        fixture.songWriteGate.hold();
-        final importRun = fixture.startImport(importedTitles);
-        await _settle();
-        expect(fixture.importState, isA<ImportCommitting>());
+      fixture.songWriteGate.hold();
+      final importRun = fixture.startImport(importedTitles);
+      await _settle();
+      expect(fixture.importState, isA<ImportCommitting>());
 
-        // The count reads zero and is paused before the resolution acts on it.
-        fixture.pendingCountGate.hold();
-        await fixture.signInAs(_sessionB);
-        expect(
-          fixture.container.read(reauthPromptControllerProvider).pending,
-          isNull,
-        );
+      // The count reads zero and is paused before the resolution acts on it.
+      fixture.pendingCountGate.hold();
+      await fixture.signInAs(_sessionB);
+      expect(
+        fixture.container.read(reauthPromptControllerProvider).pending,
+        isNull,
+      );
 
-        // The import writes A's rows after the count.
-        fixture.songWriteGate.release();
-        await importRun;
-        await _settle();
-        expect(await fixture.pendingSongCount(_userA), importedTitles.length);
+      // The import writes A's rows after the count.
+      fixture.songWriteGate.release();
+      await importRun;
+      await _settle();
+      expect(await fixture.pendingSongCount(_userA), importedTitles.length);
 
-        fixture.pendingCountGate.release();
-        await _settle();
+      fixture.pendingCountGate.release();
+      await _settle();
 
-        expect(
-          await fixture.pendingSongCount(_userA),
-          importedTitles.length,
-          reason:
-              'nobody was asked about these rows; a zero count must not '
-              'authorise deleting work written after it',
-        );
-      },
-    );
+      expect(
+        await fixture.pendingSongCount(_userA),
+        importedTitles.length,
+        reason:
+            'nobody was asked about these rows; a zero count must not '
+            'authorise deleting work written after it',
+      );
+      expect(fixture.auth.state.status, AppAuthStatus.sessionExpired);
+      expect(fixture.auth.state.currentUserId, _userA);
+      expect((await fixture.identityStore.read())?.userId, _userA);
+    });
   });
 }
 
