@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
 import 'package:lyron_app/src/application/active_organization_resolution.dart';
 import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
@@ -15,10 +16,12 @@ import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_status.dart';
 import 'package:lyron_app/src/domain/auth/redeem_result.dart';
 import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
+import 'package:lyron_app/src/domain/core/capability.dart';
 import 'package:lyron_app/src/offline/auth/drift_last_known_identity_store.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../support/drift_test_setup.dart';
 
@@ -59,9 +62,22 @@ class _FakeAuthRepository implements AuthRepository {
   Future<void> deleteAccount() async {}
 }
 
-class _Harness {
-  _Harness(this.container, this.authController, this.repository);
+/// Every request hangs: the network stays silent.
+class _HangingHttpClient extends http.BaseClient {
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) =>
+      Completer<http.StreamedResponse>().future;
+}
 
+class _Harness {
+  _Harness(
+    this.container,
+    this.authController,
+    this.repository,
+    this.identityStore,
+  );
+
+  final DriftLastKnownIdentityStore identityStore;
   final ProviderContainer container;
   final AppAuthController authController;
   final _FakeAuthRepository repository;
@@ -111,7 +127,7 @@ Future<_Harness> _harness({
     ],
   );
   addTearDown(container.dispose);
-  return _Harness(container, authController, repository);
+  return _Harness(container, authController, repository, identityStore);
 }
 
 class _SucceedingInvitations implements InvitationRepository {
@@ -467,20 +483,82 @@ void main() {
     );
   });
 
-  test('the capability resolver reads and writes the identity database '
-      '(SG6)', () async {
-    final harness = await _harness(
-      session: _session,
+  test(
+    'capabilitySnapshotStoreProvider is the Drift identity store (SG6)',
+    () async {
+      final harness = await _harness(
+        session: _session,
+        identity: const LastKnownIdentity(
+          userId: 'user-1',
+          email: 'demo@lyron.local',
+          organizationId: 'org-1',
+        ),
+        resolution: _never,
+      );
+
+      final store = harness.container.read(capabilitySnapshotStoreProvider);
+
+      expect(store, isA<DriftLastKnownIdentityStore>());
+    },
+  );
+
+  Future<_Harness> resolverHarness(AppAuthSession session) async {
+    final client = SupabaseClient(
+      'https://test.supabase.co',
+      'anon-key',
+      httpClient: _HangingHttpClient(),
+    );
+    // Never dispose the client: dispose completes the hung requests.
+    addTearDown(client.auth.stopAutoRefresh);
+    late final _Harness harness;
+    harness = await _harness(
+      session: session,
       identity: const LastKnownIdentity(
         userId: 'user-1',
         email: 'demo@lyron.local',
         organizationId: 'org-1',
       ),
       resolution: _never,
+      extraOverrides: [
+        supabaseClientProvider.overrideWithValue(client),
+        capabilitySnapshotStoreProvider.overrideWith(
+          (_) => harness.identityStore,
+        ),
+      ],
     );
+    await harness.identityStore.writeCapabilityCodes(
+      userId: 'user-1',
+      organizationId: 'org-1',
+      codes: {Capability.editSongs.code},
+    );
+    return harness;
+  }
 
-    final store = harness.container.read(capabilitySnapshotStoreProvider);
+  test('the real capability resolver answers from the stored set for the '
+      'signed-in user (SG6)', () async {
+    final harness = await resolverHarness(_session);
+    final resolver = harness.container.read(capabilityResolverProvider);
 
-    expect(store, isA<DriftLastKnownIdentityStore>());
+    final capabilities = await resolver
+        .capabilitiesFor('org-1')
+        .timeout(const Duration(seconds: 5));
+
+    expect(capabilities, {Capability.editSongs});
+    expect(resolver.hasCapabilitySync('org-1', Capability.editSongs), isTrue);
+  });
+
+  test('the real capability resolver ignores another user\'s stored set '
+      '(SG6, XU)', () async {
+    final harness = await resolverHarness(
+      const AppAuthSession(userId: 'user-2', email: 'other@lyron.local'),
+    );
+    final resolver = harness.container.read(capabilityResolverProvider);
+
+    var answered = false;
+    unawaited(resolver.capabilitiesFor('org-1').then((_) => answered = true));
+    await pumpEventQueue();
+
+    expect(answered, isFalse);
+    expect(resolver.hasCapabilitySync('org-1', Capability.editSongs), isNull);
   });
 }

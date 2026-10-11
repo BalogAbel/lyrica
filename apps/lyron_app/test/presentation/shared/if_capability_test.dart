@@ -86,6 +86,10 @@ void main() {
       );
     });
 
+    // The resolver logs the expected failure through debugPrint.
+    final originalDebugPrint = debugPrint;
+    debugPrint = (String? message, {int? wrapWidth}) {};
+
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -112,6 +116,7 @@ void main() {
     expect(find.text('edit'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
+    debugPrint = originalDebugPrint;
     await tester.runAsync(database.close);
   });
 }
