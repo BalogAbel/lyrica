@@ -23,12 +23,14 @@ import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/auth/membership_gate_decision.dart';
 import 'package:lyron_app/src/application/auth/pending_local_work_counter.dart';
 import 'package:lyron_app/src/application/auth/reauth_prompt_controller.dart';
+import 'package:lyron_app/src/application/auth/sign_out_command.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/planning/planning_remote_refresh_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_payload.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/app_foreground_state.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
+import 'package:lyron_app/src/application/song_library/chordpro_import_types.dart';
 import 'package:lyron_app/src/application/song_library/drift_song_mutation_store.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
@@ -837,6 +839,233 @@ void main() {
       await expectLater(importRun, throwsStateError);
     });
   });
+
+  // R17 (docs/deferred/2026-10-09-sign-out-guard-residuals.md,
+  // docs/specs/2026-10-11-import-run-ownership.md): the duplicate dialog is
+  // answered after an await of unbounded length, and the commit read the LIVE
+  // catalog context instead of the context the run analysed against. The
+  // import is the real ChordProImportController over the real import and song
+  // library services; only the platform file picker answers from the test.
+  // The first two tests are red on main (the second one is the direction
+  // review round 1 of #88 found); the last two pin what must stay possible.
+  group('a duplicate resolution never writes into another user\'s catalog '
+      '(R17)', () {
+    const incomingForA = ['A secret song', 'A import one', 'A import two'];
+
+    test('a: A\'s files, resolved after B signed in, are not queued in B\'s '
+        'catalog or sent to B\'s organization', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final fixture = await _Fixture.create(
+        seedSongsForA: true,
+        seedPlanningForA: true,
+        seedPendingPlanningForA: false,
+        seedSongsForB: true,
+        lookupAnswersFor: const {_userB},
+      );
+      await fixture.coldStartAsA();
+      expect(fixture.catalogContextUserId, _userA);
+
+      // A's import analyses three files; one has a title A already has.
+      await fixture.startImport(incomingForA);
+      await _settle();
+      final awaiting = fixture.importState;
+      expect(awaiting, isA<ImportAwaitingDuplicateResolution>());
+      expect(
+        (awaiting as ImportAwaitingDuplicateResolution).result.duplicates,
+        hasLength(1),
+      );
+      expect(awaiting.successes, hasLength(2));
+
+      // The duplicate dialog stays open while B signs in. A has no unsynced
+      // work, so there is no prompt: A's data is wiped and B is current.
+      await fixture.signInAs(_sessionB);
+      expect(
+        fixture.container.read(reauthPromptControllerProvider).pending,
+        isNull,
+      );
+      expect(fixture.auth.state.currentUserId, _userB);
+      expect(fixture.catalogContextUserId, _userB);
+
+      await fixture.resolveDuplicates(DuplicateResolution.overwrite);
+      await _settle();
+
+      expect(
+        await fixture.pendingSongCount(_userB),
+        0,
+        reason: 'A\'s files must not become B\'s pending work',
+      );
+      expect(await fixture.pendingSongCount(_userA), 0);
+      expect(
+        await fixture.syncSongs(userId: _userB, organizationId: _orgB),
+        isEmpty,
+        reason: 'the sync sends B\'s pending work to B\'s organization',
+      );
+      expect(fixture.importState, isA<ImportFailed>());
+    }, skip: 'red until Task 2');
+
+    test('b: B\'s files, resolved after B\'s prompt was cancelled, are not '
+        'queued in A\'s catalog', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final fixture = await _Fixture.create(
+        seedSongsForA: true,
+        seedPlanningForA: true,
+        seedSongsForB: true,
+        lookupAnswersFor: const {_userB},
+      );
+      await fixture.coldStartAsA();
+
+      // A has unsynced work, so B's sign-in asks. While the prompt is
+      // pending B's catalog context is live (R-C) and B imports into it.
+      await fixture.signInAs(_sessionB);
+      final prompt = fixture.container.read(reauthPromptControllerProvider);
+      expect(prompt.pending, isA<ReauthDifferentUserPrompt>());
+      expect(fixture.catalogContextUserId, _userB);
+
+      await fixture.startImport(const [
+        'B own song',
+        'B import one',
+        'B import two',
+      ]);
+      await _settle();
+      final awaiting = fixture.importState;
+      expect(awaiting, isA<ImportAwaitingDuplicateResolution>());
+      expect(
+        (awaiting as ImportAwaitingDuplicateResolution).result.duplicates,
+        hasLength(1),
+      );
+      expect(awaiting.successes, hasLength(2));
+
+      // B cancels; the app is A's offline view again and A's context is live.
+      prompt.answer(false);
+      await _settle();
+      expect(fixture.auth.state.status, AppAuthStatus.sessionExpired);
+      expect(fixture.auth.state.currentUserId, _userA);
+      expect(fixture.catalogContextUserId, _userA);
+
+      await fixture.resolveDuplicates(DuplicateResolution.overwrite);
+      await _settle();
+
+      expect(
+        await fixture.pendingSongCount(_userA),
+        0,
+        reason: 'B\'s files must not become A\'s pending work',
+      );
+      expect(await fixture.pendingSongCount(_userB), 0);
+      expect(
+        await fixture.syncSongs(userId: _userA, organizationId: _orgA),
+        isEmpty,
+        reason: 'the sync sends A\'s pending work to A\'s organization',
+      );
+      expect(fixture.importState, isA<ImportFailed>());
+    }, skip: 'red until Task 2');
+
+    test('A re-authenticating while the dialog is open still imports into '
+        'A\'s catalog', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final fixture = await _Fixture.create(
+        seedSongsForA: true,
+        seedPlanningForA: true,
+        seedPendingPlanningForA: false,
+      );
+      await fixture.coldStartAsA();
+      await fixture.startImport(incomingForA);
+      await _settle();
+      expect(fixture.importState, isA<ImportAwaitingDuplicateResolution>());
+
+      await fixture.signInAs(_sessionA);
+      expect(fixture.auth.state.status, AppAuthStatus.signedIn);
+      expect(fixture.catalogContextUserId, _userA);
+
+      await fixture.resolveDuplicates(DuplicateResolution.overwrite);
+      await _settle();
+
+      expect(fixture.importState, isA<ImportDone>());
+      // Two new songs and the overwritten one.
+      expect(await fixture.pendingSongCount(_userA), 3);
+    });
+
+    test('B\'s sign-in cancelled before the dialog is answered still imports '
+        'A\'s files into A\'s catalog', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      final fixture = await _Fixture.create(
+        seedSongsForA: true,
+        seedPlanningForA: true,
+        seedSongsForB: true,
+        lookupAnswersFor: const {_userB},
+      );
+      await fixture.coldStartAsA();
+      await fixture.startImport(incomingForA);
+      await _settle();
+      expect(fixture.importState, isA<ImportAwaitingDuplicateResolution>());
+
+      await fixture.signInAs(_sessionB);
+      final prompt = fixture.container.read(reauthPromptControllerProvider);
+      expect(prompt.pending, isA<ReauthDifferentUserPrompt>());
+      prompt.answer(false);
+      await _settle();
+      expect(fixture.auth.state.currentUserId, _userA);
+      expect(fixture.catalogContextUserId, _userA);
+
+      await fixture.resolveDuplicates(DuplicateResolution.overwrite);
+      await _settle();
+
+      expect(fixture.importState, isA<ImportDone>());
+      expect(await fixture.pendingSongCount(_userA), 3);
+      expect(await fixture.pendingSongCount(_userB), 0);
+    });
+  });
+
+  // R10 and R16 (same residuals entry): an import that SO7 did not see (it
+  // started inside the sign-out's count, or after its warning closed) picks
+  // its files while the sign-out sequence runs, and its commit then writes
+  // them under the signed-out user.
+  group('an import picked during a sign-out writes nothing for the signed-out '
+      'user (R10, R16)', () {
+    test(
+      'files returned by the picker after the sign-out are not written',
+      () async {
+        TestWidgetsFlutterBinding.ensureInitialized();
+        final fixture = await _Fixture.create(
+          seedSongsForA: true,
+          seedPlanningForA: true,
+          seedPendingPlanningForA: false,
+        );
+        await fixture.coldStartAsA();
+
+        final pickerAnswer = Completer<void>();
+        final importRun = fixture.startImport(const [
+          'Late one',
+          'Late two',
+        ], holdPickerUntil: pickerAnswer.future);
+        await _settle();
+        expect(fixture.importState, isA<ImportPicking>());
+
+        // Zero count: no warning. The real command runs to the end while the
+        // picker is still open.
+        final outcome = await fixture.container
+            .read(signOutCommandProvider)
+            .run(confirmDiscard: (_) async => true);
+        await _settle();
+        expect(outcome, SignOutOutcome.signedOut);
+        expect(fixture.auth.state.status, AppAuthStatus.signedOut);
+        expect(fixture.catalogContextUserId, isNull);
+
+        pickerAnswer.complete();
+        await importRun;
+        await _settle();
+
+        expect(
+          await fixture.pendingSongCount(_userA),
+          0,
+          reason:
+              'the signed-out user\'s data was purged; the import must not '
+              'write new rows for them',
+        );
+        expect(fixture.importState, isA<ImportFailed>());
+      },
+      skip: 'red until Task 2',
+    );
+  });
 }
 
 class _Fixture {
@@ -853,6 +1082,7 @@ class _Fixture {
     required this.planningReadGate,
     required this.songWriteGate,
     required this.pendingCountGate,
+    required this.remote,
   });
 
   final ProviderContainer container;
@@ -874,6 +1104,10 @@ class _Fixture {
   /// was created with `gatePendingCount: true`.
   final _ReadGate pendingCountGate;
 
+  /// Records what a song sync pass would send to the backend, and to which
+  /// organization (R17: "the sync uploads them").
+  final _RecordingSongRemoteRepository remote;
+
   /// [lookupAnswersFor] lists the users whose organization lookup (catalog
   /// and planning) answers; for everyone else it hits a dropped connection.
   static Future<_Fixture> create({
@@ -890,6 +1124,7 @@ class _Fixture {
     final planningReadGate = _ReadGate();
     final songWriteGate = _ReadGate();
     final pendingCountGate = _ReadGate();
+    final remote = _RecordingSongRemoteRepository();
     final songDatabase = SongCatalogDatabase.inMemory();
     addTearDown(songDatabase.close);
     final songStore = _GatedSongCatalogStore(songDatabase, catalogReadGate);
@@ -1017,6 +1252,7 @@ class _Fixture {
             gate: songWriteGate,
           ),
         ),
+        songMutationRemoteRepositoryProvider.overrideWithValue(remote),
         if (gatePendingCount)
           pendingLocalWorkCounterProvider.overrideWithValue(
             _gatedPendingLocalWorkCounter(
@@ -1095,6 +1331,7 @@ class _Fixture {
       planningReadGate: planningReadGate,
       songWriteGate: songWriteGate,
       pendingCountGate: pendingCountGate,
+      remote: remote,
     );
   }
 
@@ -1177,9 +1414,17 @@ class _Fixture {
   /// Starts a real ChordPro import of [titles] in the current catalog
   /// context. The platform file picker answers with one file per title; the
   /// returned future completes when the run ends.
-  Future<void> startImport(List<String> titles, {bool cancelPicker = false}) {
+  ///
+  /// [holdPickerUntil] keeps the picker open (the run stays in Picking) until
+  /// that future completes.
+  Future<void> startImport(
+    List<String> titles, {
+    bool cancelPicker = false,
+    Future<void>? holdPickerUntil,
+  }) {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_filePickerChannel, (call) async {
+          await holdPickerUntil;
           if (cancelPicker) return null;
           return [
             for (final (index, title) in titles.indexed)
@@ -1212,6 +1457,64 @@ class _Fixture {
 
   ChordProImportState get importState =>
       container.read(chordProImportControllerProvider);
+
+  /// Answers the duplicate dialog the way the song list's host does
+  /// (`SongListScreen._resolveImportDuplicates`): the controller is handed
+  /// the successes of the awaiting state and one resolution per duplicate,
+  /// and nothing else.
+  Future<void> resolveDuplicates(DuplicateResolution resolution) {
+    final awaiting = importState as ImportAwaitingDuplicateResolution;
+    return container
+        .read(chordProImportControllerProvider.notifier)
+        .commitWithResolutions(
+          successes: awaiting.successes,
+          resolvedDuplicates: [
+            for (final duplicate in awaiting.result.duplicates)
+              ResolvedDuplicate(duplicate: duplicate, resolution: resolution),
+          ],
+        );
+  }
+
+  /// Runs the real song sync pass for [userId]'s [organizationId] and returns
+  /// everything the backend was sent so far.
+  Future<List<({String organizationId, String title})>> syncSongs({
+    required String userId,
+    required String organizationId,
+  }) async {
+    await container
+        .read(songMutationSyncControllerProvider)
+        .syncPendingSongs(
+          SongMutationContext(userId: userId, organizationId: organizationId),
+        );
+    return remote.uploads;
+  }
+}
+
+/// Stands in for the backend of the song sync: records what a pass sends and
+/// accepts it.
+class _RecordingSongRemoteRepository implements SongMutationRemoteRepository {
+  final uploads = <({String organizationId, String title})>[];
+
+  @override
+  Future<SongMutationRecord> syncSong({
+    required String organizationId,
+    required SongMutationRecord record,
+  }) async {
+    uploads.add((organizationId: organizationId, title: record.title));
+    return record.copyWith(syncStatus: SongSyncStatus.synced, version: 1);
+  }
+
+  @override
+  Future<SongMutationRecord> overwriteSong({
+    required String organizationId,
+    required SongMutationRecord record,
+  }) => throw UnimplementedError('not used by these tests');
+
+  @override
+  Future<SongMutationRecord> fetchSong({
+    required String organizationId,
+    required String songId,
+  }) => throw UnimplementedError('not used by these tests');
 }
 
 const _filePickerChannel = MethodChannel(
