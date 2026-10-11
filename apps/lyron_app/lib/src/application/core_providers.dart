@@ -10,6 +10,7 @@ import 'package:lyron_app/src/application/storage/local_storage_monitor.dart';
 import 'package:lyron_app/src/application/storage/local_storage_write_recovery.dart';
 import 'package:lyron_app/src/application/storage/planning_storage_accountant.dart';
 import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
+import 'package:lyron_app/src/application/sync/sync_freshness_reader.dart';
 import 'package:lyron_app/src/application/sync/sync_overview.dart';
 import 'package:lyron_app/src/offline/local_store_contract.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
@@ -113,6 +114,13 @@ final localStorageMonitorProvider = Provider<LocalStorageMonitor>((ref) {
     planningAccountant: ref.watch(planningStorageAccountantProvider),
     catalogAccountant: ref.watch(catalogStorageAccountantProvider),
     budget: ref.watch(localStorageBudgetProvider),
+  );
+});
+
+final syncFreshnessReaderProvider = Provider<SyncFreshnessReader>((ref) {
+  return SyncFreshnessReader(
+    songCatalogDatabase: ref.watch(songCatalogDatabaseProvider),
+    planningLocalDatabase: ref.watch(planningLocalDatabaseProvider),
   );
 });
 

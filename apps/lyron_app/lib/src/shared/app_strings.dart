@@ -273,6 +273,15 @@ class AppStrings {
   static const unifiedSyncFreshnessStale = 'stale';
   static const unifiedSyncFreshnessOfflineCached = 'offline_cached';
   static const unifiedSyncFreshnessUnknown = 'freshness unknown';
+  static const unifiedSyncLastSyncedSongsLabel = 'Songs last synced';
+  static const unifiedSyncLastSyncedPlansLabel = 'Plans last synced';
+  static const unifiedSyncLastSyncedNever = 'never';
+  static const unifiedSyncLastSyncedJustNow = 'just now';
+  static String unifiedSyncLastSyncedMinutesAgo(int minutes) =>
+      '$minutes min ago';
+  static String unifiedSyncLastSyncedHoursAgo(int hours) => '$hours h ago';
+  static String unifiedSyncLastSyncedDaysAgo(int days) =>
+      days == 1 ? '1 day ago' : '$days days ago';
   static const unifiedSyncConnectivityOnline = 'online';
   static const unifiedSyncConnectivityOffline = 'offline';
   static const unifiedSyncConnectivityUnknown = 'connectivity unknown';
