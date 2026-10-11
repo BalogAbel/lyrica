@@ -9,7 +9,9 @@ per-task reviews and the adversarial whole-diff review (2026-10-09).
 
 **Closed since this entry was written:** R16 and R17
 (`docs/specs/2026-10-11-import-run-ownership.md`, `fix/import-run-ownership`);
-R10 is narrowed there. The numbering is kept: R16 and R17 no longer appear,
+R10 is narrowed there. R18's second shape (the dialog opening after the switch) was
+closed in the same PR by the IR2 comparison before the run parks; the
+already open dialog stays. The numbering is kept: R16 and R17 no longer appear,
 and R18–R20 were found by that fix and its adversarial review.
 
 **Status:** none of these is reachable through an ordinary user action, and
@@ -198,20 +200,6 @@ one. It never pops the top route. That is a redesign of the host, not a small
 fix. **Trigger:** a redesign of the duplicate dialog host, or the
 session-transition coordinator
 (`docs/deferred/2026-10-11-session-transition-coordinator.md`).
-
-**A second shape (found by the adversarial review of that fix):** the dialog
-can also open after the switch. If the auth edge lands while the OS picker is
-open or while the analysis runs (milliseconds), the run still reaches
-`ImportAwaitingDuplicateResolution` with the first user's context and the host
-shows the dialog to the current user. Reproduced with a probe over the
-integration harness: B signs in while A's picker is open, the picker answers,
-the dialog opens for `user-a` while `user-b` is current, the answer is
-refused, nothing is written. The R9 argument above does not apply to this
-shape, because never opening a dialog needs no pop. **Fix sketch:** before
-`_runImport` enters `ImportAwaitingDuplicateResolution`, apply IR2's
-comparison (`_contextReader() != context` ends the run as
-`ImportFailed(AppStrings.songImportContextChangedMessage)`): three lines and
-one test, no host change. It would leave only the "outlives" shape above.
 
 ## R19 - a same-user context gap refuses an import with the account-changed message
 

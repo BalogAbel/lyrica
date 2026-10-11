@@ -221,7 +221,9 @@ the OS picker could also commit after the sign-out had purged (R16).
   `ImportFailed` with a message that says the import must be restarted. The
   active context is the signal, not `AppAuthState.currentUserId`: by XU2 it
   implies the user, and it also covers a changed organization and a released
-  context.
+  context. The same comparison runs where a run parks at the dialog or ends
+  in the summary, so the dialog never opens for a context that changed while
+  the picker or the analysis was running.
 - **No per-row check (IR3).** A commit that started while its context was
   active finishes into it. The reauth recount (RW3, AC3 and AC4 of
   `docs/specs/2026-10-11-reauth-wipe-recount.md`) requires that a running
