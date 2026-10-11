@@ -13,6 +13,7 @@ import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.
 import 'package:lyron_app/src/application/storage/local_storage_footprint.dart';
 import 'package:lyron_app/src/application/sync/foreground_sync_listener.dart';
 import 'package:lyron_app/src/application/sync/online_transition_detector.dart';
+import 'package:lyron_app/src/application/sync/sync_freshness_reader.dart';
 import 'package:lyron_app/src/application/sync/unified_discard_controller.dart';
 import 'package:lyron_app/src/application/sync/unified_manual_sync_controller.dart';
 import 'package:lyron_app/src/application/sync/unified_row_recovery_controller.dart';
@@ -192,6 +193,28 @@ final unifiedManualSyncControllerProvider =
       );
       return controller;
     });
+
+/// SG7: last successful refresh times for the active context, re-read
+/// whenever catalog or planning state changes. Any failure, including a
+/// provider graph that cannot be built in a narrow widget test, degrades to
+/// unknown instead of an error.
+final syncFreshnessProvider = FutureProvider.autoDispose<SyncFreshness>((
+  ref,
+) async {
+  try {
+    ref.watch(catalogSnapshotStateProvider);
+    ref.watch(planningSyncStateProvider);
+    final context = ref.watch(activeCatalogContextProvider);
+    if (context == null) {
+      return const SyncFreshness.unknown();
+    }
+    return await ref
+        .watch(syncFreshnessReaderProvider)
+        .read(userId: context.userId, organizationId: context.organizationId);
+  } catch (_) {
+    return const SyncFreshness.unknown();
+  }
+}, retry: noAutomaticProviderRetry);
 
 final onlineTransitionDetectorProvider = Provider<OnlineTransitionDetector>((
   ref,
