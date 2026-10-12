@@ -7,8 +7,10 @@ import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_controller.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
+import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_controller.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/sync/sync_freshness_reader.dart';
@@ -269,6 +271,61 @@ Future<void> _pumpPopup(
       ],
       child: const MaterialApp(home: Scaffold(body: UnifiedSyncStatusPopup())),
     ),
+  );
+}
+
+// S6a (FB2, FB3): the chip text the user reads for each domain reason. These
+// are LITERALS on purpose: the production code reads the AppStrings constants,
+// so a test that read them too would stay green after a copy regression.
+const _expectedReasonChipText = <UnifiedSyncReasonCode, String>{
+  UnifiedSyncReasonCode.pendingLocal: 'Waiting to sync',
+  UnifiedSyncReasonCode.syncFailed: 'Sync failed',
+  UnifiedSyncReasonCode.conflict: 'Conflicts with the server version',
+  UnifiedSyncReasonCode.authorizationDenied:
+      'Access may have ended — retrying will not help',
+  UnifiedSyncReasonCode.dependencyBlocked: 'Blocked by a related item',
+  UnifiedSyncReasonCode.remoteMissing:
+      'Not found on the server, or access may have ended',
+  UnifiedSyncReasonCode.unknown: 'Unexpected sync error',
+};
+
+// The severity the overview gives each reason, so a row built here carries
+// the same actions (Keep mine / Discard mine / Try again) as a real one.
+UnifiedSyncRowSeverity _severityFor(UnifiedSyncReasonCode reason) {
+  return switch (reason) {
+    UnifiedSyncReasonCode.pendingLocal => UnifiedSyncRowSeverity.pending,
+    UnifiedSyncReasonCode.syncFailed ||
+    UnifiedSyncReasonCode.unknown => UnifiedSyncRowSeverity.retryableFailure,
+    UnifiedSyncReasonCode.conflict ||
+    UnifiedSyncReasonCode.authorizationDenied ||
+    UnifiedSyncReasonCode.dependencyBlocked ||
+    UnifiedSyncReasonCode.remoteMissing => UnifiedSyncRowSeverity.conflict,
+  };
+}
+
+UnifiedSyncSongRow _songRowWithReason(UnifiedSyncReasonCode reason) {
+  final severity = _severityFor(reason);
+  return UnifiedSyncSongRow(
+    songId: 's1',
+    title: 'Hymn',
+    entityState: severity == UnifiedSyncRowSeverity.conflict
+        ? SongSyncStatus.conflict
+        : SongSyncStatus.pendingUpdate,
+    severity: severity,
+    reasonCode: reason,
+  );
+}
+
+UnifiedSyncPlanRow _planRowWithReason(UnifiedSyncReasonCode reason) {
+  return UnifiedSyncPlanRow(
+    planId: 'p1',
+    title: 'Service',
+    severity: _severityFor(reason),
+    reasonCode: reason,
+    nestedSummaries: const ['plan edited'],
+    mutationRefs: const [
+      UnifiedSyncPlanMutationRef(aggregateType: 'plan', aggregateId: 'p1'),
+    ],
   );
 }
 
@@ -1392,4 +1449,139 @@ void main() {
       );
     },
   );
+
+  // S6a (FB1-FB3, FB13): the reason chips are phrases a person can read, not
+  // the domain reason names. Song rows and plan rows share one chip widget.
+  group('reason chip copy (S6a)', () {
+    // CP1
+    for (final entry in _expectedReasonChipText.entries) {
+      testWidgets(
+        'CP1: ${entry.key.name} renders "${entry.value}" on song and plan '
+        'rows',
+        (tester) async {
+          await _pumpPopup(
+            tester,
+            _overview(
+              status: UnifiedSyncHeaderStatus.unsynced,
+              songs: [_songRowWithReason(entry.key)],
+              plans: [_planRowWithReason(entry.key)],
+            ),
+          );
+
+          expect(find.text(entry.value), findsNWidgets(2));
+        },
+      );
+    }
+
+    // CP2
+    testWidgets(
+      'CP2: no chip text is identifier-shaped or a bare domain word',
+      (tester) async {
+        final identifierShaped = RegExp(r'^[a-z]+(_[a-z]+)+$');
+        for (final reason in UnifiedSyncReasonCode.values) {
+          await _pumpPopup(
+            tester,
+            _overview(
+              status: UnifiedSyncHeaderStatus.unsynced,
+              songs: [_songRowWithReason(reason)],
+              plans: [_planRowWithReason(reason)],
+            ),
+          );
+
+          final chipTexts = tester
+              .widgetList<Chip>(find.byType(Chip))
+              .map((chip) => (chip.label as Text).data)
+              .toList();
+          expect(chipTexts, isNotEmpty, reason: '${reason.name}: no chips');
+          for (final text in chipTexts) {
+            expect(text, isNotNull);
+            expect(
+              identifierShaped.hasMatch(text!),
+              isFalse,
+              reason: '${reason.name}: "$text" reads as an identifier',
+            );
+            expect(text, isNot('unknown'), reason: reason.name);
+            expect(text, isNot('conflict'), reason: reason.name);
+          }
+        }
+      },
+    );
+
+    // CP3: the whole chain, overview to popup, for a rejected plan delete.
+    // The backend answers `plan_not_found` for a missing capability as well
+    // as for a removed plan, so the client cannot tell them apart (FB1) and
+    // the chip says both.
+    testWidgets(
+      'CP3: a rejected plan delete, built by computeUnifiedSyncOverview, '
+      'shows the remote-missing phrase',
+      (tester) async {
+        final overview = computeUnifiedSyncOverview(
+          UnifiedSyncOverviewInputs(
+            catalog: const CatalogSnapshotState.initial(),
+            songEntries: const [],
+            planning: const PlanningSyncState.initial(),
+            planningEntries: [
+              PlanningMutationRecord(
+                aggregateId: 'plan-1',
+                organizationId: 'org-1',
+                kind: PlanningMutationKind.planDelete,
+                syncStatus: PlanningMutationSyncStatus.failedRemoteDelete,
+                orderKey: 1,
+                updatedAt: DateTime.utc(2026),
+                name: 'Sunday Service',
+              ),
+            ],
+          ),
+        );
+
+        await _pumpPopup(tester, overview);
+
+        expect(find.text('Sunday Service'), findsOneWidget);
+        expect(
+          find.text('Not found on the server, or access may have ended'),
+          findsOneWidget,
+        );
+        expect(find.text('remote_missing'), findsNothing);
+      },
+    );
+
+    // CP4: the phrases are longer than the identifiers they replace. The
+    // popup is a dialog (inset 40 px each side) whose header carries two
+    // buttons and whose rows carry up to two text buttons, so the narrowest
+    // phone width is the case that can break. The criterion is "raises no
+    // overflow": it does not assert the chip gets a readable width, and on a
+    // conflict row the trailing action buttons already take the whole tile
+    // width at 360 px (a row layout limit that predates the chip copy).
+    testWidgets(
+      'CP4: at a 360 px wide viewport the longest chips raise no overflow',
+      (tester) async {
+        tester.view.physicalSize = const Size(360, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        for (final reason in UnifiedSyncReasonCode.values) {
+          await _pumpPopup(
+            tester,
+            _overview(
+              status: UnifiedSyncHeaderStatus.unsynced,
+              songs: [_songRowWithReason(reason)],
+              plans: [_planRowWithReason(reason)],
+            ),
+          );
+
+          expect(
+            find.text(_expectedReasonChipText[reason]!),
+            findsNWidgets(2),
+            reason: '${reason.name}: chip not rendered',
+          );
+          expect(
+            tester.takeException(),
+            isNull,
+            reason: '${reason.name}: layout overflow at 360 px',
+          );
+        }
+      },
+    );
+  });
 }

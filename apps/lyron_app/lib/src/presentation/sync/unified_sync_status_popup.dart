@@ -44,33 +44,55 @@ class UnifiedSyncStatusPopup extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
+              // A Wrap, not a Row: the dialog leaves 248 px on a 360 px phone,
+              // and the two buttons are wider than that together. They move
+              // below the title instead of squeezing it to zero width. The
+              // full-width box keeps the buttons at the right edge when the
+              // header fits on one line.
+              SizedBox(
+                width: double.infinity,
+                child: Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    Text(
                       AppStrings.unifiedSyncPopupTitle,
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
-                  ),
-                  if (overview.hasUnsyncedWork) ...[
-                    TextButton(
-                      key: const ValueKey('unified-sync-popup-discard-all'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: Theme.of(context).colorScheme.error,
-                      ),
-                      onPressed: () =>
-                          unawaited(_confirmDiscardAll(context, ref, overview)),
-                      child: const Text(AppStrings.unifiedSyncDiscardAllAction),
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        if (overview.hasUnsyncedWork)
+                          TextButton(
+                            key: const ValueKey(
+                              'unified-sync-popup-discard-all',
+                            ),
+                            style: TextButton.styleFrom(
+                              foregroundColor: Theme.of(
+                                context,
+                              ).colorScheme.error,
+                            ),
+                            onPressed: () => unawaited(
+                              _confirmDiscardAll(context, ref, overview),
+                            ),
+                            child: const Text(
+                              AppStrings.unifiedSyncDiscardAllAction,
+                            ),
+                          ),
+                        FilledButton.icon(
+                          key: const ValueKey('unified-sync-popup-sync-now'),
+                          onPressed: () => unawaited(_syncNow(context, ref)),
+                          icon: const Icon(Icons.sync),
+                          label: const Text(AppStrings.unifiedSyncNowAction),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
                   ],
-                  FilledButton.icon(
-                    key: const ValueKey('unified-sync-popup-sync-now'),
-                    onPressed: () => unawaited(_syncNow(context, ref)),
-                    icon: const Icon(Icons.sync),
-                    label: const Text(AppStrings.unifiedSyncNowAction),
-                  ),
-                ],
+                ),
               ),
               const SizedBox(height: 8),
               const _LastSyncedSummary(),

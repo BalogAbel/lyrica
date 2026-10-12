@@ -167,14 +167,6 @@ class AppStrings {
       'Unable to load plans. Please try again.';
   static const planListEmptyMessage = 'No plans available.';
   static const planListUnscheduledLabel = 'Unscheduled';
-  static const planMutationPendingMessage =
-      'Planning changes are pending sync.';
-  static const planConflictMessage =
-      'Planning changes conflict with a newer server version.';
-  static const planAuthorizationRevokedMessage =
-      'Planning sync is blocked because edit access was revoked.';
-  static const planRemoteMissingMessage =
-      'Planning sync could not find the target item on the server.';
   static const planDetailTitle = 'Plan detail';
   static const planEditAction = 'Edit plan';
   static const planMoreActions = 'More plan actions';
@@ -257,23 +249,31 @@ class AppStrings {
   static const unifiedSyncSongStateCreatedConflict = 'Created (conflict)';
   static const unifiedSyncSongStateEditedConflict = 'Edited (conflict)';
   static const unifiedSyncSongStateRemovedConflict = 'Removed (conflict)';
-  static const unifiedSyncReasonPendingLocal = 'pending_local';
-  static const unifiedSyncReasonSyncFailed = 'sync_failed';
-  static const unifiedSyncReasonConflict = 'conflict';
-  // spec D5.6 / ADR-035: unlike its sibling reason labels above (short,
-  // code-shaped chip text), this one must let the user tell "you no longer
-  // have permission and retrying will not help" apart from an ordinary
-  // retryable failure -- so it is a short phrase rather than a code.
+  // The reason chips of the sync popup (song rows and plan rows). Each is a
+  // short phrase for one domain reason; the reason names (pending_local and so
+  // on) stay in logic and tests, not on screen.
+  static const unifiedSyncReasonPendingLocal = 'Waiting to sync';
+  // Makes no promise about retrying: not every path that maps here retries on
+  // its own (the automatic triggers do nothing under sessionExpired, and a
+  // dependency-blocked song row keeps failing until the referenced data
+  // changes). The plan rows' Try again button and "Sync now" carry the retry.
+  static const unifiedSyncReasonSyncFailed = 'Sync failed';
+  static const unifiedSyncReasonConflict = 'Conflicts with the server version';
+  // spec D5.6 / ADR-035: this one must let the user tell "access may have
+  // ended and retrying will not help" apart from an ordinary retryable
+  // failure, so it names the likely cause and keeps "retrying will not help".
   static const unifiedSyncReasonAuthorizationDenied =
-      'Not permitted — retrying will not help';
-  static const unifiedSyncReasonDependencyBlocked = 'dependency_blocked';
-  static const unifiedSyncReasonRemoteMissing = 'remote_missing';
-  static const unifiedSyncReasonUnknown = 'unknown';
-  static const unifiedSyncFreshnessFresh = 'fresh';
+      'Access may have ended — retrying will not help';
+  static const unifiedSyncReasonDependencyBlocked = 'Blocked by a related item';
+  // One honest phrase for both causes of this reason: the backend answers
+  // `plan_not_found` for a plan removed on the server and for a plan the
+  // member can no longer edit, so the client cannot tell them apart.
+  static const unifiedSyncReasonRemoteMissing =
+      'Not found on the server, or access may have ended';
+  static const unifiedSyncReasonUnknown = 'Unexpected sync error';
   static const unifiedSyncFreshnessStale = 'Not up to date';
   static const unifiedSyncFreshnessOfflineCached =
       'Offline, showing saved data';
-  static const unifiedSyncFreshnessUnknown = 'freshness unknown';
   static const unifiedSyncLastSyncedSongsLabel = 'Songs last synced';
   static const unifiedSyncLastSyncedPlansLabel = 'Plans last synced';
   static const unifiedSyncLastSyncedNever = 'never';
@@ -283,9 +283,6 @@ class AppStrings {
   static String unifiedSyncLastSyncedHoursAgo(int hours) => '$hours h ago';
   static String unifiedSyncLastSyncedDaysAgo(int days) =>
       days == 1 ? '1 day ago' : '$days days ago';
-  static const unifiedSyncConnectivityOnline = 'online';
-  static const unifiedSyncConnectivityOffline = 'offline';
-  static const unifiedSyncConnectivityUnknown = 'connectivity unknown';
   static const unifiedSyncActivitySyncing = 'syncing';
   static const unifiedSyncDiscardAllAction = 'Discard all';
   static const unifiedSyncDiscardAllTitle = 'Discard all local changes?';
