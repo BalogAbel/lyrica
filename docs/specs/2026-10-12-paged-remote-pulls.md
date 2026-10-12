@@ -388,6 +388,10 @@ Real PostgREST (local Supabase, `scripts/verify.sh`):
 
 ## Residuals
 
+Tracked in `docs/deferred/2026-10-12-paged-pull-residuals.md` (positions torn
+by a reorder between pages, a membership revoked between streams, the report
+order before the `failed` state, the items index). Also:
+
 - The items stream is a filtered primary-key scan (PG11).
 - A refresh of a large catalog now takes `ceil(N/100) + 1` sequential
   requests. For 1000 songs that is 11 round trips; acceptable for a background
