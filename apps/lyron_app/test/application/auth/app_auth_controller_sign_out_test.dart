@@ -267,9 +267,12 @@ void main() {
     });
   });
 
-  // FB10 / DA3 (docs/specs/2026-10-12-sync-and-account-feedback.md): a failed
-  // RPC changes nothing. The signedOut edge is what every purge listens to, so
-  // it must never fire for a deletion that did not happen.
+  // FB10 / DA3 (docs/specs/2026-10-12-sync-and-account-feedback.md): a failing
+  // repository call by itself leaves the user signedIn, emits no signedOut (the
+  // edge every purge listens to) and resets _isSigningOut. It says nothing
+  // about a session that is lost while the call runs: that is mapped to
+  // signedOut because the flag is held for the whole call (a documented
+  // residual).
   group('deleteAccount failing', () {
     late _FailingDeleteRepository failing;
     late List<AppAuthStatus> statuses;

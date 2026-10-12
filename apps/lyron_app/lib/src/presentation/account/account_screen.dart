@@ -81,7 +81,11 @@ class _AccountScreenState extends ConsumerState<AccountScreen> {
                       );
                       return;
                     }
-                    setState(() => _isDeleting = true);
+                    // The screen can be replaced while the dialog is open (a
+                    // router redirect). The user confirmed and is still the
+                    // same user, so the deletion proceeds; only the spinner
+                    // is skipped.
+                    if (mounted) setState(() => _isDeleting = true);
                     try {
                       await controller.deleteAccount();
                     } catch (error, stackTrace) {

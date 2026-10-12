@@ -291,6 +291,9 @@ const _expectedReasonChipText = <UnifiedSyncReasonCode, String>{
 
 // The severity the overview gives each reason, so a row built here carries
 // the same actions (Keep mine / Discard mine / Try again) as a real one.
+// A copy of the mapping in lib/src/application/sync/unified_sync_overview.dart
+// (_severityFromSongEntry for song rows, _severityFromPlanGroup for plan rows):
+// change them together, or the rows built here stop matching real ones.
 UnifiedSyncRowSeverity _severityFor(UnifiedSyncReasonCode reason) {
   return switch (reason) {
     UnifiedSyncReasonCode.pendingLocal => UnifiedSyncRowSeverity.pending,
@@ -1551,12 +1554,14 @@ void main() {
     // width (412 px). The criterion is "raises no overflow", not "the chip is
     // comfortable to read".
     //
-    // The test font (Ahem) draws every glyph 1 em wide; a real UI font
-    // averages about 0.55 em. The text scaler below models the real metrics,
-    // so the width check is not an artifact of the test font. At real metrics
-    // 360 px is a known pre-existing narrow-layout gap (the header buttons and
-    // a conflict row's trailing buttons fill the dialog), independent of the
-    // chip copy and tracked in a deferred document; it is not asserted here.
+    // This is a width model, not a device measurement. The test font (Ahem)
+    // draws every glyph 1 em wide; a real UI font is roughly half that
+    // (unmeasured), so the text scaler below (0.55) stands in for it. Height
+    // is not modelled. At that width 360 px is a known pre-existing
+    // narrow-layout gap (the header buttons and a conflict row's trailing
+    // buttons fill the dialog), independent of the chip copy; it is not
+    // asserted here and is tracked in
+    // docs/deferred/2026-10-12-sync-popup-narrow-layout.md.
     testWidgets(
       'CP4: at a 412 px wide viewport the longest chips raise no overflow',
       (tester) async {

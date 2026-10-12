@@ -345,8 +345,8 @@ void main() {
       expect(snackBar(), findsNothing);
     });
 
-    testWidgets('a context that unmounted before the dialog ends cancelled, '
-        'silently (SF4)', (tester) async {
+    testWidgets('a context that unmounted before the dialog could open ends '
+        'cancelled, silently (SF4)', (tester) async {
       final count = Completer<int>();
       final replaced = ValueNotifier<bool>(false);
       addTearDown(replaced.dispose);
