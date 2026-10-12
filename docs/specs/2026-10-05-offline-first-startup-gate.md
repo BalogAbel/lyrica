@@ -1,6 +1,6 @@
 # Offline-First Startup Gate
 
-> Status: PR 1 implemented (SG1–SG5, SG8; review fixes 6b, 8b, 8c); PR 2 pending
+> Status: Implemented (PR 1: SG1–SG5, SG8; review fixes 6b, 8b, 8c. PR 2: SG6–SG7)
 
 **Branch:** `fix/offline-first-startup-gate`
 **Roadmap:** slice **S0** in `docs/plans/2026-10-01-delivery-roadmap.md`, a
@@ -388,7 +388,7 @@ entry's requirements:
 
 - **Storage.** Persist the last successfully resolved capability set, keyed
   by `(userId, organizationId)`, in the `LastKnownIdentity` database (its
-  schema is at version 2). It is cleared inside the same
+  schema is at version 3). It is cleared inside the same
   `LocalDataLifecycle.clearIdentity` operation that clears the identity.
   Every purge, sign-out and different-user wipe therefore removes it with no
   new `PurgeTarget`, which also avoids the S3 ↔ S6 hotspot (`LocalDataLifecycle`,
@@ -425,6 +425,18 @@ entry's requirements:
   (`'offline_cached'`, `'stale'`) are no longer shown to users.
 - The timestamps are device wall-clock values. They are used for display only
   and never in a comparison or ordering decision (ADR-030).
+
+**PR 2 implementation notes.** Two deviations from the plan:
+
+- *Version-gated persist (SG6).* Besides the conditional store statement, the
+  resolver persists a network answer only if it was not invalidated since the
+  load began. A sign-out invalidates the resolver, so an answer that arrives
+  after it is never written back, even for the same user. The store write is
+  one conditional `UPDATE` on `(rowId, userId, organizationId)` and is not on
+  the D5.5 chain.
+- *Loading state (SG7).* The popup hides its two "last synced" lines until
+  the freshness value is known, instead of showing a placeholder while it
+  loads. Read failures are logged and degrade to unknown.
 
 ### SG8 — a test with real gotrue latency (closes G-H)
 

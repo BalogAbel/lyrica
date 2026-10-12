@@ -62,17 +62,7 @@ inside the plan-delete PR would widen its blast radius.
 
 ### (a) Persist resolved capabilities per user and organization
 
-- Store the last successfully resolved `Set<Capability>` (for example in the
-  local Drift database, keyed by user id and organization id).
-- `CapabilityResolver` seeds `_resolved` from the stored set on startup, so
-  `hasCapabilitySync` answers before the network does. A successful resolve
-  replaces the stored set; a failed resolve keeps it.
-- Only a context with no stored answer stays fail-open (first launch offline).
-- Must be cleared on sign-out, and keyed by user so one user's grants never
-  apply to another on a shared device.
-- A stale stored set can be wrong in both directions (a role revoked or
-  granted while offline). The backend stays the authority, so this only
-  improves the affordance.
+Implemented by S0 PR 2 (ADR-040, spec SG6). Kept here only as history.
 
 ### (b) Clearer copy for a rejected delete
 
@@ -94,17 +84,8 @@ inside the plan-delete PR would widen its blast radius.
 
 ## Requirements for the slice that picks this up
 
-- Choose (a), (b), or both, and record the choice in an ADR or in the
-  architecture doc's authorization section.
 - Keep the offline-first property: a user whose capabilities were resolved
   before going offline keeps their affordances across a cold start.
-- Red tests first:
-  - a resolver seeded from storage answers `hasCapabilitySync` with no
-    network call;
-  - a failed resolve keeps the stored set instead of clearing it;
-  - a stored set is never applied to a different user or organization;
-  - an `IfCapability` with no stored answer and a failing resolve still shows
-    its child (the documented fail-open).
 - Cover every capability-gated affordance, not only the delete ones: plan and
   session editing, and the song library, editor, and reader gates (they use
   `IfCapability` or read `hasCapabilitySync` directly, with different
@@ -122,9 +103,4 @@ overrides this.
 local store, so it joins the ADR-035 purge contract. S3 adds another such
 store, so S6 must not run in parallel with S3.
 
-**Update (2026-10-05):** option (a) moved to slice **S0**
-(`fix/offline-first-startup-gate`, PR 2), decision SG6 in
-`docs/specs/2026-10-05-offline-first-startup-gate.md`. There the set is stored
-in the `LastKnownIdentity` database and cleared with the identity, so no new
-`PurgeTarget` is added. S6 keeps option (b). This entry narrows to option (b)
-when S0's PR 2 merges.
+**Update (2026-10-05):** option (a) shipped in S0 PR 2. S6 picks up option (b) only.

@@ -1,7 +1,7 @@
 # ADR-040: Offline-First Startup Gate
 
-**Status:** Accepted (2026-10-05). PR 1 implements SG1–SG5 and SG8; PR 2
-implements SG6–SG7.
+**Status:** Accepted (2026-10-05). Implemented: PR 1 (SG1–SG5, SG8) and PR 2
+(SG6–SG7).
 **Supersedes in part:** ADR-016 — its cached fallback is no longer the
 membership gate's offline path.
 **Amends:** ADR-037 — its invariant now covers everything the startup path
@@ -51,7 +51,14 @@ on a connection that never answers). A cold start straight into
    planning `ref.listen` callbacks now defer their controller calls.
 7. **(PR 2)** The last known capabilities are stored on the
    `LastKnownIdentity` row, and the sync surface shows when songs and plans
-   last synced.
+   last synced. PR 2 notes: the codes are written by one conditional
+   `UPDATE` on `(rowId, userId, organizationId)`, so after any identity clear
+   nothing matches and nothing is written. It is not an identity or marker
+   mutation, so it does not run on the D5.5 chain. The codes belong to exactly
+   one `(userId, organizationId)`: an identity write keeps them only for the
+   same pair, and any other user or organization starts with none. The
+   resolver persists a network answer only if it was not invalidated since the
+   load began (a sign-out invalidates), so a late answer is never written back.
 
 ## Consequences
 
