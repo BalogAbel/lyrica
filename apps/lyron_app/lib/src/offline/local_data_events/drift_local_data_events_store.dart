@@ -90,7 +90,7 @@ class DriftLocalDataEventsStore
   }
 
   /// D4 (docs/specs/2026-08-19-local-data-durability-contract.md): records
-  /// an empty `listSongs()` response rejected against a non-empty stored
+  /// an empty `fetchCatalog()` response rejected against a non-empty stored
   /// snapshot. Not a purge -- no [PurgeReason] applies here, unlike
   /// `recordPurge` above.
   @override

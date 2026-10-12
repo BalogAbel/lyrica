@@ -7,7 +7,7 @@ class CachedCatalogSnapshots extends Table {
   DateTimeColumn get refreshedAt => dateTime()();
 
   // D4 (docs/specs/2026-08-19-local-data-durability-contract.md, ADR-035
-  // Task 3.1): set the first time an incoming empty `listSongs()` response
+  // Task 3.1): set the first time an incoming empty `fetchCatalog()` response
   // is rejected against this (non-empty) stored snapshot -- the persisted
   // "one empty resolution already seen" fact `SongCatalogStore
   // .resolveEmptySnapshot` checks before deciding whether a second,
