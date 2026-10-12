@@ -165,7 +165,8 @@ behavior is the same and the refusal now shows its message.
 
 In `AccountScreen`: catch the error from `controller.deleteAccount()`; report
 it once with `FlutterError.reportError` (library `AccountScreen`, a static
-context, no user data attached, ADR-036) unless `isConnectivityFailure(error)`
+context; nothing of the user's data is added to the report, ADR-036) unless
+`isConnectivityFailure(error)`
 (an offline user is a condition, not a defect, as in
 `AppAuthController._handleRevocationResult`); show one snackbar; reset
 `_isDeleting` so the tile works again. The messenger is captured before the
