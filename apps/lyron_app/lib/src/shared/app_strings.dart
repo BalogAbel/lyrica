@@ -270,8 +270,9 @@ class AppStrings {
   static const unifiedSyncReasonRemoteMissing = 'remote_missing';
   static const unifiedSyncReasonUnknown = 'unknown';
   static const unifiedSyncFreshnessFresh = 'fresh';
-  static const unifiedSyncFreshnessStale = 'stale';
-  static const unifiedSyncFreshnessOfflineCached = 'offline_cached';
+  static const unifiedSyncFreshnessStale = 'Not up to date';
+  static const unifiedSyncFreshnessOfflineCached =
+      'Offline, showing saved data';
   static const unifiedSyncFreshnessUnknown = 'freshness unknown';
   static const unifiedSyncLastSyncedSongsLabel = 'Songs last synced';
   static const unifiedSyncLastSyncedPlansLabel = 'Plans last synced';

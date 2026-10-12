@@ -30,6 +30,11 @@ class _UnifiedSyncHeaderControlBody extends ConsumerWidget {
     final (label, color) = _labelAndColor(context, overview.headerStatus);
     final secondary = _secondaryText(overview);
     final tooltip = secondary == null ? label : '$label · $secondary';
+    // SG7: offline-cached or stale data must be visible without opening the
+    // popup. The pending-work colour keeps its meaning; the dot turns hollow.
+    final notFresh =
+        overview.freshness == UnifiedSyncFreshness.stale ||
+        overview.freshness == UnifiedSyncFreshness.offlineCached;
 
     return Tooltip(
       message: tooltip,
@@ -41,9 +46,18 @@ class _UnifiedSyncHeaderControlBody extends ConsumerWidget {
           // 18 padding + 12 dot = 48x48 minimum touch target (Material a11y).
           padding: const EdgeInsets.all(18),
           child: Container(
+            key: ValueKey(
+              notFresh
+                  ? 'unified-sync-header-dot-hollow'
+                  : 'unified-sync-header-dot-filled',
+            ),
             width: 12,
             height: 12,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            decoration: BoxDecoration(
+              color: notFresh ? Colors.transparent : color,
+              shape: BoxShape.circle,
+              border: notFresh ? Border.all(color: color, width: 2) : null,
+            ),
           ),
         ),
       ),
