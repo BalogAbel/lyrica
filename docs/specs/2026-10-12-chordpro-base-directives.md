@@ -126,9 +126,17 @@ warning indicator count it. This is correct behaviour, not a regression.
 `SongEditorParsedSong` takes `baseTranspose`, `baseCapo` and `sourceKey` from
 `ChordproParser.parse`. `currentPreLyricDirectiveInt` and
 `song_editor_directives.dart` are deleted. Editor and reader can no longer
-disagree for the same source, because there is one computation.
+disagree for the same source, because there is one computation. The editor
+parses the normalized source (`ChordproNormalizer`), the string the save path
+stores and the reader parses, so aliases such as `{sot}`/`{eot}` open and close
+tabs for the editor exactly as they do for the reader.
 
 ### BD6. The editor write touches only base-region directives (B4 fix)
+
+The region, the occurrences and the insertion index come from the scan of the
+normalized source, while the bytes are edited on the raw line records.
+Normalization maps every line to exactly one line, so raw record `i` is
+normalized scanner line `i + 1`.
 
 `transposeUp/Down` and `capoUp/Down`:
 

@@ -1,4 +1,5 @@
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
+import 'package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_normalizer.dart';
 import 'package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_parser.dart';
 
 enum SongEditorCanonicalViewMode { source, preview }
@@ -67,9 +68,11 @@ class SongEditorParsedSong {
   }
 }
 
+/// Parses the normalized source: the string the save path stores and the
+/// reader parses, so editor and reader read the same base values (BD5).
 SongEditorParsedSong _parseSongEditorSource(String source) {
   final parser = ChordproParser();
-  final parsedSong = parser.parse(source);
+  final parsedSong = parser.parse(ChordproNormalizer().normalize(source));
 
   return SongEditorParsedSong(
     title: parsedSong.title,

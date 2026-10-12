@@ -1,7 +1,9 @@
 import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lyron_app/src/domain/song/parsed_song.dart';
 import 'package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_line_scanner.dart';
+import 'package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_normalizer.dart';
 import 'package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_parser.dart';
 import 'package:lyron_app/src/presentation/song_editor/song_editor_controller.dart';
 
@@ -253,6 +255,12 @@ void main() {
       'tab before lyric':
           '{title: T}\n{start_of_tab}\n{transpose: 9}\n{capo: 7}\n'
           '{end_of_tab}\n[C]la\n',
+      'alias sot/eot before base':
+          '{sot}\n{transpose: 2}\n{capo: 1}\n{key: G}\n{eot}\n[C]Hello\n',
+      'alias eot closing an empty tab':
+          '{start_of_tab}\n{eot}\n{transpose: 2}\n{key: G}\n[C]Hello\n',
+      'alias soc/eoc around base':
+          '{soc}\n{transpose: 2}\n{eoc}\n{capo: 1}\n[C]Hello\n',
       'no directives': '[C]la\n[G]di\n',
       'directives only': '{title: T}\n{transpose: 2}\n{capo: 1}\n',
       'directives only no final newline': '{title: T}\n{transpose: 2}',
@@ -275,13 +283,14 @@ void main() {
       for (final action in actions.entries) {
         test('${fixture.key} / ${action.key}', () {
           final oldSource = fixture.value;
-          final oldParsed = ChordproParser().parse(oldSource);
+          final oldParsed = _readerParse(oldSource);
           final controller = SongEditorController(source: oldSource);
 
           action.value(controller);
 
           final newSource = controller.state.source;
-          final newParsed = ChordproParser().parse(newSource);
+          // The reader parses the string the save path stores: normalized.
+          final newParsed = _readerParse(newSource);
           final state = controller.state.parsedSong;
 
           // (a) editor state equals what the reader parses from the output.
@@ -330,6 +339,18 @@ void main() {
       }
     }
 
+    test('record split matches the normalized scanner line count', () {
+      for (final source in fixtures.values) {
+        expect(
+          _records(source).length,
+          ChordproLineScanner()
+              .scan(ChordproNormalizer().normalize(source))
+              .length,
+          reason: source,
+        );
+      }
+    });
+
     test('a repeated transpose on a lone-CR source does not add lines', () {
       final controller = SongEditorController(
         source: '{title: T}\r{transpose: 1}\r[C]la\r',
@@ -356,6 +377,75 @@ void main() {
           reason: source,
         );
       }
+    });
+  });
+
+  group('editor reads and writes base directives on the normalized source', () {
+    const sources = <String, String>{
+      'A: aliased tab hides the base directives':
+          '{sot}\n{transpose: 2}\n{capo: 1}\n{key: G}\n{eot}\n[C]Hello\n',
+      'B: aliased end closes an empty tab':
+          '{start_of_tab}\n{eot}\n{transpose: 2}\n{key: G}\n[C]Hello\n',
+    };
+    final actions = <String, void Function(SongEditorController)>{
+      'transposeUp': (c) => c.transposeUp(),
+      'transposeDown': (c) => c.transposeDown(),
+      'capoUp': (c) => c.capoUp(),
+      'capoDown': (c) => c.capoDown(),
+    };
+
+    for (final MapEntry(key: name, value: source) in sources.entries) {
+      test('$name: editor equals the reader before any edit', () {
+        final reader = _readerParse(source);
+        final state = SongEditorController(source: source).state.parsedSong;
+
+        expect(state.baseTranspose, reader.baseTranspose);
+        expect(state.baseCapo, reader.baseCapo);
+        expect(state.sourceKey, reader.sourceKey);
+      });
+
+      for (final action in actions.entries) {
+        test('$name / ${action.key}: editor equals the reader after', () {
+          final controller = SongEditorController(source: source);
+
+          action.value(controller);
+
+          final newSource = controller.state.source;
+          final reader = _readerParse(newSource);
+          final state = controller.state.parsedSong;
+          expect(state.baseTranspose, reader.baseTranspose);
+          expect(state.baseCapo, reader.baseCapo);
+          expect(state.sourceKey, reader.sourceKey);
+
+          // Everything from the normalized boundary onwards is untouched.
+          final normalizer = ChordproNormalizer();
+          expect(_boundarySuffix(newSource), _boundarySuffix(source));
+          expect(
+            normalizer.normalize(_boundarySuffix(newSource)),
+            normalizer.normalize(_boundarySuffix(source)),
+          );
+        });
+      }
+    }
+
+    test('A: transposeUp keeps the tab-content directive lines', () {
+      final controller = SongEditorController(source: sources.values.first)
+        ..transposeUp();
+
+      expect(controller.state.source, contains('{sot}\n{transpose: 2}\n'));
+      expect(controller.state.parsedSong.baseTranspose, 1);
+    });
+
+    test('editor preview treats {soc} like {start_of_chorus}', () {
+      final aliased = SongEditorController(
+        source: '{soc}\n[C]Hello\n{eoc}\n',
+      ).state.parsedSong.sections;
+      final canonical = SongEditorController(
+        source: '{start_of_chorus}\n[C]Hello\n{end_of_chorus}\n',
+      ).state.parsedSong.sections;
+
+      expect(aliased.map((s) => s.kind), [SongSectionKind.chorus]);
+      expect(aliased, canonical);
     });
   });
 
@@ -403,8 +493,15 @@ List<(String, String)> _records(String source) {
   return records;
 }
 
+/// What the reader sees: the parse of the string the save path stores.
+ParsedSong _readerParse(String source) =>
+    ChordproParser().parse(ChordproNormalizer().normalize(source));
+
+/// Raw text from the (normalized) base boundary line onwards.
 String _boundarySuffix(String source) {
-  final lines = ChordproLineScanner().scan(source).toList();
+  final lines = ChordproLineScanner()
+      .scan(ChordproNormalizer().normalize(source))
+      .toList();
   final boundary = ChordproBaseRegion.of(lines).boundaryLineNumber;
   if (boundary == null) return '';
   return _records(

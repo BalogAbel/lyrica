@@ -1,4 +1,5 @@
 import 'package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_line_scanner.dart';
+import 'package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_normalizer.dart';
 import 'package:lyron_app/src/presentation/song_editor/song_editor_state.dart';
 
 class SongEditorController {
@@ -92,8 +93,13 @@ class SongEditorController {
 /// Only lines in the base region (before the first song-content line) are
 /// read or edited; everything from the boundary line onwards is copied
 /// byte for byte. The source is split into line records with the scanner's
-/// line model so record `i` is scanner line `i + 1` and every untouched
-/// line keeps its own terminator.
+/// line model so every untouched line keeps its own terminator.
+///
+/// The region, the occurrences and the insertion index come from scanning
+/// the normalized source (what the save path stores and the reader parses),
+/// while the bytes are edited on the raw records. Normalization maps every
+/// line to exactly one line, so record `i` is normalized scanner line
+/// `i + 1`.
 String _upsertDirective(
   String source, {
   required String directiveName,
@@ -107,10 +113,12 @@ String _upsertDirective(
   }
 
   final records = _splitLineRecords(source);
-  final scanned = ChordproLineScanner().scan(source).toList();
+  final scanned = ChordproLineScanner()
+      .scan(ChordproNormalizer().normalize(source))
+      .toList();
   assert(
     records.length == scanned.length,
-    'line records must match the scanner line count',
+    'line records must match the normalized scanner line count',
   );
   final region = ChordproBaseRegion.of(scanned);
 
