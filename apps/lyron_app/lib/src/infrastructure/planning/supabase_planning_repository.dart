@@ -149,10 +149,10 @@ class SupabasePlanningRepository implements PlanningRemoteRefreshRepository {
     final sessionsByPlan = <String, List<PlanningSyncSession>>{};
     final planIdBySession = <String, String>{};
     for (final row in sessionRows) {
-      final session = _mapSession(row);
-      if (!planIds.contains(session.planId)) {
+      if (!planIds.contains(row['plan_id'] as String)) {
         continue;
       }
+      final session = _mapSession(row);
       sessionsByPlan.putIfAbsent(session.planId, () => []).add(session);
       planIdBySession[session.id] = session.planId;
     }
@@ -171,24 +171,19 @@ class SupabasePlanningRepository implements PlanningRemoteRefreshRepository {
     final syncSessions = <PlanningSyncSession>[];
     final syncItems = <PlanningSyncSessionItem>[];
     for (final plan in plans) {
-      final sessions = [...?sessionsByPlan[plan.id]]
-        ..sort((left, right) {
-          final positionComparison = left.position.compareTo(right.position);
-          if (positionComparison != 0) {
-            return positionComparison;
-          }
-          return left.id.compareTo(right.id);
-        });
+      final sessions = _sortedByPositionThenId(
+        sessionsByPlan[plan.id],
+        position: (session) => session.position,
+        id: (session) => session.id,
+      );
       for (final session in sessions) {
         syncSessions.add(session);
         syncItems.addAll(
-          [...?itemsBySession[session.id]]..sort((left, right) {
-            final positionComparison = left.position.compareTo(right.position);
-            if (positionComparison != 0) {
-              return positionComparison;
-            }
-            return left.id.compareTo(right.id);
-          }),
+          _sortedByPositionThenId(
+            itemsBySession[session.id],
+            position: (item) => item.position,
+            id: (item) => item.id,
+          ),
         );
       }
     }
@@ -198,6 +193,20 @@ class SupabasePlanningRepository implements PlanningRemoteRefreshRepository {
       sessions: syncSessions,
       items: syncItems,
     );
+  }
+
+  List<T> _sortedByPositionThenId<T>(
+    List<T>? rows, {
+    required int Function(T row) position,
+    required String Function(T row) id,
+  }) {
+    return [...?rows]..sort((left, right) {
+      final positionComparison = position(left).compareTo(position(right));
+      if (positionComparison != 0) {
+        return positionComparison;
+      }
+      return id(left).compareTo(id(right));
+    });
   }
 
   PlanningSyncPlan _mapPlan(Map<String, dynamic> row) {

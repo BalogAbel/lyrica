@@ -366,7 +366,8 @@ void main() {
       expect(log, isEmpty);
     });
 
-    test('P5 an abort between streams fetches no later stream', () async {
+    test('P5 shouldContinue reaches the sessions stream: an abort once '
+        'sessions are requested fetches no item page', () async {
       final log = <_Call>[];
       final repository = _repository(
         plans: [_plan(_id(1))],
@@ -378,13 +379,38 @@ void main() {
       await expectLater(
         repository.fetchPlanningSyncPayload(
           organizationId: _org,
-          // true for the first plan page and its empty tail page, then stale.
-          shouldContinue: () =>
-              log.where((c) => c.stream == 'plans').length < 2,
+          shouldContinue: () => !log.any((call) => call.stream == 'sessions'),
         ),
         throwsA(isA<PagedReadAbortedException>()),
       );
-      expect(log.map((call) => call.stream).toSet(), {'plans'});
+      final streams = log.map((call) => call.stream).toSet();
+      expect(streams, {'plans', 'sessions'});
+    });
+
+    test('P5 shouldContinue reaches the items stream: an abort once items '
+        'are requested throws', () async {
+      final log = <_Call>[];
+      final repository = _repository(
+        plans: [_plan(_id(1))],
+        sessions: [_session(_id(2), _id(1))],
+        items: [_item(_id(3), _id(2))],
+        log: log,
+      );
+
+      await expectLater(
+        repository.fetchPlanningSyncPayload(
+          organizationId: _org,
+          shouldContinue: () =>
+              !log.any((call) => call.stream == 'session_items'),
+        ),
+        throwsA(isA<PagedReadAbortedException>()),
+      );
+      expect(log.map((call) => call.stream).toSet(), {
+        'plans',
+        'sessions',
+        'session_items',
+      });
+      expect(log.where((call) => call.stream == 'session_items'), hasLength(1));
     });
 
     test('P6 a session with more than 1000 items is complete', () async {
