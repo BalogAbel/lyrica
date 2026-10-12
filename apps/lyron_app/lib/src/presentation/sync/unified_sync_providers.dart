@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
@@ -57,6 +58,31 @@ final localStorageFootprintProvider =
             organizationId: context.organizationId,
           );
     }, retry: noAutomaticProviderRetry);
+
+/// SG7: last successful refresh times for the active context, re-read
+/// whenever catalog or planning state changes. Any failure, including a
+/// provider graph that cannot be built in a narrow widget test, degrades to
+/// unknown instead of an error.
+final syncFreshnessProvider = FutureProvider.autoDispose<SyncFreshness>((
+  ref,
+) async {
+  try {
+    ref.watch(catalogSnapshotStateProvider);
+    ref.watch(planningSyncStateProvider);
+    final context = ref.watch(activeCatalogContextProvider);
+    if (context == null) {
+      return const SyncFreshness.unknown();
+    }
+    return await ref
+        .watch(syncFreshnessReaderProvider)
+        .read(userId: context.userId, organizationId: context.organizationId);
+  } catch (error) {
+    debugPrint(
+      'syncFreshnessProvider: could not read last-synced times: $error',
+    );
+    return const SyncFreshness.unknown();
+  }
+}, retry: noAutomaticProviderRetry);
 
 final unifiedSyncOverviewProvider = Provider.autoDispose<UnifiedSyncOverview>((
   ref,
@@ -193,28 +219,6 @@ final unifiedManualSyncControllerProvider =
       );
       return controller;
     });
-
-/// SG7: last successful refresh times for the active context, re-read
-/// whenever catalog or planning state changes. Any failure, including a
-/// provider graph that cannot be built in a narrow widget test, degrades to
-/// unknown instead of an error.
-final syncFreshnessProvider = FutureProvider.autoDispose<SyncFreshness>((
-  ref,
-) async {
-  try {
-    ref.watch(catalogSnapshotStateProvider);
-    ref.watch(planningSyncStateProvider);
-    final context = ref.watch(activeCatalogContextProvider);
-    if (context == null) {
-      return const SyncFreshness.unknown();
-    }
-    return await ref
-        .watch(syncFreshnessReaderProvider)
-        .read(userId: context.userId, organizationId: context.organizationId);
-  } catch (_) {
-    return const SyncFreshness.unknown();
-  }
-}, retry: noAutomaticProviderRetry);
 
 final onlineTransitionDetectorProvider = Provider<OnlineTransitionDetector>((
   ref,

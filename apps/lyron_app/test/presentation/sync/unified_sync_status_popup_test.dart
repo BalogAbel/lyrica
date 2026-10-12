@@ -405,7 +405,6 @@ void main() {
           syncFreshnessProvider.overrideWith(
             (ref) async => const SyncFreshness.unknown(),
           ),
-
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
               status: UnifiedSyncHeaderStatus.conflict,
@@ -452,7 +451,6 @@ void main() {
             syncFreshnessProvider.overrideWith(
               (ref) async => const SyncFreshness.unknown(),
             ),
-
             unifiedSyncOverviewProvider.overrideWithValue(
               _overview(
                 status: UnifiedSyncHeaderStatus.conflict,
@@ -507,7 +505,6 @@ void main() {
           syncFreshnessProvider.overrideWith(
             (ref) async => const SyncFreshness.unknown(),
           ),
-
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
               status: UnifiedSyncHeaderStatus.conflict,
@@ -551,7 +548,6 @@ void main() {
             syncFreshnessProvider.overrideWith(
               (ref) async => const SyncFreshness.unknown(),
             ),
-
             unifiedSyncOverviewProvider.overrideWithValue(
               _overview(
                 status: UnifiedSyncHeaderStatus.conflict,
@@ -593,7 +589,6 @@ void main() {
           syncFreshnessProvider.overrideWith(
             (ref) async => const SyncFreshness.unknown(),
           ),
-
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
               status: UnifiedSyncHeaderStatus.unsynced,
@@ -633,7 +628,6 @@ void main() {
           syncFreshnessProvider.overrideWith(
             (ref) async => const SyncFreshness.unknown(),
           ),
-
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
               status: UnifiedSyncHeaderStatus.conflict,
@@ -686,7 +680,6 @@ void main() {
             syncFreshnessProvider.overrideWith(
               (ref) async => const SyncFreshness.unknown(),
             ),
-
             unifiedSyncOverviewProvider.overrideWithValue(
               _overview(
                 status: UnifiedSyncHeaderStatus.conflict,
@@ -739,7 +732,6 @@ void main() {
           syncFreshnessProvider.overrideWith(
             (ref) async => const SyncFreshness.unknown(),
           ),
-
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
               status: UnifiedSyncHeaderStatus.conflict,
@@ -788,7 +780,6 @@ void main() {
           syncFreshnessProvider.overrideWith(
             (ref) async => const SyncFreshness.unknown(),
           ),
-
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
               status: UnifiedSyncHeaderStatus.unsynced,
@@ -854,7 +845,6 @@ void main() {
           syncFreshnessProvider.overrideWith(
             (ref) async => const SyncFreshness.unknown(),
           ),
-
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
               status: UnifiedSyncHeaderStatus.unsynced,
@@ -889,7 +879,6 @@ void main() {
           syncFreshnessProvider.overrideWith(
             (ref) async => const SyncFreshness.unknown(),
           ),
-
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
               status: UnifiedSyncHeaderStatus.unsynced,
@@ -935,7 +924,6 @@ void main() {
             syncFreshnessProvider.overrideWith(
               (ref) async => const SyncFreshness.unknown(),
             ),
-
             unifiedSyncOverviewProvider.overrideWithValue(
               _overview(
                 status: UnifiedSyncHeaderStatus.unsynced,
@@ -980,7 +968,6 @@ void main() {
           syncFreshnessProvider.overrideWith(
             (ref) async => const SyncFreshness.unknown(),
           ),
-
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
               status: UnifiedSyncHeaderStatus.unsynced,
@@ -1019,7 +1006,6 @@ void main() {
           syncFreshnessProvider.overrideWith(
             (ref) async => const SyncFreshness.unknown(),
           ),
-
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
               status: UnifiedSyncHeaderStatus.conflict,
@@ -1057,7 +1043,6 @@ void main() {
           syncFreshnessProvider.overrideWith(
             (ref) async => const SyncFreshness.unknown(),
           ),
-
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
               status: UnifiedSyncHeaderStatus.unsynced,
@@ -1103,7 +1088,6 @@ void main() {
             syncFreshnessProvider.overrideWith(
               (ref) async => const SyncFreshness.unknown(),
             ),
-
             unifiedSyncOverviewProvider.overrideWithValue(
               _overview(
                 status: UnifiedSyncHeaderStatus.conflict,
@@ -1162,7 +1146,6 @@ void main() {
           syncFreshnessProvider.overrideWith(
             (ref) async => const SyncFreshness.unknown(),
           ),
-
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
               status: UnifiedSyncHeaderStatus.unsynced,
@@ -1211,7 +1194,6 @@ void main() {
         syncFreshnessProvider.overrideWith(
           (ref) async => const SyncFreshness.unknown(),
         ),
-
         unifiedSyncOverviewProvider.overrideWithValue(_overview()),
         unifiedManualSyncControllerProvider.overrideWith((_) => controller),
       ],
@@ -1383,4 +1365,37 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets(
+    'hides last-synced lines while freshness is still loading (SG7)',
+    (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            unifiedSyncOverviewProvider.overrideWithValue(_overview()),
+            syncFreshnessProvider.overrideWith(
+              (ref) => Completer<SyncFreshness>().future,
+            ),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: UnifiedSyncStatusPopup()),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(
+        find.byKey(const ValueKey('unified-sync-last-synced-songs')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('unified-sync-last-synced-plans')),
+        findsNothing,
+      );
+      expect(
+        find.textContaining(AppStrings.unifiedSyncLastSyncedNever),
+        findsNothing,
+      );
+    },
+  );
 }

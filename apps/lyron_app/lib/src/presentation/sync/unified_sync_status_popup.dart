@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart'
     show SongSyncStatus;
-import 'package:lyron_app/src/application/sync/sync_freshness_reader.dart';
 import 'package:lyron_app/src/application/sync/unified_discard_controller.dart';
 import 'package:lyron_app/src/application/sync/unified_row_recovery_controller.dart';
 import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
@@ -440,8 +439,10 @@ class _LastSyncedSummary extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final freshness =
-        ref.watch(syncFreshnessProvider).value ?? const SyncFreshness.unknown();
+    final freshness = ref.watch(syncFreshnessProvider).value;
+    if (freshness == null) {
+      return const SizedBox.shrink();
+    }
     final now = DateTime.now();
     final style = Theme.of(context).textTheme.bodySmall;
     return Column(
