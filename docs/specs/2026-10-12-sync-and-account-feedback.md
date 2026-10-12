@@ -371,7 +371,6 @@ tests that matched the Hungarian text are rewritten.
 - The sync popup is not usable at a 360 px wide phone: pre-existing, layout
   work, outside copy-only S6a
   (`docs/deferred/2026-10-12-sync-popup-narrow-layout.md`).
-
 - A lost Delete-account response after the server committed: the user sees
   the "could not confirm" message; a retry then fails to authenticate and the
   session ends through the normal expiry path. The wording makes no false

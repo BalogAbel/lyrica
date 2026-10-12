@@ -127,6 +127,10 @@ Files: `lib/src/presentation/account/account_screen.dart`,
 ### Task 5: Documents (FB12)
 
 - Deferred:
+  - add `2026-10-12-sync-popup-narrow-layout.md` (pre-existing: at a 360 px
+    phone the header buttons and a conflict row's action buttons fill the
+    dialog and squeeze the title and chips to zero width; layout work, found
+    by CP4 of this slice; trigger: S3 PR 2 extends the popup);
   - remove `2026-10-12-sync-reason-chip-copy.md`;
   - remove `2026-09-30-capability-gating-offline-cold-start.md`;
   - `2026-10-05-membership-revoked-notice.md`: option (b) marked done in S6a,
