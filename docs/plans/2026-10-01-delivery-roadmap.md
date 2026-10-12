@@ -38,8 +38,9 @@
 > ownership fix, then S0 PR 2. The import-run ownership fix merged as #89
 > (`02a9aa2`). S0 PR 2 merged as #90 (`4dbd9de`, 2026-10-12); S0 complete
 > (PR 1 and PR 2). S5a merged as #91 (`0390d79`, 2026-10-12; ADR-041,
-> `docs/specs/2026-10-12-paged-remote-pulls.md`); S2 in progress
-> (`fix/chordpro-base-directives`). The open deferred entries were triaged on
+> `docs/specs/2026-10-12-paged-remote-pulls.md`). S2 is implemented on
+> `fix/chordpro-base-directives` (PR pending merge;
+> `docs/specs/2026-10-12-chordpro-base-directives.md`); next: S6a. The open deferred entries were triaged on
 > 2026-10-12 (see "Deferred Triage (2026-10-12)"): S6 is split into S6a and
 > S6b, and S6a runs right after S2. The
 > session-transition coordinator it surfaced stays deferred

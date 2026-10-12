@@ -1,6 +1,7 @@
 # Plan: ChordPro Base Directives
 
-> Status: Accepted (2026-10-12). Executing on `fix/chordpro-base-directives`.
+> Status: Implemented (2026-10-12) on `fix/chordpro-base-directives`, PR pending
+> merge. See "Final review outcome".
 
 - Spec: `docs/specs/2026-10-12-chordpro-base-directives.md` (BD1–BD10,
   S/P/E/R/C acceptance criteria)
@@ -120,3 +121,20 @@ or key, or an editor action can delete or change a directive after the first
 lyric line." Blocking: that claim, or a fit or golden change not explained by
 a new base value. At most one fix round; everything else is deferred with a
 doc.
+
+## Final review outcome
+
+The Opus review disproved the claim with two counterexamples, both present
+on `main` before S2 and both fixed in the one allowed fix round:
+
+- The save path normalizes aliases (`{sot}`, `{eot}`, `{soc}` …) before
+  storing, and the reader parses the stored string, while the editor parsed
+  the raw one. The editor now reads, and finds its write region on, the
+  normalized source; bytes are still edited on the raw line records (BD5,
+  BD6).
+- The reader's empty-title fallback rebuilt `ParsedSong` without the base
+  values (and artist, tempo, tags). It now passes every field through.
+
+Task reviews also found that a malformed base line holding other text was
+rewritten whole (fixed: such a line is never an occurrence). Non-blocking
+residuals: `docs/deferred/2026-10-12-chordpro-base-directive-residuals.md`.
