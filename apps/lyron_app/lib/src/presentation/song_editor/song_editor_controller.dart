@@ -87,6 +87,13 @@ class SongEditorController {
   }
 }
 
+/// Rewrites the base `{name: value}` directive of [source] (BD6).
+///
+/// Only lines in the base region (before the first song-content line) are
+/// read or edited; everything from the boundary line onwards is copied
+/// byte for byte. The source is split into line records with the scanner's
+/// line model so record `i` is scanner line `i + 1` and every untouched
+/// line keeps its own terminator.
 String _upsertDirective(
   String source, {
   required String directiveName,
@@ -94,74 +101,117 @@ String _upsertDirective(
   bool clampAtZero = false,
 }) {
   final adjustedValue = clampAtZero && value < 0 ? 0 : value;
-  final lineEnding = _detectLineEnding(source);
-  final lines = source.split(RegExp(r'\r\n?|\n'));
   final directive = '{$directiveName: $adjustedValue}';
-  final regex = RegExp('^\\s*\\{\\s*$directiveName\\s*:', caseSensitive: false);
-  final firstLyricIndex = _firstLyricLineIndex(lines);
-  final insertionIndex = _baseDirectiveInsertionIndex(lines);
-  final matchingIndices = <int>[
-    for (var index = 0; index < lines.length; index += 1)
-      if (regex.hasMatch(lines[index])) index,
-  ];
-  final preLyricIndex = matchingIndices.firstWhere(
-    (index) => index < firstLyricIndex,
-    orElse: () => -1,
-  );
+  if (source.trim().isEmpty) {
+    return directive;
+  }
 
-  if (preLyricIndex >= 0) {
-    lines[preLyricIndex] = directive;
-    for (final index in matchingIndices.reversed) {
-      if (index != preLyricIndex) {
-        lines.removeAt(index);
+  final records = _splitLineRecords(source);
+  final scanned = ChordproLineScanner().scan(source).toList();
+  assert(
+    records.length == scanned.length,
+    'line records must match the scanner line count',
+  );
+  final region = ChordproBaseRegion.of(scanned);
+
+  final occurrences = <int>[
+    for (var index = 0; index < scanned.length; index += 1)
+      if (scanned[index].kind == ChordproLineKind.directive &&
+          scanned[index].directiveName == directiveName &&
+          region.contains(scanned[index]))
+        index,
+  ];
+
+  if (occurrences.isNotEmpty) {
+    final keep = occurrences.last;
+    records[keep] = _LineRecord(directive, records[keep].terminator);
+    for (final index in occurrences.reversed) {
+      if (index != keep) {
+        records.removeAt(index);
       }
     }
-    return lines.join(lineEnding);
+    return _joinLineRecords(records);
   }
 
-  for (final index in matchingIndices.reversed) {
-    lines.removeAt(index);
-  }
-
-  if (insertionIndex < lines.length) {
-    lines.insert(insertionIndex, directive);
-  } else if (source.trim().isEmpty) {
-    return directive;
+  final insertionIndex = _baseDirectiveInsertionIndex(scanned, region);
+  final eol = source.contains('\r\n') ? '\r\n' : '\n';
+  if (insertionIndex >= records.length) {
+    final last = records.last;
+    if (last.terminator.isEmpty) {
+      records[records.length - 1] = _LineRecord(last.text, eol);
+      records.add(_LineRecord(directive, ''));
+    } else {
+      records.add(_LineRecord(directive, eol));
+    }
   } else {
-    lines.add(directive);
+    records.insert(insertionIndex, _LineRecord(directive, eol));
   }
-
-  return lines.join(lineEnding);
+  return _joinLineRecords(records);
 }
 
-String _detectLineEnding(String source) {
-  if (source.contains('\r\n')) {
-    return '\r\n';
-  }
-  if (source.contains('\r')) {
-    return '\r';
-  }
-  return '\n';
+class _LineRecord {
+  const _LineRecord(this.text, this.terminator);
+
+  final String text;
+  final String terminator;
 }
 
-int _baseDirectiveInsertionIndex(List<String> lines) {
-  var lastMetadataIndex = -1;
-  for (var index = 0; index < lines.length; index += 1) {
-    final trimmed = lines[index].trim();
-    if (trimmed.isEmpty) {
+/// Splits [source] like [ChordproLineScanner.scan]: `\n` separates lines, a
+/// preceding `\r` makes the terminator `\r\n` and is not part of the text,
+/// a lone `\r` stays inside the line text, and a trailing segment without a
+/// terminator is a record only when it is not empty.
+List<_LineRecord> _splitLineRecords(String source) {
+  final records = <_LineRecord>[];
+  var start = 0;
+  for (var index = 0; index < source.length; index += 1) {
+    if (source.codeUnitAt(index) != 0x0A) {
       continue;
     }
+    final crlf = index > start && source.codeUnitAt(index - 1) == 0x0D;
+    records.add(
+      _LineRecord(
+        source.substring(start, crlf ? index - 1 : index),
+        crlf ? '\r\n' : '\n',
+      ),
+    );
+    start = index + 1;
+  }
+  if (start < source.length) {
+    records.add(_LineRecord(source.substring(start), ''));
+  }
+  return records;
+}
 
-    final line = ChordproLineScanner().scan(trimmed).first;
-    if (line.kind == ChordproLineKind.lyric) {
+String _joinLineRecords(List<_LineRecord> records) {
+  final buffer = StringBuffer();
+  for (final record in records) {
+    buffer
+      ..write(record.text)
+      ..write(record.terminator);
+  }
+  return buffer.toString();
+}
+
+/// Record index at which a new base directive goes: right after the leading
+/// metadata block, before the first other directive or the base boundary.
+int _baseDirectiveInsertionIndex(
+  List<ChordproLine> lines,
+  ChordproBaseRegion region,
+) {
+  var lastMetadataIndex = -1;
+  for (var index = 0; index < lines.length; index += 1) {
+    final line = lines[index];
+    if (!region.contains(line)) {
       return lastMetadataIndex >= 0 ? lastMetadataIndex + 1 : index;
     }
-
-    if (_isEditorMetadataDirective(line.directiveName)) {
+    if (line.kind == ChordproLineKind.empty) {
+      continue;
+    }
+    if (line.kind == ChordproLineKind.directive &&
+        _isEditorMetadataDirective(line.directiveName)) {
       lastMetadataIndex = index;
       continue;
     }
-
     return lastMetadataIndex >= 0 ? lastMetadataIndex + 1 : index;
   }
 
@@ -180,17 +230,4 @@ bool _isEditorMetadataDirective(String? directiveName) {
     'capo' => true,
     _ => false,
   };
-}
-
-int _firstLyricLineIndex(List<String> lines) {
-  for (var index = 0; index < lines.length; index += 1) {
-    final trimmed = lines[index].trim();
-    if (trimmed.isEmpty || trimmed.startsWith('{')) {
-      continue;
-    }
-
-    return index;
-  }
-
-  return lines.length;
 }
