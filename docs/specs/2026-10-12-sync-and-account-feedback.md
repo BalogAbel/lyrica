@@ -173,16 +173,25 @@ first `await`.
 
 The message states only what the client knows. The RPC response can be lost
 after the server committed, so the copy says that the deletion could not be
-confirmed. "Nothing was removed from this device" is true: the local purges run
-only on the `signedOut` edge, which `AppAuthController.deleteAccount` emits
-only after the RPC succeeded.
+confirmed. It makes no claim about the local data: a failed RPC does not by
+itself emit `signedOut` (the edge every purge listens to), but a session lost
+while the RPC runs is mapped to `signedOut` by `AppAuthController`, because
+`deleteAccount` holds the signing-out flag for the whole call. That
+pre-existing behavior is outside this slice and recorded as a residual, so
+"nothing was removed from this device" would not be true in every case.
 
-### FB10. Pinned: a failed RPC changes nothing
+The user-switch refusal (SO8: another account signed in while the confirmation
+was open) deletes nothing and now says so with its own snackbar, the same
+wording pattern as FB7's `superseded`. The user's own Cancel or barrier
+dismiss shows nothing.
+
+### FB10. Pinned: a failed RPC does not change the auth state
 
 A test pins that a failing `deleteAccount` repository call leaves
 `AppAuthController` in `signedIn` for the same user, emits no `signedOut`
 (the edge every purge listens to), and resets `_isSigningOut` (the next null
-session is `sessionExpired`, not `signedOut`).
+session is `sessionExpired`, not `signedOut`). It does not claim anything
+about a session that is lost during the call (see the residual below).
 
 ### FB11. Guarantees
 
@@ -266,7 +275,8 @@ tests that matched the Hungarian text are rewritten.
 | `signOutBlockedByImportMessage` | `Sign-out is unavailable while an import is running. Try again when it finishes.` | Sign out tapped while an import runs (Account tile, song list menu) |
 | `signOutFailedMessage` | `Sign-out did not complete. Try again.` | The sequence failed, or the confirmation failed |
 | `signOutSupersededMessage` | `The signed-in account changed, so this sign-out was stopped.` | The signed-in account changed while the sign-out ran |
-| `deleteAccountFailedMessage` | `Could not confirm the account deletion. Nothing was removed from this device. Check your connection and try again.` | The delete-account RPC failed |
+| `deleteAccountFailedMessage` | `Could not confirm the account deletion. Check your connection and try again.` | The delete-account RPC failed |
+| `deleteAccountSupersededMessage` | `The signed-in account changed, so the account deletion was stopped.` | Another account signed in while the delete confirmation was open (SO8); nothing was deleted |
 
 ### Translated dialogs (FB14)
 
@@ -339,6 +349,10 @@ tests that matched the Hungarian text are rewritten.
 - DA3. `AppAuthController`: a failing `deleteAccount` repository call
   rethrows, leaves `signedIn` for the same user, emits no `signedOut`, and
   resets `_isSigningOut`.
+- DA4. The user's own Cancel and a barrier dismiss of the delete confirmation
+  show no snackbar, report nothing and do not call `deleteAccount`.
+- DA5. Another account signing in while the confirmation is open: nothing is
+  deleted and the snackbar `deleteAccountSupersededMessage` shows.
 
 **UI language**
 
@@ -371,6 +385,14 @@ tests that matched the Hungarian text are rewritten.
 - The sync popup is not usable at a 360 px wide phone: pre-existing, layout
   work, outside copy-only S6a
   (`docs/deferred/2026-10-12-sync-popup-narrow-layout.md`).
+- A session lost while the Delete-account RPC runs (a non-retryable token
+  refresh failure, or a sign-out in another tab) is mapped to `signedOut`
+  because `AppAuthController.deleteAccount` holds `_isSigningOut` for the
+  whole call. The purges then run although the RPC may reject and the account
+  survive. The user confirmed a dialog that says pending offline changes are
+  removed, and the window is narrow; the failure message makes no claim about
+  local data. Recorded in
+  `docs/deferred/2026-10-12-delete-account-session-loss-purge.md`.
 - A lost Delete-account response after the server committed: the user sees
   the "could not confirm" message; a retry then fails to authenticate and the
   session ends through the normal expiry path. The wording makes no false

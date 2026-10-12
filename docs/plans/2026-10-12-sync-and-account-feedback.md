@@ -131,6 +131,13 @@ Files: `lib/src/presentation/account/account_screen.dart`,
     phone the header buttons and a conflict row's action buttons fill the
     dialog and squeeze the title and chips to zero width; layout work, found
     by CP4 of this slice; trigger: S3 PR 2 extends the popup);
+  - add `2026-10-12-delete-account-session-loss-purge.md` (pre-existing: a
+    session lost while the Delete-account RPC runs is mapped to `signedOut`
+    because `AppAuthController.deleteAccount` holds `_isSigningOut` for the
+    whole call, so the purges run although the RPC may reject; found by the
+    Task 4 review; fix sketch: map a session loss during the call to
+    `sessionExpired` unless the RPC succeeded; trigger: the next change to
+    `AppAuthController.deleteAccount` or `_isSigningOut`);
   - remove `2026-10-12-sync-reason-chip-copy.md`;
   - remove `2026-09-30-capability-gating-offline-cold-start.md`;
   - `2026-10-05-membership-revoked-notice.md`: option (b) marked done in S6a,
