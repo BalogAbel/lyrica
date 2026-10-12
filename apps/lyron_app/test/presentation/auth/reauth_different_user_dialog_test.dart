@@ -144,10 +144,98 @@ void main() {
     expect(find.text(AppStrings.reauthDifferentUserTitle), findsOneWidget);
     expect(
       find.text(
-        'Másik fiók jelentkezett be. test@example.com-nek 5 mentetlen változtatása van. A folytatás törli ezeket.',
+        'A different account signed in. test@example.com has 5 unsynced '
+        'changes. Continuing deletes them.',
       ),
       findsOneWidget,
     );
+  });
+
+  // L1 (S6a FB14): literals, not constants, so a copy regression is visible.
+  group('English copy (L1)', () {
+    Future<void> openDialog(WidgetTester tester, {required int? count}) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => Center(
+                child: ElevatedButton(
+                  onPressed: () async {
+                    await showReauthDifferentUserDialog(
+                      context,
+                      email: 'prior@example.com',
+                      pendingCount: count,
+                    );
+                  },
+                  child: const Text('Show Dialog'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Show Dialog'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('known count: title and plural message', (tester) async {
+      await openDialog(tester, count: 3);
+
+      expect(find.text('A different account signed in.'), findsOneWidget);
+      expect(
+        find.text(
+          'A different account signed in. prior@example.com has 3 unsynced '
+          'changes. Continuing deletes them.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a count of one uses the singular', (tester) async {
+      await openDialog(tester, count: 1);
+
+      expect(
+        find.text(
+          'A different account signed in. prior@example.com has 1 unsynced '
+          'change. Continuing deletes it.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('unknown count states that the number is unknown', (
+      tester,
+    ) async {
+      await openDialog(tester, count: null);
+
+      expect(
+        find.text(
+          'A different account signed in. prior@example.com has unsynced '
+          'changes on this device, but their exact number could not be '
+          'determined. Continuing deletes them.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('buttons read Continue and Cancel', (tester) async {
+      await openDialog(tester, count: 2);
+
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('reauth-different-user-confirm')),
+          matching: find.text('Continue'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('reauth-different-user-cancel')),
+          matching: find.text('Cancel'),
+        ),
+        findsOneWidget,
+      );
+    });
   });
 
   testWidgets(

@@ -15,26 +15,29 @@ class AppStrings {
       'You are offline. Sign in again to sync your changes.';
   static const reauthSignInAction = 'Sign in';
   static const continueOfflineAction = 'Continue offline';
-  static const reauthDifferentUserTitle = 'Másik fiók jelentkezett be.';
+  static const reauthDifferentUserTitle = 'A different account signed in.';
   static String reauthDifferentUserPendingMessage({
     required String email,
     required int count,
-  }) =>
-      'Másik fiók jelentkezett be. $email-nek $count mentetlen változtatása van. A folytatás törli ezeket.';
+  }) => count == 1
+      ? 'A different account signed in. $email has 1 unsynced change. Continuing deletes it.'
+      : 'A different account signed in. $email has $count unsynced changes. Continuing deletes them.';
   static String reauthDifferentUserUnknownPendingMessage({
     required String email,
   }) =>
-      'Másik fiók jelentkezett be. $email-nek mentetlen változtatásai vannak ezen az eszközön, de a pontos számuk nem állapítható meg. A folytatás törli ezeket.';
-  static const reauthConfirmWipeAction = 'Folytatás';
-  static const reauthCancelAction = 'Mégse';
+      'A different account signed in. $email has unsynced changes on this device, but their exact number could not be determined. Continuing deletes them.';
+  static const reauthConfirmWipeAction = 'Continue';
+  static const reauthCancelAction = 'Cancel';
   static const membershipRevocationPurgeTitle =
-      'A szervezeti tagságod megszűnt.';
+      'Your organization membership has ended.';
   static String membershipRevocationPurgePendingMessage({required int count}) =>
-      'A szervezeti tagságod megszűnt ezen az eszközön. A folytatás véglegesen törli az összes helyben tárolt dalt és tervet, beleértve $count mentetlen változtatást is.';
+      count == 1
+      ? 'Your organization membership has ended on this device. Continuing permanently deletes all locally stored songs and plans, including 1 unsynced change.'
+      : 'Your organization membership has ended on this device. Continuing permanently deletes all locally stored songs and plans, including $count unsynced changes.';
   static const membershipRevocationPurgeUnknownPendingMessage =
-      'A szervezeti tagságod megszűnt ezen az eszközön. A folytatás véglegesen törli az összes helyben tárolt dalt és tervet. A mentetlen változtatások pontos száma nem állapítható meg, de a folytatás ezeket is törli.';
-  static const membershipRevocationPurgeConfirmAction = 'Törlés';
-  static const membershipRevocationPurgeCancelAction = 'Mégse';
+      'Your organization membership has ended on this device. Continuing permanently deletes all locally stored songs and plans. The exact number of unsynced changes could not be determined, but continuing deletes them too.';
+  static const membershipRevocationPurgeConfirmAction = 'Delete';
+  static const membershipRevocationPurgeCancelAction = 'Cancel';
   static const retryAction = 'Try again';
   static const signOutAction = 'Sign out';
   static const songCatalogRefreshAction = 'Refresh catalog';
