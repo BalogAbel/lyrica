@@ -9,9 +9,9 @@ import 'package:lyron_app/src/application/song_library/catalog_connection_status
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
 import 'package:lyron_app/src/application/song_library/song_catalog_controller.dart';
+import 'package:lyron_app/src/application/song_library/song_catalog_remote_repository.dart';
 import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
-import 'package:lyron_app/src/domain/song/song_repository.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/infrastructure/config/supabase_config.dart';
@@ -417,57 +417,56 @@ ActiveOrganizationReader _organizationReader(SupabaseClient client) {
   };
 }
 
-class _ThrowingSongRepository implements SongRepository {
+class _ThrowingSongRepository implements SongCatalogRemoteRepository {
   const _ThrowingSongRepository(this._error);
 
   final Object _error;
 
   @override
-  Future<List<SongSummary>> listSongs() async => throw _error;
-
-  @override
-  Future<SongSource> getSongSource(String id) async => throw _error;
+  Future<SongCatalogPayload> fetchCatalog({
+    required String organizationId,
+    bool Function()? shouldContinue,
+  }) async => throw _error;
 }
 
-class _StaticSongRepository implements SongRepository {
+class _StaticSongRepository implements SongCatalogRemoteRepository {
   const _StaticSongRepository({required this.songs, required this.sources});
 
   final List<SongSummary> songs;
   final Map<String, SongSource> sources;
 
   @override
-  Future<List<SongSummary>> listSongs() async => songs;
-
-  @override
-  Future<SongSource> getSongSource(String id) async => sources[id]!;
+  Future<SongCatalogPayload> fetchCatalog({
+    required String organizationId,
+    bool Function()? shouldContinue,
+  }) async => SongCatalogPayload(
+    summaries: songs,
+    sources: [for (final song in songs) sources[song.id]!],
+  );
 }
 
 class _PassthroughHttpOverrides extends HttpOverrides {}
 
-class _MutableSongRepository implements SongRepository {
+class _MutableSongRepository implements SongCatalogRemoteRepository {
   _MutableSongRepository(this._delegate);
 
-  final SongRepository _delegate;
+  final SongCatalogRemoteRepository _delegate;
   Object? error;
 
   @override
-  Future<SongSource> getSongSource(String id) async {
+  Future<SongCatalogPayload> fetchCatalog({
+    required String organizationId,
+    bool Function()? shouldContinue,
+  }) async {
     final currentError = error;
     if (currentError != null) {
       throw currentError;
     }
 
-    return _delegate.getSongSource(id);
-  }
-
-  @override
-  Future<List<SongSummary>> listSongs() async {
-    final currentError = error;
-    if (currentError != null) {
-      throw currentError;
-    }
-
-    return _delegate.listSongs();
+    return _delegate.fetchCatalog(
+      organizationId: organizationId,
+      shouldContinue: shouldContinue,
+    );
   }
 }
 

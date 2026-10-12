@@ -12,6 +12,7 @@ import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 import 'package:lyron_app/src/infrastructure/song_library/supabase_song_repository.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
+import '../support/keyset_pages.dart';
 
 /// Spec: docs/specs/2026-08-08-web-catalog-refresh-race.md (D2).
 ///
@@ -30,19 +31,27 @@ void main() {
     // the state under test.
     final songDatabase = SongCatalogDatabase.inMemory();
     final songStore = DriftSongCatalogStore(songDatabase);
-    var listSongsCalls = 0;
+    var fetchCatalogCalls = 0;
     final remoteRepository = SupabaseSongRepository.testing(
-      listSongsRows: () async {
-        listSongsCalls += 1;
-        return const [
-          {'id': 'song-1', 'slug': 'alpha', 'title': 'Alpha', 'version': 1},
-        ];
-      },
-      getSongRow: (id) async => const {
-        'id': 'song-1',
-        'slug': 'alpha',
-        'chordpro_source': '{title: Alpha}',
-      },
+      fetchCatalogPage:
+          ({required organizationId, required after, required limit}) async {
+            if (after == null) {
+              fetchCatalogCalls += 1;
+            }
+            return keysetPage(
+              const [
+                {
+                  'id': 'song-1',
+                  'slug': 'alpha',
+                  'title': 'Alpha',
+                  'version': 1,
+                  'chordpro_source': '{title: Alpha}',
+                },
+              ],
+              after: after,
+              limit: limit,
+            );
+          },
     );
     final foregroundState = _TestAppForegroundState();
 
@@ -72,14 +81,14 @@ void main() {
     addTearDown(subscription.close);
 
     expect(authController.state.status.name, 'initializing');
-    expect(listSongsCalls, 0);
+    expect(fetchCatalogCalls, 0);
     // A refresh fired with no session sets sessionStatus to `expired`
     // (SongCatalogController._refreshCatalog's null-session branch) even
     // though nothing has actually expired -- exactly the misleading
     // status the spec (D2) says an unconditional refresh under
     // `initializing` produces. Asserting the state stayed at its
     // untouched default catches a reintroduced unconditional refresh
-    // even in cases where it wouldn't otherwise change listSongsCalls.
+    // even in cases where it wouldn't otherwise change fetchCatalogCalls.
     expect(
       container.read(songCatalogControllerProvider).state.sessionStatus,
       isNot(CatalogSessionStatus.expired),
@@ -91,7 +100,7 @@ void main() {
     await authController.restoreSession();
     await Future<void>.delayed(Duration.zero);
 
-    expect(listSongsCalls, 1);
+    expect(fetchCatalogCalls, 1);
   });
 }
 

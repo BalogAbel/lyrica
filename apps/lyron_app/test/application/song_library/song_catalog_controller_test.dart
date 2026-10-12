@@ -13,9 +13,9 @@ import 'package:lyron_app/src/application/song_library/catalog_connection_status
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
 import 'package:lyron_app/src/application/song_library/song_catalog_controller.dart';
+import 'package:lyron_app/src/application/song_library/song_catalog_remote_repository.dart';
 import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
-import 'package:lyron_app/src/domain/song/song_repository.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/offline/auth/drift_last_known_identity_store.dart';
@@ -23,7 +23,10 @@ import 'package:lyron_app/src/offline/auth/last_known_identity_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
+import 'package:lyron_app/src/shared/keyset_paging.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../support/keyset_pages.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -106,7 +109,7 @@ void main() {
       );
 
       await controller.refreshCatalog();
-      remoteRepository.listSongsError = const SocketException('offline');
+      remoteRepository.fetchCatalogError = const SocketException('offline');
 
       await controller.refreshCatalog();
 
@@ -144,7 +147,7 @@ void main() {
         );
 
         await controller.refreshCatalog();
-        remoteRepository.listSongsError = const PostgrestException(
+        remoteRepository.fetchCatalogError = const PostgrestException(
           message: 'Service unavailable',
           code: '503',
           details: 'upstream connect error',
@@ -351,7 +354,7 @@ void main() {
           CatalogConnectionStatus.unavailable,
         );
         expect(controller.state.hasCachedCatalog, isFalse);
-        expect(remoteRepository.listSongsCalls, 0);
+        expect(remoteRepository.fetchCatalogCalls, 0);
       },
     );
 
@@ -753,7 +756,7 @@ void main() {
           CatalogConnectionStatus.online,
         );
         expect(controller.state.hasCachedCatalog, isTrue);
-        expect(remoteRepository.listSongsCalls, 1);
+        expect(remoteRepository.fetchCatalogCalls, 1);
       },
     );
 
@@ -859,7 +862,7 @@ void main() {
 
     test(
       // Task 2.2 (F-F #2): this assertion used to encode the old
-      // destructive behaviour (clearContext: true on a listSongs()
+      // destructive behaviour (clearContext: true on a fetchCatalog()
       // authorization failure). Per the invariant, this is not one of the
       // four allowed context-change causes -- the org lookup already
       // resolved and verified this context this attempt, so it must stay
@@ -892,8 +895,8 @@ void main() {
         controller.handleSessionAvailable();
 
         final refreshFuture = controller.refreshCatalog();
-        await delayedRepository.listSongsStarted.future;
-        expect(delayedRepository.listSongsCalls, 1);
+        await delayedRepository.fetchCatalogStarted.future;
+        expect(delayedRepository.fetchCatalogCalls, 1);
 
         delayedRepository.failWith(
           const PostgrestException(message: 'permission denied', code: '403'),
@@ -910,11 +913,11 @@ void main() {
           CatalogConnectionStatus.unavailable,
         );
         expect(controller.state.hasCachedCatalog, isFalse);
-        expect(delayedRepository.listSongsCalls, 1);
+        expect(delayedRepository.fetchCatalogCalls, 1);
 
         await Future<void>.delayed(const Duration(milliseconds: 20));
 
-        expect(delayedRepository.listSongsCalls, 1);
+        expect(delayedRepository.fetchCatalogCalls, 1);
       },
     );
 
@@ -1006,7 +1009,7 @@ void main() {
         );
 
         final refreshFuture = controller.refreshCatalog();
-        await delayedRepository.listSongsStarted.future;
+        await delayedRepository.fetchCatalogStarted.future;
 
         await controller.handleExplicitSignOut();
         delayedRepository.completeWith(
@@ -1053,12 +1056,12 @@ void main() {
           unawaited(controller.refreshCatalog());
           async.flushMicrotasks();
 
-          expect(delayedRepository.listSongsCalls, 1);
+          expect(delayedRepository.fetchCatalogCalls, 1);
 
           async.elapse(const Duration(minutes: 5));
           async.flushMicrotasks();
 
-          expect(delayedRepository.listSongsCalls, 1);
+          expect(delayedRepository.fetchCatalogCalls, 1);
           delayedRepository.completeWith(
             const [SongSummary(id: 'song-1', title: 'Alpha')],
             const {
@@ -1092,16 +1095,16 @@ void main() {
 
         async.elapse(const Duration(minutes: 4, seconds: 59));
         async.flushMicrotasks();
-        expect(remoteRepository.listSongsCalls, 0);
+        expect(remoteRepository.fetchCatalogCalls, 0);
 
         async.elapse(const Duration(seconds: 1));
         async.flushMicrotasks();
-        expect(remoteRepository.listSongsCalls, 1);
+        expect(remoteRepository.fetchCatalogCalls, 1);
 
         controller.dispose();
         async.elapse(const Duration(minutes: 5));
         async.flushMicrotasks();
-        expect(remoteRepository.listSongsCalls, 1);
+        expect(remoteRepository.fetchCatalogCalls, 1);
       });
     });
 
@@ -1138,7 +1141,7 @@ void main() {
         async.elapse(const Duration(minutes: 5));
         async.flushMicrotasks();
 
-        expect(remoteRepository.listSongsCalls, 1);
+        expect(remoteRepository.fetchCatalogCalls, 1);
       });
     });
 
@@ -1166,19 +1169,19 @@ void main() {
 
           async.elapse(const Duration(minutes: 5));
           async.flushMicrotasks();
-          expect(remoteRepository.listSongsCalls, 0);
+          expect(remoteRepository.fetchCatalogCalls, 0);
 
           foregroundState.setForeground(true);
           async.flushMicrotasks();
           async.elapse(const Duration(minutes: 5));
           async.flushMicrotasks();
-          expect(remoteRepository.listSongsCalls, 1);
+          expect(remoteRepository.fetchCatalogCalls, 1);
 
           foregroundState.setForeground(false);
           async.flushMicrotasks();
           async.elapse(const Duration(minutes: 5));
           async.flushMicrotasks();
-          expect(remoteRepository.listSongsCalls, 1);
+          expect(remoteRepository.fetchCatalogCalls, 1);
         });
       },
     );
@@ -1206,7 +1209,7 @@ void main() {
 
         async.elapse(const Duration(minutes: 5));
         async.flushMicrotasks();
-        expect(remoteRepository.listSongsCalls, 1);
+        expect(remoteRepository.fetchCatalogCalls, 1);
 
         session = null;
         unawaited(controller.handleExplicitSignOut());
@@ -1214,7 +1217,7 @@ void main() {
 
         async.elapse(const Duration(minutes: 10));
         async.flushMicrotasks();
-        expect(remoteRepository.listSongsCalls, 1);
+        expect(remoteRepository.fetchCatalogCalls, 1);
       });
     });
 
@@ -1244,7 +1247,7 @@ void main() {
 
           unawaited(controller.refreshCatalog());
           async.flushMicrotasks();
-          expect(delayedRepository.listSongsCalls, 1);
+          expect(delayedRepository.fetchCatalogCalls, 1);
 
           session = null;
           unawaited(controller.handleExplicitSignOut());
@@ -1257,14 +1260,14 @@ void main() {
           unawaited(controller.refreshCatalog());
           async.flushMicrotasks();
 
-          expect(delayedRepository.listSongsCalls, 1);
+          expect(delayedRepository.fetchCatalogCalls, 1);
 
           delayedRepository.completeRequest(0);
           async.flushMicrotasks();
 
           unawaited(controller.refreshCatalog());
           async.flushMicrotasks();
-          expect(delayedRepository.listSongsCalls, 2);
+          expect(delayedRepository.fetchCatalogCalls, 2);
 
           delayedRepository.completeRequest(1);
           async.flushMicrotasks();
@@ -1296,7 +1299,7 @@ void main() {
       await nullSessionRefresh;
       await signedInRefresh;
 
-      expect(remoteRepository.listSongsCalls, 1);
+      expect(remoteRepository.fetchCatalogCalls, 1);
       expect(
         controller.state.context,
         const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
@@ -1320,10 +1323,10 @@ void main() {
       );
 
       final first = controller.refreshCatalog();
-      await delayedRepository.listSongsStarted.future;
+      await delayedRepository.fetchCatalogStarted.future;
       final second = controller.refreshCatalog();
 
-      expect(delayedRepository.listSongsCalls, 1);
+      expect(delayedRepository.fetchCatalogCalls, 1);
 
       delayedRepository.completeWith(
         const [SongSummary(id: 'song-1', title: 'Alpha')],
@@ -1333,7 +1336,7 @@ void main() {
       await first;
       await second;
 
-      expect(delayedRepository.listSongsCalls, 1);
+      expect(delayedRepository.fetchCatalogCalls, 1);
     });
 
     test('a burst of differing-identity triggers during one in-flight refresh '
@@ -1359,7 +1362,7 @@ void main() {
 
         unawaited(controller.refreshCatalog());
         async.flushMicrotasks();
-        expect(delayedRepository.listSongsCalls, 1);
+        expect(delayedRepository.fetchCatalogCalls, 1);
 
         session = const AppAuthSession(
           userId: 'user-2',
@@ -1372,14 +1375,14 @@ void main() {
 
         // The in-flight refresh (for user-1) hasn't settled yet, so no
         // follow-up has dispatched.
-        expect(delayedRepository.listSongsCalls, 1);
+        expect(delayedRepository.fetchCatalogCalls, 1);
 
         delayedRepository.completeRequest(0);
         async.flushMicrotasks();
 
         // Exactly one follow-up refresh runs for the burst of three
         // differing-identity triggers, not three.
-        expect(delayedRepository.listSongsCalls, 2);
+        expect(delayedRepository.fetchCatalogCalls, 2);
 
         delayedRepository.completeRequest(1);
         async.flushMicrotasks();
@@ -1398,7 +1401,7 @@ void main() {
         ],
         refreshedAt: DateTime.utc(2026, 3, 25, 10),
       );
-      remoteRepository.listSongsError = StateError('network unreachable');
+      remoteRepository.fetchCatalogError = StateError('network unreachable');
 
       final controller = SongCatalogController(
         onImplausibleEmptySnapshot:
@@ -1428,7 +1431,7 @@ void main() {
         controller.state.connectionStatus,
         CatalogConnectionStatus.offlineCached,
       );
-      expect(remoteRepository.listSongsCalls, 0);
+      expect(remoteRepository.fetchCatalogCalls, 0);
       expect(
         await store.readActiveSummaries(
           userId: 'user-1',
@@ -1882,25 +1885,25 @@ void main() {
 
           // _resetSessionLifecycle() must NOT have fired: the periodic
           // refresh timer is still running. Clear the injected error so the
-          // next periodic tick can reach listSongs and prove the timer is
+          // next periodic tick can reach fetchCatalog and prove the timer is
           // still alive (old, buggy code stops the timer here, so the tick
-          // never fires and listSongsCalls stays flat).
+          // never fires and fetchCatalogCalls stays flat).
           organizationReaderState.nextError = null;
-          final callsBefore = remoteRepository.listSongsCalls;
+          final callsBefore = remoteRepository.fetchCatalogCalls;
           async.elapse(const Duration(minutes: 5));
           async.flushMicrotasks();
-          expect(remoteRepository.listSongsCalls, greaterThan(callsBefore));
+          expect(remoteRepository.fetchCatalogCalls, greaterThan(callsBefore));
         });
       },
     );
 
     test(
-      // Task 2.3 (F-E): same misclassification, via the listSongs() catch
+      // Task 2.3 (F-E): same misclassification, via the fetchCatalog() catch
       // block. Fails against old code: sessionStatus becomes expired
       // (authorization/expiry path) and the refresh timer is stopped,
       // instead of the connectivity path (unverifiableDueToConnectivity)
       // that keeps the cached catalog visible and the timer alive.
-      'listSongs AuthRetryableFetchException is classified as '
+      'fetchCatalog AuthRetryableFetchException is classified as '
       'connectivity, not authorization',
       () {
         fakeAsync((async) {
@@ -1926,7 +1929,7 @@ void main() {
           expect(establishedContext, isNotNull);
           expect(controller.state.hasCachedCatalog, isTrue);
 
-          remoteRepository.listSongsError = AuthRetryableFetchException();
+          remoteRepository.fetchCatalogError = AuthRetryableFetchException();
           unawaited(controller.refreshCatalog());
           async.flushMicrotasks();
 
@@ -1945,12 +1948,12 @@ void main() {
           // refresh timer is still running. Clear the injected error so the
           // next periodic tick can succeed and prove the timer is still
           // alive (old, buggy code stops the timer here, so the tick never
-          // fires and listSongsCalls stays flat).
-          remoteRepository.listSongsError = null;
-          final callsBefore = remoteRepository.listSongsCalls;
+          // fires and fetchCatalogCalls stays flat).
+          remoteRepository.fetchCatalogError = null;
+          final callsBefore = remoteRepository.fetchCatalogCalls;
           async.elapse(const Duration(minutes: 5));
           async.flushMicrotasks();
-          expect(remoteRepository.listSongsCalls, greaterThan(callsBefore));
+          expect(remoteRepository.fetchCatalogCalls, greaterThan(callsBefore));
         });
       },
     );
@@ -2047,7 +2050,7 @@ void main() {
 
         await controller.refreshCatalog();
         expect(controller.state.context?.userId, 'user-A');
-        final listSongsCallsForA = remoteRepository.listSongsCalls;
+        final fetchCatalogCallsForA = remoteRepository.fetchCatalogCalls;
         final summariesForA = await store.readActiveSummaries(
           userId: 'user-A',
           organizationId: 'org-1',
@@ -2070,8 +2073,8 @@ void main() {
               'B: A\'s context must not be re-established under B\'s session',
         );
         expect(
-          remoteRepository.listSongsCalls,
-          listSongsCallsForA,
+          remoteRepository.fetchCatalogCalls,
+          fetchCatalogCallsForA,
           reason: 'no catalog fetch may run on user A\'s behalf under B',
         );
         final summariesForAAfter = await store.readActiveSummaries(
@@ -2091,7 +2094,7 @@ void main() {
       // NOT AuthRetryableFetchException must still take the
       // authorization/expiry path. The fix must not overcorrect and treat
       // ALL AuthExceptions as connectivity.
-      'a genuine (non-retryable) AuthException via listSongs still takes '
+      'a genuine (non-retryable) AuthException via fetchCatalog still takes '
       'the authorization/expiry path',
       () async {
         final controller = SongCatalogController(
@@ -2111,7 +2114,7 @@ void main() {
         expect(establishedContext, isNotNull);
         final establishedHasCachedCatalog = controller.state.hasCachedCatalog;
 
-        remoteRepository.listSongsError = const AuthException(
+        remoteRepository.fetchCatalogError = const AuthException(
           'session expired',
         );
         await controller.refreshCatalog();
@@ -2170,10 +2173,10 @@ void main() {
     );
 
     test(
-      // Task 2.2 (F-F #2): the listSongs() authorization-failure catch
+      // Task 2.2 (F-F #2): the fetchCatalog() authorization-failure catch
       // branch used to clearContext: true unconditionally. Fails against
       // old code (context becomes null).
-      'listSongs authorization failure preserves context and cached '
+      'fetchCatalog authorization failure preserves context and cached '
       'catalog visibility',
       () async {
         final controller = SongCatalogController(
@@ -2193,7 +2196,7 @@ void main() {
         expect(establishedContext, isNotNull);
         final establishedHasCachedCatalog = controller.state.hasCachedCatalog;
 
-        remoteRepository.listSongsError = const AuthApiException(
+        remoteRepository.fetchCatalogError = const AuthApiException(
           'unauthorized',
           statusCode: '401',
         );
@@ -2239,7 +2242,7 @@ void main() {
         'a failed refresh records the failure breadcrumb, not the success one',
         () async {
           final recorder = _RecordingObservability();
-          remoteRepository.listSongsError = Exception('boom');
+          remoteRepository.fetchCatalogError = Exception('boom');
           final controller = SongCatalogController(
             onImplausibleEmptySnapshot:
                 ({required userId, required organizationId}) async {},
@@ -2267,6 +2270,195 @@ void main() {
     });
   });
 
+  group('SongCatalogController paged catalog stream (S5a)', () {
+    late SongCatalogDatabase database;
+    late _ReplaceCountingSongCatalogStore store;
+    late LocalDataLifecycle lifecycle;
+    late _RecordingObservability recorder;
+
+    setUp(() {
+      database = SongCatalogDatabase.inMemory();
+      store = _ReplaceCountingSongCatalogStore(database);
+      recorder = _RecordingObservability();
+      lifecycle = LocalDataLifecycle(
+        songCatalogStore: store,
+        planningLocalStore: _NoopPlanningLocalStore(),
+        identityStore: _NoopLastKnownIdentityStore(),
+        noteLastKnownIdentity: (_) {},
+        eventsRecorder: _NoopLocalDataEventsRecorder(),
+      );
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    SongCatalogController buildController(
+      SongCatalogRemoteRepository remote, {
+      String organizationId = 'org-1',
+    }) {
+      final controller = SongCatalogController(
+        onImplausibleEmptySnapshot:
+            ({required userId, required organizationId}) async {},
+        store: store,
+        localDataLifecycle: lifecycle,
+        remoteRepository: remote,
+        authSessionReader: () =>
+            const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+        organizationReader: () async => organizationId,
+        sessionVerifier: () async => CatalogSessionStatus.verified,
+        observability: recorder,
+      );
+      addTearDown(controller.dispose);
+      return controller;
+    }
+
+    Future<void> seedCachedAlpha() => store.replaceActiveSnapshot(
+      userId: 'user-1',
+      organizationId: 'org-1',
+      summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
+      sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
+      refreshedAt: DateTime.utc(2026, 3, 25, 12),
+    );
+
+    // C1
+    test('a failure mid-stream fails the refresh and keeps the stored '
+        'snapshot unchanged', () async {
+      await seedCachedAlpha();
+      store.replaceCalls = 0;
+      final remote = _PagedSongRepository(
+        rows: _catalogRows(3),
+        pageSize: 2,
+        failOnFetch: 2,
+      );
+      final controller = buildController(remote);
+
+      await controller.refreshCatalog();
+
+      expect(remote.pageFetches, 2);
+      expect(controller.state.refreshStatus, CatalogRefreshStatus.failed);
+      expect(store.replaceCalls, 0);
+      expect(
+        await store.readActiveSummaries(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        const [SongSummary(id: 'song-1', title: 'Alpha')],
+      );
+    });
+
+    // C2
+    test('a refresh makes one fetchCatalog call inside the single '
+        'fetch_catalog span and stores the whole stream', () async {
+      final remote = _PagedSongRepository(rows: _catalogRows(3), pageSize: 2);
+      final controller = buildController(remote);
+
+      await controller.refreshCatalog();
+
+      expect(remote.fetchCatalogCalls, 1);
+      expect(recorder.spanNames, contains('song_catalog.fetch_catalog'));
+      expect(recorder.spanNames, isNot(contains('song_catalog.list_songs')));
+      expect(recorder.spanNames, isNot(contains('song_catalog.fetch_sources')));
+      expect(controller.state.refreshStatus, CatalogRefreshStatus.idle);
+      expect(store.replaceCalls, 1);
+      expect(
+        (await store.readActiveSummaries(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        )).map((song) => song.id),
+        [for (final row in _catalogRows(3)) row['id']],
+      );
+    });
+
+    // C3
+    test('a generation change between pages stops the stream, writes '
+        'nothing and records no failure breadcrumb', () async {
+      late SongCatalogController controller;
+      final remote = _PagedSongRepository(
+        rows: _catalogRows(4),
+        pageSize: 2,
+        afterFetch: (fetchNumber) {
+          if (fetchNumber == 1) {
+            controller.handleSessionExpired();
+          }
+        },
+      );
+      controller = buildController(remote);
+
+      await controller.refreshCatalog();
+
+      expect(remote.pageFetches, 1);
+      expect(store.replaceCalls, 0);
+      expect(recorder.captured, isEmpty);
+      expect(recorder.breadcrumbMessages, ['song_catalog.refresh started']);
+      expect(
+        controller.state.refreshStatus,
+        isNot(CatalogRefreshStatus.failed),
+      );
+    });
+
+    // C5
+    test('fetchCatalog is called with the active organization id', () async {
+      final remote = _FakeSongRepository();
+      final controller = buildController(remote, organizationId: 'org-7');
+
+      await controller.refreshCatalog();
+
+      expect(remote.organizationIds, ['org-7']);
+    });
+
+    // C6
+    test('a paging contract violation is reported without row data and '
+        'leaves the refresh failed', () async {
+      final remote = _FakeSongRepository()
+        ..fetchCatalogError = const PagedReadContractException(
+          stream: 'songs',
+          pageIndex: 3,
+          reason: PagedReadContractViolation.keyNotIncreasing,
+        );
+      final controller = buildController(remote);
+
+      await controller.refreshCatalog();
+
+      expect(controller.state.refreshStatus, CatalogRefreshStatus.failed);
+      expect(recorder.captured, hasLength(1));
+      expect(recorder.captured.single.error, isA<PagedReadContractException>());
+      expect(recorder.captured.single.extra, {
+        'stream': 'songs',
+        'reason': 'keyNotIncreasing',
+        'pageIndex': 3,
+      });
+    });
+
+    test('a page-over-limit violation is reported with its reason', () async {
+      final remote = _FakeSongRepository()
+        ..fetchCatalogError = const PagedReadContractException(
+          stream: 'songs',
+          pageIndex: 0,
+          reason: PagedReadContractViolation.pageOverLimit,
+        );
+      final controller = buildController(remote);
+
+      await controller.refreshCatalog();
+
+      expect(
+        recorder.captured.single.extra,
+        containsPair('reason', 'pageOverLimit'),
+      );
+    });
+
+    // C6 (abort half)
+    test('an aborted read is not reported', () async {
+      final remote = _FakeSongRepository()
+        ..fetchCatalogError = const PagedReadAbortedException(stream: 'songs');
+      final controller = buildController(remote);
+
+      await controller.refreshCatalog();
+
+      expect(recorder.captured, isEmpty);
+    });
+  });
+
   group('SongCatalogController implausible-empty snapshot handling (D4, '
       'local-data-durability-contract)', () {
     late SongCatalogDatabase database;
@@ -2291,46 +2483,52 @@ void main() {
       await database.close();
     });
 
-    test('an empty listSongs response against a non-empty cached snapshot is '
-        'rejected as implausible and leaves the cache untouched', () async {
-      await store.replaceActiveSnapshot(
-        userId: 'user-1',
-        organizationId: 'org-1',
-        summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
-        sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
-        refreshedAt: DateTime.utc(2026, 3, 25, 12),
-      );
-      remoteRepository.songs = const [];
-
-      final controller = SongCatalogController(
-        store: store,
-        localDataLifecycle: lifecycle,
-        remoteRepository: remoteRepository,
-        authSessionReader: () =>
-            const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
-        organizationReader: () async => 'org-1',
-        sessionVerifier: () async => CatalogSessionStatus.verified,
-        onImplausibleEmptySnapshot:
-            ({required userId, required organizationId}) async {},
-      );
-
-      await controller.refreshCatalog();
-
-      expect(
-        controller.state.refreshStatus,
-        CatalogRefreshStatus.implausibleEmpty,
-      );
-      expect(controller.state.hasCachedCatalog, isTrue);
-      expect(controller.state.connectionStatus, CatalogConnectionStatus.online);
-      expect(controller.state.sessionStatus, CatalogSessionStatus.verified);
-      expect(
-        await store.readActiveSummaries(
+    test(
+      'an empty fetchCatalog response against a non-empty cached snapshot is '
+      'rejected as implausible and leaves the cache untouched',
+      () async {
+        await store.replaceActiveSnapshot(
           userId: 'user-1',
           organizationId: 'org-1',
-        ),
-        const [SongSummary(id: 'song-1', title: 'Alpha')],
-      );
-    });
+          summaries: const [SongSummary(id: 'song-1', title: 'Alpha')],
+          sources: const [SongSource(id: 'song-1', source: '{title: Alpha}')],
+          refreshedAt: DateTime.utc(2026, 3, 25, 12),
+        );
+        remoteRepository.songs = const [];
+
+        final controller = SongCatalogController(
+          store: store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: remoteRepository,
+          authSessionReader: () =>
+              const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+          organizationReader: () async => 'org-1',
+          sessionVerifier: () async => CatalogSessionStatus.verified,
+          onImplausibleEmptySnapshot:
+              ({required userId, required organizationId}) async {},
+        );
+
+        await controller.refreshCatalog();
+
+        expect(
+          controller.state.refreshStatus,
+          CatalogRefreshStatus.implausibleEmpty,
+        );
+        expect(controller.state.hasCachedCatalog, isTrue);
+        expect(
+          controller.state.connectionStatus,
+          CatalogConnectionStatus.online,
+        );
+        expect(controller.state.sessionStatus, CatalogSessionStatus.verified);
+        expect(
+          await store.readActiveSummaries(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          const [SongSummary(id: 'song-1', title: 'Alpha')],
+        );
+      },
+    );
 
     test('invokes the implausible-empty callback with the refreshed identity '
         'on rejection', () async {
@@ -2437,6 +2635,66 @@ void main() {
       );
     });
 
+    // C4 (PG4): the fetch is scoped to the active organization, so a stored
+    // snapshot that still holds other organizations' songs meets an empty
+    // scoped result.
+    test('a stored snapshot with foreign songs and an empty scoped result is '
+        'kept once, then replaced by the second empty refresh', () async {
+      await store.replaceActiveSnapshot(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        summaries: const [
+          SongSummary(id: 'foreign-1', title: 'Foreign One'),
+          SongSummary(id: 'foreign-2', title: 'Foreign Two'),
+        ],
+        sources: const [
+          SongSource(id: 'foreign-1', source: '{title: Foreign One}'),
+          SongSource(id: 'foreign-2', source: '{title: Foreign Two}'),
+        ],
+        refreshedAt: DateTime.utc(2026, 3, 25, 12),
+      );
+      remoteRepository.songs = const [];
+
+      final controller = SongCatalogController(
+        store: store,
+        localDataLifecycle: lifecycle,
+        remoteRepository: remoteRepository,
+        authSessionReader: () =>
+            const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+        organizationReader: () async => 'org-1',
+        sessionVerifier: () async => CatalogSessionStatus.verified,
+        onImplausibleEmptySnapshot:
+            ({required userId, required organizationId}) async {},
+      );
+
+      await controller.refreshCatalog();
+
+      expect(remoteRepository.organizationIds, ['org-1']);
+      expect(
+        controller.state.refreshStatus,
+        CatalogRefreshStatus.implausibleEmpty,
+      );
+      expect(
+        (await store.readActiveSummaries(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        )).map((song) => song.id),
+        ['foreign-1', 'foreign-2'],
+      );
+
+      await controller.refreshCatalog();
+
+      expect(remoteRepository.organizationIds, ['org-1', 'org-1']);
+      expect(controller.state.refreshStatus, CatalogRefreshStatus.idle);
+      expect(
+        await store.readActiveSummaries(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        isEmpty,
+      );
+    });
+
     test('a genuinely empty catalog (never cached non-empty) refreshes '
         'normally on the very first response', () async {
       remoteRepository.songs = const [];
@@ -2462,21 +2720,121 @@ void main() {
   });
 }
 
-class _ConfigurableSongRepository implements SongRepository {
+class _ConfigurableSongRepository implements SongCatalogRemoteRepository {
   List<SongSummary> songs = const [SongSummary(id: 'song-1', title: 'Alpha')];
   Map<String, SongSource> sources = const {
     'song-1': SongSource(id: 'song-1', source: '{title: Alpha}'),
   };
-  int listSongsCalls = 0;
+  int fetchCatalogCalls = 0;
+  final List<String> organizationIds = [];
 
   @override
-  Future<List<SongSummary>> listSongs() async {
-    listSongsCalls += 1;
-    return songs;
+  Future<SongCatalogPayload> fetchCatalog({
+    required String organizationId,
+    bool Function()? shouldContinue,
+  }) async {
+    fetchCatalogCalls += 1;
+    organizationIds.add(organizationId);
+    return SongCatalogPayload(
+      summaries: songs,
+      sources: [for (final song in songs) sources[song.id]!],
+    );
   }
+}
+
+class _ReplaceCountingSongCatalogStore extends DriftSongCatalogStore {
+  _ReplaceCountingSongCatalogStore(super.database);
+
+  int replaceCalls = 0;
 
   @override
-  Future<SongSource> getSongSource(String id) async => sources[id]!;
+  Future<void> replaceActiveSnapshot({
+    required String userId,
+    required String organizationId,
+    required List<SongSummary> summaries,
+    required List<SongSource> sources,
+    required DateTime refreshedAt,
+  }) {
+    replaceCalls += 1;
+    return super.replaceActiveSnapshot(
+      userId: userId,
+      organizationId: organizationId,
+      summaries: summaries,
+      sources: sources,
+      refreshedAt: refreshedAt,
+    );
+  }
+}
+
+List<Map<String, dynamic>> _catalogRows(int count) => [
+  for (var i = 0; i < count; i++)
+    {
+      'id': '00000000-0000-0000-0000-${i.toString().padLeft(12, '0')}',
+      'slug': 'song-$i',
+      'title': 'Song $i',
+      'version': 1,
+      'chordpro_source': '{title: Song $i}',
+    },
+];
+
+/// Serves [rows] through the real [readAllKeysetPages], so staleness and
+/// contract handling are exercised end to end.
+class _PagedSongRepository implements SongCatalogRemoteRepository {
+  _PagedSongRepository({
+    required this.rows,
+    required this.pageSize,
+    this.failOnFetch,
+    this.afterFetch,
+  });
+
+  final List<Map<String, dynamic>> rows;
+  final int pageSize;
+
+  /// 1-based fetch number that throws instead of returning a page.
+  final int? failOnFetch;
+
+  /// Called with the 1-based fetch number right after a page was read.
+  final void Function(int fetchNumber)? afterFetch;
+
+  int fetchCatalogCalls = 0;
+  int pageFetches = 0;
+
+  @override
+  Future<SongCatalogPayload> fetchCatalog({
+    required String organizationId,
+    bool Function()? shouldContinue,
+  }) async {
+    fetchCatalogCalls += 1;
+    final read = await readAllKeysetPages<Map<String, dynamic>, String>(
+      fetchPage: ({required after, required limit}) async {
+        pageFetches += 1;
+        if (pageFetches == failOnFetch) {
+          throw StateError('page $pageFetches failed');
+        }
+        final page = keysetPage(rows, after: after, limit: limit);
+        afterFetch?.call(pageFetches);
+        return page;
+      },
+      keyOf: (row) => row['id'] as String,
+      compareKeys: compareUuidKeys,
+      pageSize: pageSize,
+      shouldContinue: shouldContinue,
+      stream: 'songs',
+    );
+    return SongCatalogPayload(
+      summaries: [
+        for (final row in read)
+          SongSummary(id: row['id'] as String, title: row['title'] as String),
+      ],
+      sources: [
+        for (final row in read)
+          SongSource(
+            id: row['id'] as String,
+            source: row['chordpro_source'] as String,
+          ),
+      ],
+    );
+  }
 }
 
 // I1 (Opus adversarial review of Step 1 diff): a thin DriftSongCatalogStore
@@ -2495,7 +2853,7 @@ class _CallCountingSongCatalogStore extends DriftSongCatalogStore {
   }
 }
 
-class _FakeSongRepository implements SongRepository {
+class _FakeSongRepository implements SongCatalogRemoteRepository {
   _FakeSongRepository()
     : _songs = const [
         SongSummary(id: 'song-1', title: 'Alpha'),
@@ -2509,35 +2867,42 @@ class _FakeSongRepository implements SongRepository {
   final List<SongSummary> _songs;
   final Map<String, SongSource> _sources;
 
-  int listSongsCalls = 0;
-  Object? listSongsError;
-  final Map<String, Object> sourceErrors = <String, Object>{};
+  int fetchCatalogCalls = 0;
+  Object? fetchCatalogError;
+  final List<String> organizationIds = [];
 
   @override
-  Future<List<SongSummary>> listSongs() async {
-    listSongsCalls += 1;
-    final error = listSongsError;
+  Future<SongCatalogPayload> fetchCatalog({
+    required String organizationId,
+    bool Function()? shouldContinue,
+  }) async {
+    fetchCatalogCalls += 1;
+    organizationIds.add(organizationId);
+    final error = fetchCatalogError;
     if (error != null) {
       throw error;
     }
 
-    return _songs;
-  }
-
-  @override
-  Future<SongSource> getSongSource(String id) async {
-    final error = sourceErrors[id];
-    if (error != null) {
-      throw error;
-    }
-
-    return _sources[id]!;
+    return SongCatalogPayload(
+      summaries: _songs,
+      sources: [for (final song in _songs) _sources[song.id]!],
+    );
   }
 }
 
 class _RecordingObservability extends NoopObservability {
   final List<String> spanNames = [];
   final List<String> breadcrumbMessages = [];
+  final List<({Object error, Map<String, Object?>? extra})> captured = [];
+
+  @override
+  void captureException(
+    Object error,
+    StackTrace stackTrace, {
+    Map<String, Object?>? extra,
+  }) {
+    captured.add((error: error, extra: extra));
+  }
 
   @override
   Future<T> runInSpan<T>(
@@ -2582,63 +2947,57 @@ class _MutableOrganizationReader {
   }
 }
 
-class _DelayedSongRepository implements SongRepository {
-  final Completer<void> listSongsStarted = Completer<void>();
-  final Completer<List<SongSummary>> _songsCompleter =
-      Completer<List<SongSummary>>();
-  Map<String, SongSource> _sources = const {};
-  int listSongsCalls = 0;
+class _DelayedSongRepository implements SongCatalogRemoteRepository {
+  final Completer<void> fetchCatalogStarted = Completer<void>();
+  final Completer<SongCatalogPayload> _payloadCompleter =
+      Completer<SongCatalogPayload>();
+  int fetchCatalogCalls = 0;
 
   @override
-  Future<List<SongSummary>> listSongs() async {
-    listSongsCalls += 1;
-    if (!listSongsStarted.isCompleted) {
-      listSongsStarted.complete();
+  Future<SongCatalogPayload> fetchCatalog({
+    required String organizationId,
+    bool Function()? shouldContinue,
+  }) async {
+    fetchCatalogCalls += 1;
+    if (!fetchCatalogStarted.isCompleted) {
+      fetchCatalogStarted.complete();
     }
 
-    return _songsCompleter.future;
-  }
-
-  @override
-  Future<SongSource> getSongSource(String id) async {
-    final songs = await _songsCompleter.future;
-    assert(songs.any((song) => song.id == id));
-    return _sources[id]!;
+    return _payloadCompleter.future;
   }
 
   void completeWith(List<SongSummary> songs, Map<String, SongSource> sources) {
-    _sources = sources;
-    if (!_songsCompleter.isCompleted) {
-      _songsCompleter.complete(songs);
+    if (!_payloadCompleter.isCompleted) {
+      _payloadCompleter.complete(
+        SongCatalogPayload(
+          summaries: songs,
+          sources: [for (final song in songs) sources[song.id]!],
+        ),
+      );
     }
   }
 
   void failWith(Object error) {
-    if (!_songsCompleter.isCompleted) {
-      _songsCompleter.completeError(error);
+    if (!_payloadCompleter.isCompleted) {
+      _payloadCompleter.completeError(error);
     }
   }
 }
 
-class _MultiPhaseSongRepository implements SongRepository {
-  int listSongsCalls = 0;
-  final List<Completer<List<SongSummary>>> _songRequests =
-      <Completer<List<SongSummary>>>[];
-  Map<String, SongSource> _sources = const {
-    'song-1': SongSource(id: 'song-1', source: '{title: Alpha}'),
-  };
+class _MultiPhaseSongRepository implements SongCatalogRemoteRepository {
+  int fetchCatalogCalls = 0;
+  final List<Completer<SongCatalogPayload>> _requests =
+      <Completer<SongCatalogPayload>>[];
 
   @override
-  Future<List<SongSummary>> listSongs() {
-    listSongsCalls += 1;
-    final completer = Completer<List<SongSummary>>();
-    _songRequests.add(completer);
+  Future<SongCatalogPayload> fetchCatalog({
+    required String organizationId,
+    bool Function()? shouldContinue,
+  }) {
+    fetchCatalogCalls += 1;
+    final completer = Completer<SongCatalogPayload>();
+    _requests.add(completer);
     return completer.future;
-  }
-
-  @override
-  Future<SongSource> getSongSource(String id) async {
-    return _sources[id]!;
   }
 
   void completeRequest(
@@ -2648,10 +3007,14 @@ class _MultiPhaseSongRepository implements SongRepository {
       'song-1': SongSource(id: 'song-1', source: '{title: Alpha}'),
     },
   }) {
-    _sources = sources;
-    final completer = _songRequests[requestIndex];
+    final completer = _requests[requestIndex];
     if (!completer.isCompleted) {
-      completer.complete(songs);
+      completer.complete(
+        SongCatalogPayload(
+          summaries: songs,
+          sources: [for (final song in songs) sources[song.id]!],
+        ),
+      );
     }
   }
 }

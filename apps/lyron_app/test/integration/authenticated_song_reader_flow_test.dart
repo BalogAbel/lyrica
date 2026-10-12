@@ -8,7 +8,6 @@ import 'package:lyron_app/src/application/song_library/catalog_session_status.da
 import 'package:lyron_app/src/application/song_library/song_catalog_controller.dart';
 import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
-import 'package:lyron_app/src/domain/song/song_not_found_exception.dart';
 import 'package:lyron_app/src/infrastructure/config/supabase_config.dart';
 import 'package:lyron_app/src/infrastructure/song_library/local_first_song_repository.dart';
 import 'package:lyron_app/src/infrastructure/song_library/supabase_song_repository.dart';
@@ -87,6 +86,8 @@ const _supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
 const _serviceRoleKey = String.fromEnvironment('SERVICE_ROLE_KEY');
 const _demoOrganizationId = '11111111-1111-1111-1111-111111111111';
 const _manualRefreshSongId = '33333333-3333-3333-3333-333333333335';
+const _foreignOrganizationId = '11111111-1111-1111-1111-111111111112';
+const _foreignSongId = '33333333-3333-3333-3333-333333333336';
 
 void main() {
   late HttpOverrides? originalHttpOverrides;
@@ -121,7 +122,10 @@ void main() {
       expect(authResponse.session, isNotNull);
       expect(client.auth.currentSession, isNotNull);
 
-      final songs = await repository.listSongs();
+      final payload = await repository.fetchCatalog(
+        organizationId: _demoOrganizationId,
+      );
+      final songs = payload.summaries;
       expect(
         songs.map((song) => song.title).toList(growable: false),
         unorderedEquals(const [
@@ -131,17 +135,57 @@ void main() {
         ]),
       );
       expect(songs, hasLength(3));
+      expect(payload.sources, hasLength(3));
 
-      final source = await repository.getSongSource(
-        '33333333-3333-3333-3333-333333333335',
+      final source = payload.sources.singleWhere(
+        (source) => source.id == _manualRefreshSongId,
       );
-      expect(source.id, '33333333-3333-3333-3333-333333333335');
       expect(source.source, contains('{title:Egy út}'));
       expect(source.source, contains('{subtitle:One Way}'));
 
-      await expectLater(
-        () => repository.getSongSource('33333333-3333-3333-3333-333333333336'),
-        throwsA(isA<SongNotFoundException>()),
+      // Cross-organization isolation: the other organization's song never
+      // appears, neither in the scoped catalog nor when asking for the
+      // foreign organization directly (RLS hides it from this user).
+      expect(songs.map((song) => song.id), isNot(contains(_foreignSongId)));
+      final foreign = await repository.fetchCatalog(
+        organizationId: _foreignOrganizationId,
+      );
+      expect(foreign.summaries, isEmpty);
+      expect(foreign.sources, isEmpty);
+    },
+    skip: _supabaseUrl.isEmpty || _supabaseAnonKey.isEmpty,
+  );
+
+  test(
+    'R1 a page size of 1 reads the same catalog as the default page size',
+    () async {
+      final config = SupabaseConfig.fromEnvironment();
+      final client = SupabaseClient(config.url, config.anonKey);
+
+      addTearDown(() async {
+        await client.auth.signOut();
+        await client.dispose();
+      });
+
+      await _signInDemoUser(client);
+
+      final paged = await SupabaseSongRepository(
+        client,
+        catalogPageSize: 1,
+      ).fetchCatalog(organizationId: _demoOrganizationId);
+      final standard = await SupabaseSongRepository(
+        client,
+      ).fetchCatalog(organizationId: _demoOrganizationId);
+
+      expect(paged.summaries, hasLength(3));
+      expect(paged.summaries, standard.summaries);
+      expect(
+        paged.sources.map((source) => (source.id, source.source)),
+        standard.sources.map((source) => (source.id, source.source)),
+      );
+      expect(
+        paged.summaries.map((song) => song.id),
+        isNot(contains(_foreignSongId)),
       );
     },
     skip: _supabaseUrl.isEmpty || _supabaseAnonKey.isEmpty,

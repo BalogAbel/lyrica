@@ -1,8 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:lyron_app/src/domain/song/song_access_denied_exception.dart';
-import 'package:lyron_app/src/domain/song/song_not_found_exception.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/infrastructure/song_library/supabase_song_repository.dart';
 import 'package:lyron_app/src/shared/keyset_paging.dart';
@@ -12,67 +10,7 @@ import '../../support/keyset_pages.dart';
 
 void main() {
   catalogTests();
-
-  test('lists minimal song summaries from the backend rows', () async {
-    final repository = SupabaseSongRepository.testing(
-      listSongsRows: () async => [
-        {'id': 'song-1', 'title': 'A forrásnál'},
-        {'id': 'song-2', 'title': 'A mi Istenünk (Leborulok előtted)'},
-        {'id': 'song-3', 'title': 'Egy út'},
-      ],
-      getSongRow: (id) async => {
-        'id': id,
-        'chordpro_source': '{title:Egy út}\n',
-      },
-    );
-
-    final songs = await repository.listSongs();
-
-    expect(songs, hasLength(3));
-    expect(songs.first, const SongSummary(id: 'song-1', title: 'A forrásnál'));
-  });
-
-  test('returns raw chordpro source for a song id', () async {
-    final repository = SupabaseSongRepository.testing(
-      listSongsRows: () async => const [],
-      getSongRow: (id) async => {
-        'id': id,
-        'chordpro_source': '{title:Egy út}\n{key:B}',
-      },
-    );
-
-    final source = await repository.getSongSource('song-3');
-
-    expect(source.id, 'song-3');
-    expect(source.source, contains('{title:'));
-  });
-
-  test('maps a missing song row to SongNotFoundException', () async {
-    final repository = SupabaseSongRepository.testing(
-      listSongsRows: () async => const [],
-      getSongRow: (id) async => null,
-    );
-
-    expect(
-      () => repository.getSongSource('missing'),
-      throwsA(isA<SongNotFoundException>()),
-    );
-  });
-
-  test('maps backend access denial to SongAccessDeniedException', () async {
-    final repository = SupabaseSongRepository.testing(
-      listSongsRows: () async => const [],
-      getSongRow: (id) async => throw _FakeAccessDeniedException(),
-    );
-
-    expect(
-      () => repository.getSongSource('hidden-song'),
-      throwsA(isA<SongAccessDeniedException>()),
-    );
-  });
 }
-
-class _FakeAccessDeniedException implements Exception {}
 
 const _org = 'org-1';
 
@@ -107,8 +45,6 @@ SupabaseSongRepository _catalogRepository(
 }) {
   var index = 0;
   return SupabaseSongRepository.testing(
-    listSongsRows: () async => const [],
-    getSongRow: (id) async => null,
     catalogPageSize: pageSize,
     fetchCatalogPage:
         ({required organizationId, required after, required limit}) async {
@@ -305,15 +241,18 @@ void catalogTests() {
       expect(calls, isEmpty);
     });
 
-    test('a testing repository without a page fetcher fails loudly', () async {
-      final repository = SupabaseSongRepository.testing(
-        listSongsRows: () async => const [],
-        getSongRow: (id) async => null,
+    test('a PostgrestException from a page propagates unchanged', () async {
+      const failure = PostgrestException(
+        message: 'permission denied',
+        code: '42501',
       );
+      final repository = _catalogRepository([
+        _songRow(a, 'A'),
+      ], onPage: (index) async => throw failure);
 
       await expectLater(
         repository.fetchCatalog(organizationId: _org),
-        throwsA(isA<StateError>()),
+        throwsA(same(failure)),
       );
     });
   });

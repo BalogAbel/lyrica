@@ -41,6 +41,7 @@ import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../support/drift_test_setup.dart';
+import '../support/keyset_pages.dart';
 
 void main() {
   suppressDriftMultipleDatabaseWarnings();
@@ -373,19 +374,21 @@ void main() {
       final songStore = DriftSongCatalogStore(songDatabase);
       final foregroundState = _TestAppForegroundState();
       final remoteRepository = SupabaseSongRepository.testing(
-        listSongsRows: () async => const [
-          {
-            'id': 'song-1',
-            'slug': 'cached-song',
-            'title': 'Cached Song',
-            'version': 1,
-          },
-        ],
-        getSongRow: (id) async => const {
-          'id': 'song-1',
-          'slug': 'cached-song',
-          'chordpro_source': '{title: Cached Song}',
-        },
+        fetchCatalogPage:
+            ({required organizationId, required after, required limit}) async =>
+                keysetPage(
+                  const [
+                    {
+                      'id': 'song-1',
+                      'slug': 'cached-song',
+                      'title': 'Cached Song',
+                      'version': 1,
+                      'chordpro_source': '{title: Cached Song}',
+                    },
+                  ],
+                  after: after,
+                  limit: limit,
+                ),
       );
 
       await songStore.replaceActiveSnapshot(
@@ -479,19 +482,21 @@ void main() {
       final songStore = DriftSongCatalogStore(songDatabase);
       final foregroundState = _TestAppForegroundState();
       final remoteRepository = SupabaseSongRepository.testing(
-        listSongsRows: () async => const [
-          {
-            'id': 'song-1',
-            'slug': 'cached-song',
-            'title': 'Cached Song',
-            'version': 1,
-          },
-        ],
-        getSongRow: (id) async => const {
-          'id': 'song-1',
-          'slug': 'cached-song',
-          'chordpro_source': '{title: Cached Song}',
-        },
+        fetchCatalogPage:
+            ({required organizationId, required after, required limit}) async =>
+                keysetPage(
+                  const [
+                    {
+                      'id': 'song-1',
+                      'slug': 'cached-song',
+                      'title': 'Cached Song',
+                      'version': 1,
+                      'chordpro_source': '{title: Cached Song}',
+                    },
+                  ],
+                  after: after,
+                  limit: limit,
+                ),
       );
 
       await songStore.replaceActiveSnapshot(

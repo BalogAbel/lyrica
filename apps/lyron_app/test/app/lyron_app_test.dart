@@ -31,6 +31,16 @@ import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 import '../support/drift_test_setup.dart';
+import '../support/keyset_pages.dart';
+
+const _egyUtRows = <Map<String, dynamic>>[
+  {
+    'id': 'song-1',
+    'slug': 'egy-ut',
+    'title': 'Egy út',
+    'chordpro_source': '{title:Egy út}\n',
+  },
+];
 
 void main() {
   suppressDriftMultipleDatabaseWarnings();
@@ -101,13 +111,13 @@ void main() {
           songCatalogStoreProvider.overrideWithValue(store),
           supabaseSongRepositoryProvider.overrideWithValue(
             SupabaseSongRepository.testing(
-              listSongsRows: () async => [
-                {'id': 'song-1', 'slug': 'egy-ut', 'title': 'Egy út'},
-              ],
-              getSongRow: (id) async => {
-                'id': id,
-                'chordpro_source': '{title:Egy út}\n',
-              },
+              fetchCatalogPage:
+                  ({
+                    required organizationId,
+                    required after,
+                    required limit,
+                  }) async =>
+                      keysetPage(_egyUtRows, after: after, limit: limit),
             ),
           ),
           activeOrganizationReaderProvider.overrideWithValue(
@@ -174,13 +184,13 @@ void main() {
             songCatalogStoreProvider.overrideWithValue(store),
             supabaseSongRepositoryProvider.overrideWithValue(
               SupabaseSongRepository.testing(
-                listSongsRows: () async => [
-                  {'id': 'song-1', 'slug': 'egy-ut', 'title': 'Egy út'},
-                ],
-                getSongRow: (id) async => {
-                  'id': id,
-                  'chordpro_source': '{title:Egy út}\n',
-                },
+                fetchCatalogPage:
+                    ({
+                      required organizationId,
+                      required after,
+                      required limit,
+                    }) async =>
+                        keysetPage(_egyUtRows, after: after, limit: limit),
               ),
             ),
             activeOrganizationReaderProvider.overrideWithValue(
@@ -268,8 +278,12 @@ void main() {
             ),
             supabaseSongRepositoryProvider.overrideWithValue(
               SupabaseSongRepository.testing(
-                listSongsRows: () async => [],
-                getSongRow: (id) async => null,
+                fetchCatalogPage:
+                    ({
+                      required organizationId,
+                      required after,
+                      required limit,
+                    }) async => const [],
               ),
             ),
             catalogSessionVerifierProvider.overrideWithValue(

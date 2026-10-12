@@ -27,6 +27,7 @@ import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.da
 import 'package:lyron_app/src/application/song_library/chordpro_import_service.dart';
 import 'package:lyron_app/src/application/song_library/chordpro_import_types.dart';
 import 'package:lyron_app/src/application/song_library/song_catalog_controller.dart';
+import 'package:lyron_app/src/application/song_library/song_catalog_remote_repository.dart';
 import 'package:lyron_app/src/application/song_library/song_library_service.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_controller.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
@@ -37,7 +38,6 @@ import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 import 'package:lyron_app/src/domain/core/capability.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
-import 'package:lyron_app/src/domain/song/song_repository.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
@@ -1714,24 +1714,24 @@ class _NoopPlanningLocalStore implements PlanningLocalStore {
   }) async {}
 }
 
-class _CountingSongRepository implements SongRepository {
-  int listSongsCalls = 0;
+class _CountingSongRepository implements SongCatalogRemoteRepository {
+  int fetchCatalogCalls = 0;
 
   @override
-  Future<SongSource> getSongSource(String id) async {
-    return SongSource(id: id, source: '{title: $id}');
-  }
-
-  @override
-  Future<List<SongSummary>> listSongs() async {
-    listSongsCalls += 1;
-    return const [
-      SongSummary(
-        id: 'song-1',
-        slug: 'refreshed-song',
-        title: 'Refreshed Song',
-      ),
-    ];
+  Future<SongCatalogPayload> fetchCatalog({
+    required String organizationId,
+    bool Function()? shouldContinue,
+  }) async {
+    fetchCatalogCalls += 1;
+    const song = SongSummary(
+      id: 'song-1',
+      slug: 'refreshed-song',
+      title: 'Refreshed Song',
+    );
+    return SongCatalogPayload(
+      summaries: const [song],
+      sources: [SongSource(id: song.id, source: '{title: ${song.id}}')],
+    );
   }
 }
 
