@@ -137,6 +137,11 @@ Files: `lib/src/presentation/account/account_screen.dart`,
     option (a) stays trigger-gated;
   - `2026-10-09-sign-out-guard-residuals.md`: remove R8 and R15, extend the
     "closed since" note.
+- `docs/specs/2026-10-07-sign-out-pending-work-guard.md`: it still says the
+  SO7 import refusal and a throwing confirmation give `cancelled` (enum list,
+  SO3, SO7, AC6). Add a status note under the title pointing at FB6/FB7 of
+  the S6a spec and amend those four statements: the import refusal gives
+  `blockedByImport`, a throwing confirmation gives `failed`.
 - `docs/architecture/architecture.md`: next to the stored capability set,
   record that `IfCapability` fails open without a stored set and that
   failing closed was rejected (it would take offline editing from legitimate
