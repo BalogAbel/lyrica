@@ -64,3 +64,4 @@ The domain model remains expressive internally, while the UI presents guided act
 - The MVP favors stable, inspectable workflows over automation-heavy collaboration features.
 - Realtime or subscription-driven freshness may be used as an online optimization, but UI state should still flow through repository-owned local projections and backend-authorized refresh paths.
 - Explicit sign-out must remove authenticated cached song and planning access instead of leaving a device-global local archive.
+- UI copy is English for now; localization is a later product decision (decided 2026-10-12). Song content (titles, lyrics) is user data and is never translated.
