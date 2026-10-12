@@ -358,6 +358,29 @@ void main() {
       }
     });
   });
+
+  test(
+    'a malformed base directive line holding other text is never rewritten',
+    () {
+      // Each source maps to the malformed line that must survive verbatim.
+      const sources = {
+        '{title: T}\n{transpose: 1} [C]la {x}\n[C]Line\n':
+            '{transpose: 1} [C]la {x}\n',
+        '{transpose: 1}\r[C]la\r{capo: 3}': '{transpose: 1}\r[C]la\r{capo: 3}',
+      };
+      for (final MapEntry(key: source, value: malformed) in sources.entries) {
+        final controller = SongEditorController(source: source)..transposeUp();
+
+        expect(controller.state.source, contains(malformed), reason: source);
+        expect(controller.state.parsedSong.baseTranspose, 1, reason: source);
+
+        controller.transposeUp();
+
+        expect(controller.state.parsedSong.baseTranspose, 2, reason: source);
+        expect(controller.state.source, contains(malformed), reason: source);
+      }
+    },
+  );
 }
 
 /// Splits [source] into (text, terminator) records using the scanner's line

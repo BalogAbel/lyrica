@@ -118,7 +118,8 @@ String _upsertDirective(
     for (var index = 0; index < scanned.length; index += 1)
       if (scanned[index].kind == ChordproLineKind.directive &&
           scanned[index].directiveName == directiveName &&
-          region.contains(scanned[index]))
+          region.contains(scanned[index]) &&
+          _isSingleDirective(scanned[index]))
         index,
   ];
 
@@ -147,6 +148,15 @@ String _upsertDirective(
     records.insert(insertionIndex, _LineRecord(directive, eol));
   }
   return _joinLineRecords(records);
+}
+
+/// Whether [line] holds one directive and nothing else. A brace inside the
+/// value means other text shares the line (for example a lyric joined to it
+/// by a lone `\r`); such a line is never rewritten or removed, and its
+/// invalid value is already ignored by the parser.
+bool _isSingleDirective(ChordproLine line) {
+  final value = line.directiveValue ?? '';
+  return !value.contains('{') && !value.contains('}');
 }
 
 class _LineRecord {

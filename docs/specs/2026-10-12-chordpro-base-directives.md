@@ -141,7 +141,12 @@ disagree for the same source, because there is one computation.
   leading metadata block, before the first other directive or content line).
   That point is always inside the base region; it is computed from the same
   scanned lines and region, not by re-scanning each line on its own;
-- never remove, rewrite or move a line at or after the boundary.
+- never remove, rewrite or move a line at or after the boundary;
+- never rewrite or remove a malformed line whose directive value holds a
+  brace (for example `{transpose: 1} [C]la {x}`, or a lyric joined to a
+  directive by a lone `\r`): other text shares that line, and the parser
+  already ignores its invalid value. Such a line is not an occurrence; a new
+  directive is inserted instead (found by the T4 review).
 
 **Splice, never re-join.** The write edits the original string in place by
 line: a rewritten line keeps its own line terminator, a removed line takes
