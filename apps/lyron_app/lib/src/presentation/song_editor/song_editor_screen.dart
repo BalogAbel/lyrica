@@ -340,7 +340,14 @@ class _SongEditorScreenState extends ConsumerState<SongEditorScreen> {
       } catch (_) {}
       if (!canEdit) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (context.mounted) context.pop();
+          if (!context.mounted) return;
+          // A direct URL / web refresh / reauth restore can leave the editor
+          // as the only route; pop would throw there.
+          if (context.canPop()) {
+            context.pop();
+          } else {
+            context.go(AppRoutes.home.path);
+          }
         });
         return const SizedBox.shrink();
       }
