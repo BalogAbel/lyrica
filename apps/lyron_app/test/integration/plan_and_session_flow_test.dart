@@ -1,9 +1,11 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lyron_app/src/application/planning/planning_sync_payload.dart';
 import 'package:lyron_app/src/infrastructure/config/supabase_config.dart';
-import 'package:lyron_app/src/infrastructure/planning/supabase_planning_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../support/backend_planning_reads.dart';
 
 const _supabaseUrl = String.fromEnvironment('SUPABASE_URL');
 const _supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
@@ -29,7 +31,6 @@ void main() {
     () async {
       final config = SupabaseConfig.fromEnvironment();
       final client = SupabaseClient(config.url, config.anonKey);
-      final repository = SupabasePlanningRepository(client);
 
       addTearDown(() async {
         await client.auth.signOut();
@@ -38,14 +39,20 @@ void main() {
 
       await _signInDemoUser(client);
 
-      final plans = await repository.listPlans();
-      expect(plans.map((plan) => plan.name).toList(growable: false), const [
-        'Sunday Morning',
-        'Evening Gathering',
-        'Team Rehearsal',
-      ]);
+      final payload = await readBackendPlanningPayload(
+        client,
+        organizationId: _visibleOrganizationId,
+      );
+      expect(
+        payload.plans.map((plan) => plan.name).toList(growable: false),
+        const ['Sunday Morning', 'Evening Gathering', 'Team Rehearsal'],
+      );
 
-      final detail = await repository.getPlanDetail(_multiSessionPlanId);
+      final detail = await readBackendPlanDetail(
+        client,
+        organizationId: _visibleOrganizationId,
+        planId: _multiSessionPlanId,
+      );
       expect(detail.plan.name, 'Team Rehearsal');
       expect(
         detail.sessions.map((session) => session.name).toList(growable: false),
@@ -67,7 +74,6 @@ void main() {
     () async {
       final config = SupabaseConfig.fromEnvironment();
       final client = SupabaseClient(config.url, config.anonKey);
-      final repository = SupabasePlanningRepository(client);
 
       addTearDown(() async {
         await client.auth.signOut();
@@ -76,13 +82,59 @@ void main() {
 
       await _signInDemoUser(client);
 
-      final plans = await repository.listPlans();
-      expect(plans.any((plan) => plan.id == _hiddenPlanId), isFalse);
+      final visible = await readBackendPlanningPayload(
+        client,
+        organizationId: _visibleOrganizationId,
+      );
+      expect(visible.plans.any((plan) => plan.id == _hiddenPlanId), isFalse);
+
+      final hidden = await readBackendPlanningPayload(
+        client,
+        organizationId: _hiddenOrganizationId,
+      );
+      expect(hidden.plans, isEmpty);
+      expect(hidden.sessions, isEmpty);
+      expect(hidden.items, isEmpty);
 
       await expectLater(
-        repository.getPlanDetail(_hiddenPlanId),
+        readBackendPlanDetail(
+          client,
+          organizationId: _hiddenOrganizationId,
+          planId: _hiddenPlanId,
+        ),
         throwsA(isA<StateError>()),
       );
+    },
+    skip: _supabaseUrl.isEmpty || _supabaseAnonKey.isEmpty,
+  );
+
+  test(
+    'R2: a page size of 1 reads the same planning payload as the default',
+    () async {
+      final config = SupabaseConfig.fromEnvironment();
+      final client = SupabaseClient(config.url, config.anonKey);
+
+      addTearDown(() async {
+        await client.auth.signOut();
+        await client.dispose();
+      });
+
+      await _signInDemoUser(client);
+
+      final paged = await readBackendPlanningPayload(
+        client,
+        organizationId: _visibleOrganizationId,
+        pageSize: 1,
+      );
+      final standard = await readBackendPlanningPayload(
+        client,
+        organizationId: _visibleOrganizationId,
+      );
+
+      expect(standard.plans, isNotEmpty);
+      expect(standard.sessions, isNotEmpty);
+      expect(standard.items, isNotEmpty);
+      expect(_signature(paged), _signature(standard));
     },
     skip: _supabaseUrl.isEmpty || _supabaseAnonKey.isEmpty,
   );
@@ -138,6 +190,20 @@ void main() {
 }
 
 class _PassthroughHttpOverrides extends HttpOverrides {}
+
+/// Every field of every row, in order, so two payloads compare by value.
+List<String> _signature(PlanningSyncPayload payload) => [
+  for (final plan in payload.plans)
+    'plan|${plan.id}|${plan.slug}|${plan.name}|${plan.description}|'
+        '${plan.scheduledFor}|${plan.updatedAt}|${plan.version}|'
+        '${plan.contentVersion}',
+  for (final session in payload.sessions)
+    'session|${session.id}|${session.planId}|${session.slug}|'
+        '${session.position}|${session.name}|${session.version}',
+  for (final item in payload.items)
+    'item|${item.id}|${item.planId}|${item.sessionId}|${item.position}|'
+        '${item.songId}|${item.songTitle}',
+];
 
 Future<void> _signInDemoUser(SupabaseClient client) async {
   await client.auth.signOut();

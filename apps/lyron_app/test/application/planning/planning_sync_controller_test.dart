@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/auth/last_known_identity.dart';
+import 'package:lyron_app/src/application/observability/observability.dart';
 import 'package:lyron_app/src/application/planning/drift_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
@@ -16,6 +17,7 @@ import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
+import 'package:lyron_app/src/shared/keyset_paging.dart';
 
 import '../../support/drift_test_setup.dart';
 
@@ -1065,6 +1067,122 @@ void main() {
       },
     );
   });
+
+  group('PlanningSyncController paged pull (PG6-PG8)', () {
+    late PlanningLocalDatabase database;
+    late _CallCountingPlanningLocalStore store;
+    late _PagedPlanningRemoteRefreshRepository remote;
+    late _RecordingObservability recorder;
+    late AppAuthSession? session;
+    late LocalDataLifecycle lifecycle;
+
+    const context = ActivePlanningReadContext(
+      userId: 'user-1',
+      organizationId: 'org-1',
+    );
+
+    setUp(() {
+      database = PlanningLocalDatabase.inMemory();
+      store = _CallCountingPlanningLocalStore(database);
+      remote = _PagedPlanningRemoteRefreshRepository();
+      recorder = _RecordingObservability();
+      session = const AppAuthSession(
+        userId: 'user-1',
+        email: 'demo@lyron.local',
+      );
+      lifecycle = _lifecycleFor(store);
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    PlanningSyncController buildController() {
+      return PlanningSyncController(
+        localStore: () => store,
+        localDataLifecycle: lifecycle,
+        remoteRepository: () => remote,
+        authSessionReader: () => session,
+        observability: recorder,
+      );
+    }
+
+    // PC1
+    test('a page failure fails the refresh and leaves the projection '
+        'unchanged', () async {
+      final controller = buildController();
+      await controller.handleActiveContextChanged(context);
+      expect(store.replaceActiveProjectionCallCount, 1);
+
+      remote.failAtPage = 1;
+      await controller.refreshPlanning();
+
+      expect(controller.state.refreshStatus, PlanningRefreshStatus.failed);
+      expect(controller.state.hasLocalPlanningData, isTrue);
+      expect(store.replaceActiveProjectionCallCount, 1);
+      expect(
+        await store.readPlanSummaries(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        hasLength(1),
+      );
+      expect(recorder.captured, isEmpty);
+    });
+
+    // PC2
+    test('a generation change between pages stops the pull and writes '
+        'nothing', () async {
+      final controller = buildController();
+      await controller.handleActiveContextChanged(context, refresh: false);
+
+      remote.beforePage = (pageIndex) async {
+        if (pageIndex == 1) {
+          session = null;
+          await controller.handleExplicitSignOut();
+        }
+      };
+      await controller.refreshPlanning();
+
+      // Pages 0 and 1 were fetched; the stale check after page 1 stopped the
+      // read before the empty terminating page was requested.
+      expect(remote.pagesFetched, 2);
+      expect(store.replaceActiveProjectionCallCount, 0);
+      expect(controller.state.accessStatus, PlanningAccessStatus.signedOut);
+      expect(recorder.captured, isEmpty);
+    });
+
+    // PC3
+    test('a paging contract violation is reported with stream, reason and '
+        'page index only', () async {
+      remote.error = const PagedReadContractException(
+        stream: 'plans',
+        pageIndex: 2,
+        reason: PagedReadContractViolation.keyNotIncreasing,
+      );
+      final controller = buildController();
+
+      await controller.handleActiveContextChanged(context);
+
+      expect(controller.state.refreshStatus, PlanningRefreshStatus.failed);
+      expect(recorder.captured, hasLength(1));
+      expect(recorder.captured.single.error, isA<PagedReadContractException>());
+      expect(recorder.captured.single.extra, {
+        'stream': 'plans',
+        'reason': 'keyNotIncreasing',
+        'pageIndex': 2,
+      });
+    });
+
+    test('an aborted read is not reported', () async {
+      remote.error = const PagedReadAbortedException(stream: 'plans');
+      final controller = buildController();
+
+      await controller.handleActiveContextChanged(context);
+
+      expect(recorder.captured, isEmpty);
+    });
+  });
 }
 
 PlanningSyncPayload _payloadFor(
@@ -1117,6 +1235,7 @@ class _FakePlanningRemoteRefreshRepository
   @override
   Future<PlanningSyncPayload> fetchPlanningSyncPayload({
     required String organizationId,
+    bool Function()? shouldContinue,
   }) async {
     fetchCallCount += 1;
     fetchCallsByOrganizationId.add(organizationId);
@@ -1137,6 +1256,63 @@ class _FakePlanningRemoteRefreshRepository
     }
 
     return _payloadFor(organizationId);
+  }
+}
+
+// Runs the real readAllKeysetPages over three pages (one row, one row, empty)
+// with the shouldContinue the controller passes, so a stale-generation abort
+// is observable as the number of pages actually fetched.
+class _PagedPlanningRemoteRefreshRepository
+    implements PlanningRemoteRefreshRepository {
+  Object? error;
+  int? failAtPage;
+  Future<void> Function(int pageIndex)? beforePage;
+  int pagesFetched = 0;
+
+  @override
+  Future<PlanningSyncPayload> fetchPlanningSyncPayload({
+    required String organizationId,
+    bool Function()? shouldContinue,
+  }) async {
+    final fixedError = error;
+    if (fixedError != null) {
+      throw fixedError;
+    }
+    var pageIndex = 0;
+    await readAllKeysetPages<String, String>(
+      fetchPage: ({required String? after, required int limit}) async {
+        final index = pageIndex++;
+        await beforePage?.call(index);
+        pagesFetched += 1;
+        if (failAtPage == index) {
+          throw Exception('page $index failed');
+        }
+        return switch (index) {
+          0 => ['a'],
+          1 => ['b'],
+          _ => <String>[],
+        };
+      },
+      keyOf: (row) => row,
+      compareKeys: (a, b) => a.compareTo(b),
+      pageSize: 10,
+      shouldContinue: shouldContinue,
+      stream: 'plans',
+    );
+    return _payloadFor(organizationId);
+  }
+}
+
+class _RecordingObservability extends NoopObservability {
+  final List<({Object error, Map<String, Object?>? extra})> captured = [];
+
+  @override
+  void captureException(
+    Object error,
+    StackTrace stackTrace, {
+    Map<String, Object?>? extra,
+  }) {
+    captured.add((error: error, extra: extra));
   }
 }
 

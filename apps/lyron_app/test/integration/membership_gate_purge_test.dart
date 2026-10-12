@@ -112,8 +112,9 @@ void main() {
         ),
         supabaseSongRepositoryProvider.overrideWithValue(
           SupabaseSongRepository.testing(
-            listSongsRows: () async => throw StateError('not reached'),
-            getSongRow: (id) async => throw StateError('not reached'),
+            fetchCatalogPage:
+                ({required organizationId, required after, required limit}) =>
+                    throw StateError('not reached'),
           ),
         ),
       ],
@@ -223,8 +224,9 @@ void main() {
         ),
         supabaseSongRepositoryProvider.overrideWithValue(
           SupabaseSongRepository.testing(
-            listSongsRows: () async => throw StateError('not reached'),
-            getSongRow: (id) async => throw StateError('not reached'),
+            fetchCatalogPage:
+                ({required organizationId, required after, required limit}) =>
+                    throw StateError('not reached'),
           ),
         ),
       ],

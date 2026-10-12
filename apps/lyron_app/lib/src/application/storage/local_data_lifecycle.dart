@@ -129,7 +129,7 @@ abstract interface class LocalDataEventsRecorder {
   });
 
   /// D4 (docs/specs/2026-08-19-local-data-durability-contract.md): records
-  /// that an incoming empty `listSongs()` response was rejected against a
+  /// that an incoming empty `fetchCatalog()` response was rejected against a
   /// non-empty stored snapshot -- a distinct audit `kind`, not a
   /// [PurgeReason] and not routed through [LocalDataLifecycle]'s purge
   /// primitives (this is not a purge; the cache is left untouched).

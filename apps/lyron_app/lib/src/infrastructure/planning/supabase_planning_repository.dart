@@ -1,168 +1,126 @@
 import 'package:flutter/foundation.dart';
 import 'package:lyron_app/src/application/planning/planning_remote_refresh_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_payload.dart';
-import 'package:lyron_app/src/domain/planning/plan_detail.dart';
-import 'package:lyron_app/src/domain/planning/plan_summary.dart';
-import 'package:lyron_app/src/domain/planning/planning_repository.dart';
-import 'package:lyron_app/src/domain/planning/session_item_summary.dart';
-import 'package:lyron_app/src/domain/planning/session_summary.dart';
-import 'package:lyron_app/src/domain/song/song_summary.dart';
+import 'package:lyron_app/src/shared/keyset_paging.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-typedef ListPlanRows =
-    Future<List<Map<String, dynamic>>> Function({String? organizationId});
-typedef GetPlanRow = Future<Map<String, dynamic>?> Function(String planId);
-typedef ListSessionRows =
-    Future<List<Map<String, dynamic>>> Function(String planId);
-typedef GetPlanSummaryBySlugRow =
-    Future<Map<String, dynamic>?> Function(String planSlug);
+typedef PlanningPageFetcher =
+    Future<List<Map<String, dynamic>>> Function({
+      required String organizationId,
+      required String? after,
+      required int limit,
+    });
 
-class SupabasePlanningRepository
-    implements PlanningRepository, PlanningRemoteRefreshRepository {
-  SupabasePlanningRepository(SupabaseClient client)
-    : this.testing(
-        listPlanRows: ({String? organizationId}) async {
-          var query = client
-              .from('plans')
-              .select(
-                'id, organization_id, slug, name, description, scheduled_for, updated_at, version, content_version',
-              );
-          if (organizationId != null) {
-            query = query.eq('organization_id', organizationId);
-          }
-          final rows = await query;
-          return List<Map<String, dynamic>>.from(rows);
-        },
-        getPlanRow: (planId) async {
-          final row = await client
-              .from('plans')
-              .select(
-                'id, organization_id, slug, name, description, scheduled_for, updated_at, version, content_version',
-              )
-              .eq('id', planId)
-              .maybeSingle();
-          return row == null ? null : Map<String, dynamic>.from(row);
-        },
-        listSessionRows: (planId) async {
-          final rows = await client
-              .from('sessions')
-              .select(
-                'id, slug, name, position, version, session_items(id, position, song:songs(id, slug, title))',
-              )
-              .eq('plan_id', planId)
-              .order('position', ascending: true)
-              .order(
-                'position',
-                ascending: true,
-                referencedTable: 'session_items',
-              );
-          return List<Map<String, dynamic>>.from(rows);
-        },
-        getPlanSummaryBySlugRow: (planSlug) async {
-          final row = await client
-              .from('plans')
-              .select(
-                'id, organization_id, slug, name, description, scheduled_for, updated_at, version, content_version',
-              )
-              .eq('slug', planSlug)
-              .maybeSingle();
-          return row == null ? null : Map<String, dynamic>.from(row);
-        },
-      );
+class SupabasePlanningRepository implements PlanningRemoteRefreshRepository {
+  SupabasePlanningRepository(
+    SupabaseClient client, {
+    @visibleForTesting int pageSize = 500,
+  }) : this.testing(
+         pageSize: pageSize,
+         fetchPlanPage: _keysetFetcher(
+           client,
+           table: 'plans',
+           columns:
+               'id, organization_id, slug, name, description, scheduled_for, updated_at, version, content_version',
+         ),
+         fetchSessionPage: _keysetFetcher(
+           client,
+           table: 'sessions',
+           columns: 'id, plan_id, slug, name, position, version',
+         ),
+         fetchSessionItemPage: _keysetFetcher(
+           client,
+           table: 'session_items',
+           columns: 'id, session_id, position, song:songs(id, slug, title)',
+         ),
+       );
 
   @visibleForTesting
-  SupabasePlanningRepository.testing({
-    required ListPlanRows listPlanRows,
-    required this._getPlanRow,
-    required this._listSessionRows,
-    GetPlanSummaryBySlugRow? getPlanSummaryBySlugRow,
-  }) : _listPlanRows = listPlanRows,
-       _getPlanSummaryBySlugRow =
-           getPlanSummaryBySlugRow ??
-           ((planSlug) async {
-             final rows = await listPlanRows();
-             for (final row in rows) {
-               if (row['slug'] == planSlug) {
-                 return row;
-               }
-             }
-             return null;
-           });
+  const SupabasePlanningRepository.testing({
+    required this._fetchPlanPage,
+    required this._fetchSessionPage,
+    required this._fetchSessionItemPage,
+    this._pageSize = 500,
+  });
 
-  final ListPlanRows _listPlanRows;
-  final GetPlanRow _getPlanRow;
-  final ListSessionRows _listSessionRows;
-  final GetPlanSummaryBySlugRow _getPlanSummaryBySlugRow;
+  final PlanningPageFetcher _fetchPlanPage;
+  final PlanningPageFetcher _fetchSessionPage;
+  final PlanningPageFetcher _fetchSessionItemPage;
+  final int _pageSize;
 
-  @override
-  Future<List<PlanSummary>> listPlans() async {
-    final rows = await _listPlanRows();
-    final plans = rows.map(_mapPlanSummary).toList(growable: false);
-
-    final sortedPlans = plans.toList(growable: false)
-      ..sort((left, right) {
-        final leftScheduled = left.scheduledFor;
-        final rightScheduled = right.scheduledFor;
-        if (leftScheduled == null && rightScheduled != null) {
-          return 1;
-        }
-        if (leftScheduled != null && rightScheduled == null) {
-          return -1;
-        }
-        if (leftScheduled != null && rightScheduled != null) {
-          final scheduledComparison = leftScheduled.compareTo(rightScheduled);
-          if (scheduledComparison != 0) {
-            return scheduledComparison;
-          }
-        }
-
-        final updatedComparison = right.updatedAt.compareTo(left.updatedAt);
-        if (updatedComparison != 0) {
-          return updatedComparison;
-        }
-
-        return left.id.compareTo(right.id);
-      });
-
-    return sortedPlans;
+  static PlanningPageFetcher _keysetFetcher(
+    SupabaseClient client, {
+    required String table,
+    required String columns,
+  }) {
+    return ({
+      required String organizationId,
+      required String? after,
+      required int limit,
+    }) async {
+      var query = client
+          .from(table)
+          .select(columns)
+          .eq('organization_id', organizationId);
+      if (after != null) {
+        query = query.gt('id', after);
+      }
+      final rows = await query.order('id', ascending: true).limit(limit);
+      return List<Map<String, dynamic>>.from(rows);
+    };
   }
 
-  @override
-  Future<PlanDetail> getPlanDetail(String planId) async {
-    final planRow = await _getPlanRow(planId);
-    if (planRow == null) {
-      throw StateError('Plan not found: $planId');
-    }
-
-    final sessionRows = await _listSessionRows(planId);
-    final sessions = sessionRows.map(_mapSessionSummary).toList(growable: false)
-      ..sort((left, right) => left.position.compareTo(right.position));
-
-    return PlanDetail(plan: _mapPlanSummary(planRow), sessions: sessions);
-  }
-
-  @override
-  Future<PlanSummary?> getPlanSummaryBySlug(String planSlug) async {
-    final row = await _getPlanSummaryBySlugRow(planSlug);
-    return row == null ? null : _mapPlanSummary(row);
-  }
-
-  @override
-  Future<PlanDetail?> getPlanDetailBySlug(String planSlug) async {
-    final plan = await getPlanSummaryBySlug(planSlug);
-    if (plan == null) {
-      return null;
-    }
-
-    return getPlanDetail(plan.id);
+  Future<List<Map<String, dynamic>>> _readStream(
+    PlanningPageFetcher fetchPage, {
+    required String organizationId,
+    required String stream,
+    bool Function()? shouldContinue,
+  }) {
+    return readAllKeysetPages<Map<String, dynamic>, String>(
+      fetchPage: ({required after, required limit}) =>
+          fetchPage(organizationId: organizationId, after: after, limit: limit),
+      keyOf: (row) => row['id'] as String,
+      compareKeys: compareUuidKeys,
+      pageSize: _pageSize,
+      shouldContinue: shouldContinue,
+      stream: stream,
+    );
   }
 
   @override
   Future<PlanningSyncPayload> fetchPlanningSyncPayload({
     required String organizationId,
+    bool Function()? shouldContinue,
   }) async {
-    final planRows = await _listPlanRows(organizationId: organizationId);
-    final plans = planRows.map(_mapPlanSummary).toList(growable: false)
+    // I7 (docs/specs/2026-09-29-plan-delete-and-session-cascade.md; paging in
+    // docs/specs/2026-10-12-paged-remote-pulls.md, PG5): three organization-
+    // wide streams are read strictly in this order, each to its end before
+    // the next starts: plans (including content_version), then sessions, then
+    // session items. A concurrent write can therefore only leave a plan's
+    // contentVersion behind the children read after it, never ahead. A child
+    // whose parent is not in the already-read parent set (a session without
+    // its plan, an item without its kept session) was created after that
+    // parent stream was read and is dropped; the next refresh picks it up.
+    final planRows = await _readStream(
+      _fetchPlanPage,
+      organizationId: organizationId,
+      stream: 'plans',
+      shouldContinue: shouldContinue,
+    );
+    final sessionRows = await _readStream(
+      _fetchSessionPage,
+      organizationId: organizationId,
+      stream: 'sessions',
+      shouldContinue: shouldContinue,
+    );
+    final itemRows = await _readStream(
+      _fetchSessionItemPage,
+      organizationId: organizationId,
+      stream: 'session_items',
+      shouldContinue: shouldContinue,
+    );
+
+    final plans = planRows.map(_mapPlan).toList(growable: false)
       ..sort((left, right) {
         final leftScheduled = left.scheduledFor;
         final rightScheduled = right.scheduledFor;
@@ -187,88 +145,72 @@ class SupabasePlanningRepository
         return left.id.compareTo(right.id);
       });
 
-    final syncPlans = plans
-        .map(
-          (plan) => PlanningSyncPlan(
-            id: plan.id,
-            slug: plan.slug,
-            name: plan.name,
-            description: plan.description,
-            scheduledFor: plan.scheduledFor,
-            updatedAt: plan.updatedAt,
-            version: plan.version,
-            contentVersion: plan.contentVersion,
-          ),
-        )
-        .toList(growable: false);
+    final planIds = {for (final plan in plans) plan.id};
+    final sessionsByPlan = <String, List<PlanningSyncSession>>{};
+    final planIdBySession = <String, String>{};
+    for (final row in sessionRows) {
+      if (!planIds.contains(row['plan_id'] as String)) {
+        continue;
+      }
+      final session = _mapSession(row);
+      sessionsByPlan.putIfAbsent(session.planId, () => []).add(session);
+      planIdBySession[session.id] = session.planId;
+    }
+    final itemsBySession = <String, List<PlanningSyncSessionItem>>{};
+    for (final row in itemRows) {
+      final sessionId = row['session_id'] as String;
+      final planId = planIdBySession[sessionId];
+      if (planId == null) {
+        continue;
+      }
+      itemsBySession
+          .putIfAbsent(sessionId, () => [])
+          .add(_mapItem(row, planId: planId));
+    }
 
     final syncSessions = <PlanningSyncSession>[];
     final syncItems = <PlanningSyncSessionItem>[];
-
-    // I7 (docs/specs/2026-09-29-plan-delete-and-session-cascade.md): every
-    // plan row, including content_version, is read before any session row,
-    // so a race can only leave contentVersion behind its children, never
-    // ahead. Known limit: these top-level reads are unpaged, so PostgREST's
-    // max_rows cap could truncate a plan's session list; see
-    // docs/deferred/2026-09-30-planning-pull-unpaged-reads.md.
     for (final plan in plans) {
-      final sessionRows = await _listSessionRows(plan.id);
-      final sessions =
-          sessionRows.map(_mapSessionSummary).toList(growable: false)..sort((
-            left,
-            right,
-          ) {
-            final positionComparison = left.position.compareTo(right.position);
-            if (positionComparison != 0) {
-              return positionComparison;
-            }
-            return left.id.compareTo(right.id);
-          });
-
+      final sessions = _sortedByPositionThenId(
+        sessionsByPlan[plan.id],
+        position: (session) => session.position,
+        id: (session) => session.id,
+      );
       for (final session in sessions) {
-        syncSessions.add(
-          PlanningSyncSession(
-            id: session.id,
-            planId: plan.id,
-            slug: session.slug,
-            position: session.position,
-            name: session.name,
-            version: session.version,
+        syncSessions.add(session);
+        syncItems.addAll(
+          _sortedByPositionThenId(
+            itemsBySession[session.id],
+            position: (item) => item.position,
+            id: (item) => item.id,
           ),
         );
-
-        final items = [...session.items]
-          ..sort((left, right) {
-            final positionComparison = left.position.compareTo(right.position);
-            if (positionComparison != 0) {
-              return positionComparison;
-            }
-            return left.id.compareTo(right.id);
-          });
-        for (final item in items) {
-          syncItems.add(
-            PlanningSyncSessionItem(
-              id: item.id,
-              planId: plan.id,
-              sessionId: session.id,
-              position: item.position,
-              songId: item.song.id,
-              songTitle: item.song.title,
-            ),
-          );
-        }
       }
     }
 
     return PlanningSyncPayload(
-      plans: syncPlans,
+      plans: plans,
       sessions: syncSessions,
       items: syncItems,
     );
   }
 
-  PlanSummary _mapPlanSummary(Map<String, dynamic> row) {
-    return PlanSummary(
+  List<T> _sortedByPositionThenId<T>(
+    List<T>? rows, {
+    required int Function(T row) position,
+    required String Function(T row) id,
+  }) {
+    return [...?rows]..sort((left, right) {
+      final positionComparison = position(left).compareTo(position(right));
+      if (positionComparison != 0) {
+        return positionComparison;
+      }
+      return id(left).compareTo(id(right));
+    });
+  }
+
+  PlanningSyncPlan _mapPlan(Map<String, dynamic> row) {
+    return PlanningSyncPlan(
       id: row['id'] as String,
       slug: row['slug'] as String? ?? row['id'] as String,
       name: row['name'] as String,
@@ -280,29 +222,21 @@ class SupabasePlanningRepository
     );
   }
 
-  SessionSummary _mapSessionSummary(Map<String, dynamic> row) {
-    final rawItems = row['session_items'] as List<dynamic>? ?? const [];
-    final items =
-        rawItems
-            .map(
-              (item) => _mapSessionItemSummary(
-                Map<String, dynamic>.from(item as Map),
-              ),
-            )
-            .toList(growable: false)
-          ..sort((left, right) => left.position.compareTo(right.position));
-
-    return SessionSummary(
+  PlanningSyncSession _mapSession(Map<String, dynamic> row) {
+    return PlanningSyncSession(
       id: row['id'] as String,
+      planId: row['plan_id'] as String,
       slug: row['slug'] as String? ?? row['id'] as String,
-      name: row['name'] as String,
       position: row['position'] as int,
+      name: row['name'] as String,
       version: (row['version'] as num?)?.toInt() ?? 1,
-      items: items,
     );
   }
 
-  SessionItemSummary _mapSessionItemSummary(Map<String, dynamic> row) {
+  PlanningSyncSessionItem _mapItem(
+    Map<String, dynamic> row, {
+    required String planId,
+  }) {
     final rawSong = row['song'];
     if (rawSong is! Map) {
       throw StateError(
@@ -311,15 +245,13 @@ class SupabasePlanningRepository
     }
 
     final song = Map<String, dynamic>.from(rawSong);
-    return SessionItemSummary(
+    return PlanningSyncSessionItem(
       id: row['id'] as String,
-      slug: row['slug'] as String? ?? row['id'] as String,
+      planId: planId,
+      sessionId: row['session_id'] as String,
       position: row['position'] as int,
-      song: SongSummary(
-        id: song['id'] as String,
-        slug: song['slug'] as String? ?? song['id'] as String,
-        title: song['title'] as String,
-      ),
+      songId: song['id'] as String,
+      songTitle: song['title'] as String,
     );
   }
 

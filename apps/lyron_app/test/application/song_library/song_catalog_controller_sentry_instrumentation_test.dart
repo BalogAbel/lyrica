@@ -6,9 +6,9 @@ import 'package:lyron_app/src/application/auth/last_known_identity.dart';
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
 import 'package:lyron_app/src/application/song_library/song_catalog_controller.dart';
+import 'package:lyron_app/src/application/song_library/song_catalog_remote_repository.dart';
 import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
-import 'package:lyron_app/src/domain/song/song_repository.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/infrastructure/observability/sentry_observability.dart';
@@ -134,17 +134,15 @@ void main() {
     expect(byName.keys, {
       'membership.resolve',
       'auth.verify_session',
-      'song_catalog.list_songs',
-      'song_catalog.fetch_sources',
+      'song_catalog.fetch_catalog',
       'song_catalog.write_snapshot',
     });
-    expect(tx.spans, hasLength(5), reason: 'no duplicate or stray spans');
+    expect(tx.spans, hasLength(4), reason: 'no duplicate or stray spans');
 
     const expectedOperations = {
       'membership.resolve': 'http.client',
       'auth.verify_session': 'http.client',
-      'song_catalog.list_songs': 'http.client',
-      'song_catalog.fetch_sources': 'http.client',
+      'song_catalog.fetch_catalog': 'http.client',
       'song_catalog.write_snapshot': 'db.write',
     };
     for (final entry in expectedOperations.entries) {
@@ -159,11 +157,11 @@ void main() {
     expect(httpAttempts, isEmpty);
   });
 
-  test('a listSongs failure the controller classifies and swallows: '
-      'list_songs is internalError, the root stays ok (the exception never '
+  test('a fetchCatalog failure the controller classifies and swallows: '
+      'fetch_catalog is internalError, the root stays ok (the exception never '
       'propagates out of the root span body), later spans never start, and '
       'no Sentry issue is captured', () async {
-    remoteRepository.listSongsError = Exception('boom');
+    remoteRepository.fetchCatalogError = Exception('boom');
     final controller = buildController();
 
     // Swallowed by the controller: refreshCatalog() itself completes.
@@ -187,15 +185,15 @@ void main() {
     expect(byName.keys, {
       'membership.resolve',
       'auth.verify_session',
-      'song_catalog.list_songs',
+      'song_catalog.fetch_catalog',
     });
     expect(byName['membership.resolve']!.status, const SpanStatus.ok());
     expect(byName['auth.verify_session']!.status, const SpanStatus.ok());
-    final listSongs = byName['song_catalog.list_songs']!;
-    expect(listSongs.context.operation, 'http.client');
-    expect(listSongs.status, const SpanStatus.internalError());
-    expect(listSongs.context.traceId, tx.contexts.trace!.traceId);
-    expect(listSongs.context.parentSpanId, tx.contexts.trace!.spanId);
+    final fetchCatalog = byName['song_catalog.fetch_catalog']!;
+    expect(fetchCatalog.context.operation, 'http.client');
+    expect(fetchCatalog.status, const SpanStatus.internalError());
+    expect(fetchCatalog.context.traceId, tx.contexts.trace!.traceId);
+    expect(fetchCatalog.context.parentSpanId, tx.contexts.trace!.spanId);
 
     expect(
       events,
@@ -242,24 +240,30 @@ class _FailingHttpClient implements HttpClient {
   }
 }
 
-class _FakeSongRepository implements SongRepository {
-  Object? listSongsError;
+class _FakeSongRepository implements SongCatalogRemoteRepository {
+  Object? fetchCatalogError;
 
   @override
-  Future<List<SongSummary>> listSongs() async {
-    final error = listSongsError;
+  Future<SongCatalogPayload> fetchCatalog({
+    required String organizationId,
+    bool Function()? shouldContinue,
+  }) async {
+    final error = fetchCatalogError;
     if (error != null) {
       throw error;
     }
-    return const [
+    const songs = [
       SongSummary(id: 'song-1', title: 'Alpha'),
       SongSummary(id: 'song-2', title: 'Beta'),
     ];
+    return SongCatalogPayload(
+      summaries: songs,
+      sources: [
+        for (final song in songs)
+          SongSource(id: song.id, source: '{title: ${song.id}}'),
+      ],
+    );
   }
-
-  @override
-  Future<SongSource> getSongSource(String id) async =>
-      SongSource(id: id, source: '{title: $id}');
 }
 
 // Trivial LocalDataLifecycle deps: SongCatalogController never calls them in

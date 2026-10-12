@@ -10,7 +10,7 @@ import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 
 /// D4 (docs/specs/2026-08-19-local-data-durability-contract.md): the outcome
 /// of [SongCatalogStore.resolveEmptySnapshot] deciding whether an incoming
-/// empty `listSongs()` response may replace a stored, non-empty snapshot.
+/// empty `fetchCatalog()` response may replace a stored, non-empty snapshot.
 enum EmptySnapshotResolution {
   /// Either there was nothing non-empty stored to protect, or this is the
   /// second, independent empty resolution -- the caller should proceed with
@@ -150,7 +150,7 @@ abstract interface class SongCatalogStore {
   });
 
   /// D4 (docs/specs/2026-08-19-local-data-durability-contract.md, ADR-035
-  /// Task 3.1): decides whether an incoming EMPTY `listSongs()` response may
+  /// Task 3.1): decides whether an incoming EMPTY `fetchCatalog()` response may
   /// replace the stored snapshot for `(userId, organizationId)`. Must be
   /// called (and its result obeyed) BEFORE calling [replaceActiveSnapshot]
   /// with empty `summaries`/`sources` -- this method never itself writes the

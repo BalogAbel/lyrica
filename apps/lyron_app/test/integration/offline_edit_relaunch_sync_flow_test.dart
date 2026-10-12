@@ -19,6 +19,7 @@ import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../support/backend_planning_reads.dart';
 import '../support/drift_relaunch.dart';
 import '../support/drift_test_setup.dart';
 
@@ -163,8 +164,11 @@ void main() {
         // Seed the local projection from the real backend so there is a
         // base plan present to edit offline (the merged read overlays
         // pending mutations on top of this synced snapshot).
-        final seedRepository = SupabasePlanningRepository(client);
-        final seedDetail = await seedRepository.getPlanDetail(_planIdToEdit);
+        final seedDetail = await readBackendPlanDetail(
+          client,
+          organizationId: _visibleOrganizationId,
+          planId: _planIdToEdit,
+        );
         await localStore.upsertSyncedPlan(
           userId: context.userId,
           organizationId: context.organizationId,
@@ -271,9 +275,11 @@ void main() {
           reason: 'pending mutation must be cleared once synced',
         );
 
-        final backendDetail = await SupabasePlanningRepository(
+        final backendDetail = await readBackendPlanDetail(
           client,
-        ).getPlanDetail(_planIdToEdit);
+          organizationId: _visibleOrganizationId,
+          planId: _planIdToEdit,
+        );
         expect(backendDetail.plan.name, editedName);
 
         final convergedDetail = await repository.getPlanDetail(_planIdToEdit);

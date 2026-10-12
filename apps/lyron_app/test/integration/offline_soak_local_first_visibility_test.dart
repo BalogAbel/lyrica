@@ -55,6 +55,7 @@ import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../support/drift_test_setup.dart';
+import '../support/keyset_pages.dart';
 
 const _userId = 'u1';
 const _organizationId = 'org1';
@@ -474,14 +475,12 @@ void main() {
         ),
         supabaseSongRepositoryProvider.overrideWithValue(
           SupabaseSongRepository.testing(
-            listSongsRows: () async => throw StateError(
-              'listSongs must not be reached -- the org lookup resolves '
-              'to null (no membership) before that call site',
-            ),
-            getSongRow: (id) async => throw StateError(
-              'getSongRow must not be reached -- the org lookup resolves '
-              'to null (no membership) before that call site',
-            ),
+            fetchCatalogPage:
+                ({required organizationId, required after, required limit}) =>
+                    throw StateError(
+                      'fetchCatalog must not be reached -- the org lookup '
+                      'resolves to null (no membership) before that call site',
+                    ),
           ),
         ),
       ],
@@ -718,46 +717,43 @@ class _ToggleableOrgReader {
   }
 }
 
-/// Same shape as [_ToggleableOrgReader] but for the listSongs/getSongSource
-/// leg of a refresh, wrapped as a real [SupabaseSongRepository.testing]
-/// instance so the controller's remote-repository seam is exercised
-/// unmodified.
+/// Same shape as [_ToggleableOrgReader] but for the catalog-stream leg of a
+/// refresh, wrapped as a real [SupabaseSongRepository.testing] instance so the
+/// controller's remote-repository seam is exercised unmodified.
 class _ToggleableSongRepository {
-  Future<List<Map<String, dynamic>>> Function() _listSongsRows = () async =>
-      const [];
-  Future<Map<String, dynamic>?> Function(String id) _getSongRow = (id) async =>
-      null;
+  Future<List<Map<String, dynamic>>> Function({
+    required String? after,
+    required int limit,
+  })
+  _fetchPage = ({required after, required limit}) async => const [];
 
   void resolveFast({
     required List<SongSummary> summaries,
     required Map<String, SongSource> sourceBysong,
   }) {
-    _listSongsRows = () async => [
+    final rows = [
       for (final summary in summaries)
         {
           'id': summary.id,
           'slug': summary.id,
           'title': summary.title,
           'version': 1,
+          'chordpro_source': sourceBysong[summary.id]!.source,
         },
     ];
-    _getSongRow = (id) async {
-      final source = sourceBysong[id];
-      if (source == null) return null;
-      return {'id': id, 'slug': id, 'chordpro_source': source.source};
-    };
+    _fetchPage = ({required after, required limit}) async =>
+        keysetPage(rows, after: after, limit: limit);
   }
 
   void hang() {
-    final listSongsCompleter = Completer<List<Map<String, dynamic>>>();
-    final getSongCompleter = Completer<Map<String, dynamic>?>();
-    _listSongsRows = () => listSongsCompleter.future;
-    _getSongRow = (id) => getSongCompleter.future;
+    final pageCompleter = Completer<List<Map<String, dynamic>>>();
+    _fetchPage = ({required after, required limit}) => pageCompleter.future;
   }
 
   SupabaseSongRepository asSupabaseSongRepository() =>
       SupabaseSongRepository.testing(
-        listSongsRows: () => _listSongsRows(),
-        getSongRow: (id) => _getSongRow(id),
+        fetchCatalogPage:
+            ({required organizationId, required after, required limit}) =>
+                _fetchPage(after: after, limit: limit),
       );
 }

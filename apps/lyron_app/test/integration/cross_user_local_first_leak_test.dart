@@ -1384,10 +1384,9 @@ class _Fixture {
         ),
         supabaseSongRepositoryProvider.overrideWithValue(
           SupabaseSongRepository.testing(
-            listSongsRows: () async =>
-                throw const SocketException('network is unreachable'),
-            getSongRow: (id) async =>
-                throw const SocketException('network is unreachable'),
+            fetchCatalogPage:
+                ({required organizationId, required after, required limit}) =>
+                    throw const SocketException('network is unreachable'),
           ),
         ),
         planningRemoteRefreshRepositoryProvider.overrideWithValue(
@@ -1765,6 +1764,7 @@ class _OfflinePlanningRemoteRefreshRepository
   @override
   Future<PlanningSyncPayload> fetchPlanningSyncPayload({
     required String organizationId,
+    bool Function()? shouldContinue,
   }) async {
     throw const SocketException('network is unreachable');
   }

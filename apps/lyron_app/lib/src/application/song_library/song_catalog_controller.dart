@@ -9,11 +9,12 @@ import 'package:lyron_app/src/application/song_library/catalog_connection_status
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
 import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
+import 'package:lyron_app/src/application/song_library/song_catalog_remote_repository.dart';
 import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
-import 'package:lyron_app/src/domain/song/song_repository.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 import 'package:lyron_app/src/shared/connectivity_failure.dart';
+import 'package:lyron_app/src/shared/keyset_paging.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 typedef AppAuthSessionReader = AppAuthSession? Function();
@@ -56,12 +57,12 @@ class SongCatalogController extends ChangeNotifier {
 
   final SongCatalogStore _store;
   final LocalDataLifecycle _localDataLifecycle;
-  final SongRepository _remoteRepository;
+  final SongCatalogRemoteRepository _remoteRepository;
   final AppAuthSessionReader _authSessionReader;
   final ActiveOrganizationReader _organizationReader;
   final CatalogSessionVerifier _sessionVerifier;
   // D4 (docs/specs/2026-08-19-local-data-durability-contract.md): best-effort
-  // audit hook invoked when an incoming empty listSongs() response is
+  // audit hook invoked when an incoming empty catalog response is
   // rejected against a non-empty cached snapshot (SongCatalogStore
   // .resolveEmptySnapshot returned reject). A failure here must never break
   // the refresh -- see the try/catch around its call site in
@@ -544,12 +545,15 @@ class SongCatalogController extends ChangeNotifier {
     );
 
     try {
-      final summaries = await _observability.runInSpan(
-        'song_catalog.list_songs',
+      final payload = await _observability.runInSpan(
+        'song_catalog.fetch_catalog',
         'http.client',
-        (_) => _remoteRepository.listSongs(),
+        (_) => _remoteRepository.fetchCatalog(
+          organizationId: context.organizationId,
+          shouldContinue: () => !_isStale(generation),
+        ),
       );
-      if (summaries.isEmpty) {
+      if (payload.summaries.isEmpty) {
         final resolution = await _store.resolveEmptySnapshot(
           userId: context.userId,
           organizationId: context.organizationId,
@@ -594,15 +598,6 @@ class SongCatalogController extends ChangeNotifier {
         }
       }
 
-      final sources = await _observability.runInSpan(
-        'song_catalog.fetch_sources',
-        'http.client',
-        (_) => Future.wait(
-          summaries.map(
-            (summary) => _remoteRepository.getSongSource(summary.id),
-          ),
-        ),
-      );
       if (_isStale(generation)) {
         return;
       }
@@ -613,8 +608,8 @@ class SongCatalogController extends ChangeNotifier {
         (_) => _store.replaceActiveSnapshot(
           userId: context.userId,
           organizationId: context.organizationId,
-          summaries: summaries,
-          sources: sources,
+          summaries: payload.summaries,
+          sources: payload.sources,
           refreshedAt: DateTime.now().toUtc(),
         ),
       );
@@ -636,7 +631,25 @@ class SongCatalogController extends ChangeNotifier {
           hasCachedCatalog: true,
         ),
       );
-    } catch (error) {
+    } catch (error, stackTrace) {
+      // A stale generation means the refresh was abandoned (including a
+      // PagedReadAbortedException from the stream): no state, no breadcrumb.
+      if (_isStale(generation)) {
+        return;
+      }
+      if (error is PagedReadContractException) {
+        // PG8: the server or client library broke the paging contract. Never
+        // include keys or row data (ADR-036).
+        _observability.captureException(
+          error,
+          stackTrace,
+          extra: {
+            'stream': error.stream,
+            'reason': error.reason.name,
+            'pageIndex': error.pageIndex,
+          },
+        );
+      }
       _observability.addBreadcrumb(
         'song_catalog.refresh failed',
         category: 'song_catalog',
@@ -644,7 +657,7 @@ class SongCatalogController extends ChangeNotifier {
       );
       if (_isAuthorizationFailure(error)) {
         // Task 2.2 (F-F #2): status-only, same shape as the post-verify
-        // expired branch above -- listSongs() throwing an authorization
+        // expired branch above -- fetchCatalog() throwing an authorization
         // error is not one of the four invariant causes. `context` was
         // already resolved and verified non-empty this attempt.
         _setStateIfCurrent(

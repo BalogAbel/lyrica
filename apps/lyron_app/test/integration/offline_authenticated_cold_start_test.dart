@@ -54,6 +54,7 @@ import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 
 import '../support/drift_test_setup.dart';
+import '../support/keyset_pages.dart';
 
 // Trivial LocalDataLifecycle wrapping the test's real song catalog store, for
 // tests that only exercise catalog refresh/offline-authenticated paths --
@@ -205,10 +206,9 @@ void main() {
         // defense-in-depth trap, same as the shared helper's overrides.
         supabaseSongRepositoryProvider.overrideWithValue(
           SupabaseSongRepository.testing(
-            listSongsRows: () async =>
-                throw StateError('remote must not be called while offline'),
-            getSongRow: (id) async =>
-                throw StateError('remote must not be called while offline'),
+            fetchCatalogPage:
+                ({required organizationId, required after, required limit}) =>
+                    throw StateError('remote must not be called while offline'),
           ),
         ),
         // Simulates the org lookup failing for lack of network. Thrown as
@@ -456,19 +456,21 @@ void main() {
 
       AppAuthSession? currentSession; // starts null: offline cold start.
       final remoteRepository = SupabaseSongRepository.testing(
-        listSongsRows: () async => const [
-          {
-            'id': 'song-1',
-            'slug': 'cached-song',
-            'title': 'Cached Song',
-            'version': 1,
-          },
-        ],
-        getSongRow: (id) async => const {
-          'id': 'song-1',
-          'slug': 'cached-song',
-          'chordpro_source': '{title: Cached Song}',
-        },
+        fetchCatalogPage:
+            ({required organizationId, required after, required limit}) async =>
+                keysetPage(
+                  const [
+                    {
+                      'id': 'song-1',
+                      'slug': 'cached-song',
+                      'title': 'Cached Song',
+                      'version': 1,
+                      'chordpro_source': '{title: Cached Song}',
+                    },
+                  ],
+                  after: after,
+                  limit: limit,
+                ),
       );
       final controller = SongCatalogController(
         onImplausibleEmptySnapshot:
@@ -603,10 +605,9 @@ List<Override> _offlineOverrides({
     // network.
     supabaseSongRepositoryProvider.overrideWithValue(
       SupabaseSongRepository.testing(
-        listSongsRows: () async =>
-            throw StateError('remote must not be called while offline'),
-        getSongRow: (id) async =>
-            throw StateError('remote must not be called while offline'),
+        fetchCatalogPage:
+            ({required organizationId, required after, required limit}) =>
+                throw StateError('remote must not be called while offline'),
       ),
     ),
     catalogSessionVerifierProvider.overrideWithValue(

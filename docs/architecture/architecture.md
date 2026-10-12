@@ -108,7 +108,7 @@ Backend policy helpers are responsible for:
 3. A catalog controller verifies session state when possible and refreshes the full visible catalog from Supabase.
 4. The signed-in song-library subtree owns the catalog controller lifetime through Riverpod `autoDispose`; when that subtree unmounts, periodic polling stops with it.
 5. While the app is foregrounded and the signed-in song-library subtree remains mounted, the controller polls on a fixed 5-minute cadence and manual refresh uses the same guarded refresh path.
-6. Only a completed full summary-plus-source refresh replaces the active local snapshot.
+6. Only a completed full summary-plus-source refresh replaces the active local snapshot. Every full pull (the catalog and the planning refresh) reads organization-scoped keyset pages that end only on an empty page, so PostgREST's `max_rows` cap cannot truncate it; a failed page fails the refresh and keeps the stored data ([ADR-041](decisions/ADR-041-keyset-paged-full-pulls.md)).
 7. Supabase applies RLS and function-based authorization on every online refresh.
 8. The current planning write slice records local mutations in the persisted planning mutation store with version metadata, origin snapshots, and backend-authorized capability checks before sync.
 9. MVP conflict handling for writes remains manual and explicit.

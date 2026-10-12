@@ -5,12 +5,12 @@ import 'package:lyron_app/src/application/song_library/app_foreground_state.dart
 import 'package:lyron_app/src/application/song_library/catalog_session_status.dart';
 import 'package:lyron_app/src/application/song_library/drift_song_mutation_store.dart';
 import 'package:lyron_app/src/application/song_library/song_catalog_controller.dart';
+import 'package:lyron_app/src/application/song_library/song_catalog_remote_repository.dart';
 import 'package:lyron_app/src/application/song_library/song_library_service.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_controller.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
-import 'package:lyron_app/src/domain/song/song_repository.dart';
 import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/infrastructure/song_library/local_first_song_repository.dart';
@@ -787,15 +787,13 @@ class _FakeSongMutationRemoteRepository
   }
 }
 
-class _NoopSongRepository implements SongRepository {
+class _NoopSongRepository implements SongCatalogRemoteRepository {
   @override
-  Future<SongSource> getSongSource(String id) {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<List<SongSummary>> listSongs() async {
-    return const [];
+  Future<SongCatalogPayload> fetchCatalog({
+    required String organizationId,
+    bool Function()? shouldContinue,
+  }) async {
+    return const SongCatalogPayload(summaries: [], sources: []);
   }
 }
 

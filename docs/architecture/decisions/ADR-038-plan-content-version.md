@@ -201,7 +201,8 @@ Follow-ups this slice created, each recorded under `docs/deferred/`:
 - `docs/deferred/2026-09-30-planning-pull-unpaged-reads.md`: the pull's
   top-level reads are unpaged, so PostgREST's `max_rows` cap (1000) could
   truncate a plan's session list and put `contentVersion` ahead of the
-  projected sessions. Found by review gate 2; it depends on data volume.
+  projected sessions. Found by review gate 2; it depends on data volume. Resolved on 2026-10-12 by
+  `docs/specs/2026-10-12-paged-remote-pulls.md` and ADR-041.
 - `docs/deferred/2026-09-30-session-rename-retry-never-rebases.md`: a retried
   conflicted `sessionRename` never rebases, because `_currentBaseVersionFor`
   keys on `sessionId`, which session rows do not set. Found by review gate 3;
