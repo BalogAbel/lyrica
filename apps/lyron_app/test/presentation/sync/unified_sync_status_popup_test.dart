@@ -11,6 +11,7 @@ import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_controller.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/sync/sync_freshness_reader.dart';
 import 'package:lyron_app/src/application/sync/unified_discard_controller.dart';
 import 'package:lyron_app/src/application/sync/unified_manual_sync_controller.dart';
 import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
@@ -262,7 +263,10 @@ Future<void> _pumpPopup(
 ) async {
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [unifiedSyncOverviewProvider.overrideWithValue(overview)],
+      overrides: [
+        syncFreshnessProvider.overrideWithValue(const SyncFreshness.unknown()),
+        unifiedSyncOverviewProvider.overrideWithValue(overview),
+      ],
       child: const MaterialApp(home: Scaffold(body: UnifiedSyncStatusPopup())),
     ),
   );
@@ -396,6 +400,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          syncFreshnessProvider.overrideWithValue(
+            const SyncFreshness.unknown(),
+          ),
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
               status: UnifiedSyncHeaderStatus.conflict,
@@ -439,6 +446,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            syncFreshnessProvider.overrideWithValue(
+              const SyncFreshness.unknown(),
+            ),
             unifiedSyncOverviewProvider.overrideWithValue(
               _overview(
                 status: UnifiedSyncHeaderStatus.conflict,
@@ -490,6 +500,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          syncFreshnessProvider.overrideWithValue(
+            const SyncFreshness.unknown(),
+          ),
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
               status: UnifiedSyncHeaderStatus.conflict,
@@ -530,6 +543,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            syncFreshnessProvider.overrideWithValue(
+              const SyncFreshness.unknown(),
+            ),
             unifiedSyncOverviewProvider.overrideWithValue(
               _overview(
                 status: UnifiedSyncHeaderStatus.conflict,
@@ -568,6 +584,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          syncFreshnessProvider.overrideWithValue(
+            const SyncFreshness.unknown(),
+          ),
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
               status: UnifiedSyncHeaderStatus.unsynced,
@@ -604,6 +623,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          syncFreshnessProvider.overrideWithValue(
+            const SyncFreshness.unknown(),
+          ),
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
               status: UnifiedSyncHeaderStatus.conflict,
@@ -653,6 +675,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            syncFreshnessProvider.overrideWithValue(
+              const SyncFreshness.unknown(),
+            ),
             unifiedSyncOverviewProvider.overrideWithValue(
               _overview(
                 status: UnifiedSyncHeaderStatus.conflict,
@@ -702,6 +727,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          syncFreshnessProvider.overrideWithValue(
+            const SyncFreshness.unknown(),
+          ),
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
               status: UnifiedSyncHeaderStatus.conflict,
@@ -747,6 +775,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          syncFreshnessProvider.overrideWithValue(
+            const SyncFreshness.unknown(),
+          ),
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
               status: UnifiedSyncHeaderStatus.unsynced,
@@ -786,7 +817,12 @@ void main() {
   testWidgets('Discard all button absent when nothing to sync', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [unifiedSyncOverviewProvider.overrideWithValue(_overview())],
+        overrides: [
+          syncFreshnessProvider.overrideWithValue(
+            const SyncFreshness.unknown(),
+          ),
+          unifiedSyncOverviewProvider.overrideWithValue(_overview()),
+        ],
         child: const MaterialApp(
           home: Scaffold(body: UnifiedSyncStatusPopup()),
         ),
@@ -804,6 +840,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          syncFreshnessProvider.overrideWithValue(
+            const SyncFreshness.unknown(),
+          ),
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
               status: UnifiedSyncHeaderStatus.unsynced,
@@ -835,6 +874,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          syncFreshnessProvider.overrideWithValue(
+            const SyncFreshness.unknown(),
+          ),
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
               status: UnifiedSyncHeaderStatus.unsynced,
@@ -877,6 +919,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            syncFreshnessProvider.overrideWithValue(
+              const SyncFreshness.unknown(),
+            ),
             unifiedSyncOverviewProvider.overrideWithValue(
               _overview(
                 status: UnifiedSyncHeaderStatus.unsynced,
@@ -918,6 +963,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          syncFreshnessProvider.overrideWithValue(
+            const SyncFreshness.unknown(),
+          ),
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
               status: UnifiedSyncHeaderStatus.unsynced,
@@ -953,6 +1001,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          syncFreshnessProvider.overrideWithValue(
+            const SyncFreshness.unknown(),
+          ),
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
               status: UnifiedSyncHeaderStatus.conflict,
@@ -987,6 +1038,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          syncFreshnessProvider.overrideWithValue(
+            const SyncFreshness.unknown(),
+          ),
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
               status: UnifiedSyncHeaderStatus.unsynced,
@@ -1029,6 +1083,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            syncFreshnessProvider.overrideWithValue(
+              const SyncFreshness.unknown(),
+            ),
             unifiedSyncOverviewProvider.overrideWithValue(
               _overview(
                 status: UnifiedSyncHeaderStatus.conflict,
@@ -1084,6 +1141,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          syncFreshnessProvider.overrideWithValue(
+            const SyncFreshness.unknown(),
+          ),
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
               status: UnifiedSyncHeaderStatus.unsynced,
@@ -1129,6 +1189,7 @@ void main() {
   }) {
     return ProviderScope(
       overrides: [
+        syncFreshnessProvider.overrideWithValue(const SyncFreshness.unknown()),
         unifiedSyncOverviewProvider.overrideWithValue(_overview()),
         unifiedManualSyncControllerProvider.overrideWith((_) => controller),
       ],
@@ -1262,6 +1323,73 @@ void main() {
       // No navigation object of any kind exists in this scope -- there is no
       // BuildContext, no GoRouter -- so the automatic path structurally
       // cannot navigate no matter what requiresReauth says.
+    },
+  );
+
+  testWidgets('shows when songs and plans last synced (SG7)', (tester) async {
+    final now = DateTime.now();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          unifiedSyncOverviewProvider.overrideWithValue(_overview()),
+          syncFreshnessProvider.overrideWithValue(
+            SyncFreshness(
+              songsRefreshedAt: now.subtract(const Duration(minutes: 5)),
+              plansRefreshedAt: null,
+            ),
+          ),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(body: UnifiedSyncStatusPopup()),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.text(
+        '${AppStrings.unifiedSyncLastSyncedSongsLabel}: '
+        '${AppStrings.unifiedSyncLastSyncedMinutesAgo(5)}',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.text(
+        '${AppStrings.unifiedSyncLastSyncedPlansLabel}: '
+        '${AppStrings.unifiedSyncLastSyncedNever}',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+    'hides last-synced lines while freshness is still loading (SG7)',
+    (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            unifiedSyncOverviewProvider.overrideWithValue(_overview()),
+            syncFreshnessProvider.overrideWithValue(null),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(body: UnifiedSyncStatusPopup()),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(
+        find.byKey(const ValueKey('unified-sync-last-synced-songs')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('unified-sync-last-synced-plans')),
+        findsNothing,
+      );
+      expect(
+        find.textContaining(AppStrings.unifiedSyncLastSyncedNever),
+        findsNothing,
+      );
     },
   );
 }

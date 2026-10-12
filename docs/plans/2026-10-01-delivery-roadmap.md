@@ -35,7 +35,8 @@
 > The sign-out guard PR merged as #87 (`d5fd3de`, 2026-10-09). The reauth
 > wipe fix merged as #88 (`22864df`, 2026-10-11), ADR-029 amended
 > (`docs/specs/2026-10-11-reauth-wipe-recount.md`); next is the import-run
-> ownership fix, then S0 PR 2; the
+> ownership fix, then S0 PR 2. The import-run ownership fix merged as #89
+> (`02a9aa2`); S0 PR 2 is implemented (PR pending merge); after it merges, S0 is implemented (PR 1 and PR 2). Next: S5a. The
 > session-transition coordinator it surfaced stays deferred
 > (`docs/deferred/2026-10-11-session-transition-coordinator.md`); the
 > membership-revocation purge has the same import gap RW3 closes here
@@ -172,7 +173,7 @@ Size legend:
 | ID | Branch | Scope | Deferred sources | Size | Risk |
 |---|---|---|---|---|---|
 | S1 | `fix/direct-dml-write-rpc-bypass` | **Merged (PR #84).** Revoke every table privilege except `SELECT` from `anon`/`authenticated` on all ten `public` tables. Drop the six `for all` policies (each is covered by a select policy, so dropping replaces the planned narrowing). Revoke `postgres`'s default privileges in `public` from `anon`, `authenticated` and `service_role`. Contract suites impersonate the real role; fixtures moved to `postgres`. ADR-039, plus correction notes in `architecture.md`, ADR-026, ADR-027 and ADR-038 | `2026-09-30-direct-dml-bypasses-write-rpcs.md` (resolved, removed) | M | medium |
-| S0 | `fix/offline-first-startup-gate` | Field-reported bug, 2 PRs. (1) The membership gate decides from the last known identity; `verifiedEmpty` closes it only after the D5 purge; first run shows a loading state; auth-stream errors are handled; an integration test uses the real gotrue client. (2) Persist the last known capabilities (S6 option (a), pulled forward) and show a visible "last synced" indicator | `2026-09-30-capability-gating-offline-cold-start.md` (option (a) only) | M | medium |
+| S0 | `fix/offline-first-startup-gate` | **Implemented.** Field-reported bug, 2 PRs. (1) The membership gate decides from the last known identity; `verifiedEmpty` closes it only after the D5 purge; first run shows a loading state; auth-stream errors are handled; an integration test uses the real gotrue client. (2) Persist the last known capabilities (S6 option (a), pulled forward) and show a visible "last synced" indicator | `2026-09-30-capability-gating-offline-cold-start.md` (option (a) only) | M | medium |
 | S5a | `fix/paged-remote-pulls` | A shared paging helper: `.range()` pages ordered by a unique key, de-duplication by id, and a `count=exact` completeness check. Applied to the planning plan and session pulls and to the song catalog list | `2026-09-30-planning-pull-unpaged-reads.md` | S–M | low–medium |
 | S2 | `fix/chordpro-base-directives` | Read base `{transpose}` and `{capo}` consistently before the first lyric or chord line. `{comment}` no longer closes that base boundary. The editor uses the parser-derived base values. Update the parser tests | `2026-04-22-song-reader-chordpro-modulation.md`, item 1 | S | low |
 | S3 | `feat/personal-song-settings` | Personal song layer foundation, plus per-user transpose and capo at song and plan scope, in 3 PRs: (1) backend tables, RPCs, RLS and contract tests; (2) local Drift store, outbox and pull-cursor sync, integrated with the purge lifecycle, storage budget and sync overview; (3) reader resolution and UX | — (new) | L | medium |

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:lyron_app/src/application/planning/planning_data_revision.dart';
@@ -7,12 +8,14 @@ import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.
 import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
 import 'package:lyron_app/src/application/provider_retry_policy.dart';
 import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
 import 'package:lyron_app/src/application/song_library/catalog_snapshot_state.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_controller.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/storage/local_storage_footprint.dart';
 import 'package:lyron_app/src/application/sync/foreground_sync_listener.dart';
 import 'package:lyron_app/src/application/sync/online_transition_detector.dart';
+import 'package:lyron_app/src/application/sync/sync_freshness_reader.dart';
 import 'package:lyron_app/src/application/sync/unified_discard_controller.dart';
 import 'package:lyron_app/src/application/sync/unified_manual_sync_controller.dart';
 import 'package:lyron_app/src/application/sync/unified_row_recovery_controller.dart';
@@ -56,6 +59,42 @@ final localStorageFootprintProvider =
             organizationId: context.organizationId,
           );
     }, retry: noAutomaticProviderRetry);
+
+/// SG7: last successful refresh times for exactly one context, re-read
+/// whenever catalog or planning state changes. Any failure, including a
+/// provider graph that cannot be built in a narrow widget test, degrades to
+/// unknown instead of an error.
+final syncFreshnessForContextProvider = FutureProvider.autoDispose
+    .family<SyncFreshness, ActiveCatalogContext>((ref, context) async {
+      try {
+        ref.watch(catalogSnapshotStateProvider);
+        ref.watch(planningSyncStateProvider);
+        return await ref
+            .watch(syncFreshnessReaderProvider)
+            .read(
+              userId: context.userId,
+              organizationId: context.organizationId,
+            );
+      } catch (error) {
+        debugPrint(
+          'syncFreshnessProvider: could not read last-synced times: $error',
+        );
+        return const SyncFreshness.unknown();
+      }
+    }, retry: noAutomaticProviderRetry);
+
+/// SG7: last-synced times of the active context only. A context switch (or
+/// sign-in as another user) lands on a new family key with no previous value,
+/// so the old context's times are never shown for the new one; null hides the
+/// summary until the new read completes. Same-context re-reads keep their
+/// previous value, so there is no flicker.
+final syncFreshnessProvider = Provider.autoDispose<SyncFreshness?>((ref) {
+  final context = ref.watch(activeCatalogContextProvider);
+  if (context == null) {
+    return null;
+  }
+  return ref.watch(syncFreshnessForContextProvider(context)).value;
+});
 
 final unifiedSyncOverviewProvider = Provider.autoDispose<UnifiedSyncOverview>((
   ref,

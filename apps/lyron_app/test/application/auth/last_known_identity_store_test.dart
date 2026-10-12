@@ -272,4 +272,146 @@ void main() {
       expect(outcome, isA<EmptyMembershipResolutionMarkerRecorded>());
     });
   });
+
+  group('capability codes (SG6)', () {
+    const identity = LastKnownIdentity(
+      userId: 'user-1',
+      email: 'user-1@example.com',
+      organizationId: 'org-1',
+    );
+
+    test('are stored and read for the identity row\'s exact user and '
+        'organization', () async {
+      await store.write(identity);
+
+      final written = await store.writeCapabilityCodes(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        codes: {'canEditSongs', 'canViewSongs'},
+      );
+
+      expect(written, isTrue);
+      expect(
+        await store.readCapabilityCodes(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        {'canEditSongs', 'canViewSongs'},
+      );
+    });
+
+    test(
+      'are never written or read for another user or organization',
+      () async {
+        await store.write(identity);
+
+        expect(
+          await store.writeCapabilityCodes(
+            userId: 'user-1',
+            organizationId: 'org-2',
+            codes: {'canEditSongs'},
+          ),
+          isFalse,
+        );
+        expect(
+          await store.writeCapabilityCodes(
+            userId: 'user-2',
+            organizationId: 'org-1',
+            codes: {'canEditSongs'},
+          ),
+          isFalse,
+        );
+        expect(
+          await store.readCapabilityCodes(
+            userId: 'user-2',
+            organizationId: 'org-1',
+          ),
+          isNull,
+        );
+      },
+    );
+
+    test(
+      'a write after the identity was cleared does not resurrect them',
+      () async {
+        await store.write(identity);
+        await store.writeCapabilityCodes(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          codes: {'canEditSongs'},
+        );
+        await store.clear();
+
+        expect(
+          await store.writeCapabilityCodes(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            codes: {'canEditSongs'},
+          ),
+          isFalse,
+        );
+        expect(await store.read(), isNull);
+      },
+    );
+
+    test('an identity write keeps them only for the same user and '
+        'organization', () async {
+      await store.write(identity);
+      await store.writeCapabilityCodes(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        codes: {'canEditSongs'},
+      );
+
+      await store.write(identity);
+      expect(
+        await store.readCapabilityCodes(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        {'canEditSongs'},
+      );
+
+      await store.write(
+        const LastKnownIdentity(
+          userId: 'user-1',
+          email: 'user-1@example.com',
+          organizationId: 'org-2',
+        ),
+      );
+      await store.write(identity);
+      expect(
+        await store.readCapabilityCodes(
+          userId: 'user-1',
+          organizationId: 'org-1',
+        ),
+        isNull,
+      );
+    });
+
+    test('a different user\'s identity write never inherits them', () async {
+      await store.write(identity);
+      await store.writeCapabilityCodes(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        codes: {'canEditSongs'},
+      );
+
+      await store.write(
+        const LastKnownIdentity(
+          userId: 'user-2',
+          email: 'user-2@example.com',
+          organizationId: 'org-1',
+        ),
+      );
+
+      expect(
+        await store.readCapabilityCodes(
+          userId: 'user-2',
+          organizationId: 'org-1',
+        ),
+        isNull,
+      );
+    });
+  });
 }

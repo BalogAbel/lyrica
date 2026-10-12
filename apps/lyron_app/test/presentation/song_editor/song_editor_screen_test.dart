@@ -398,6 +398,57 @@ Line two
     expect(find.text(AppStrings.songSaveAction), findsNothing);
   });
 
+  testWidgets('read-only editor with no route to pop falls back to the song '
+      'list (direct URL / refresh)', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1440, 1200);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    // The stored set must be resolved up front, as after an offline cold
+    // start; an unresolved resolver fails open and the editor stays.
+    final resolver = CapabilityResolver(gateway: _ViewOnlyCapabilityGateway());
+    await resolver.capabilitiesFor('org-1');
+
+    final router = GoRouter(
+      initialLocation: '/songs/egy-ut/edit',
+      routes: [
+        GoRoute(
+          path: AppRoutes.home.path,
+          builder: (context, state) => const Material(child: Text('song-list')),
+        ),
+        GoRoute(
+          path: AppRoutes.songEditor.path,
+          builder: (context, state) =>
+              SongEditorScreen.edit(songId: 'song-1', songSlug: 'egy-ut'),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          unifiedSyncOverviewProvider.overrideWithValue(
+            const UnifiedSyncOverview.initial(),
+          ),
+          activeCatalogContextProvider.overrideWithValue(
+            const ActiveCatalogContext(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+          ),
+          capabilityResolverProvider.overrideWith((_) => resolver),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('song-list'), findsOneWidget);
+  });
+
   testWidgets('create mode save calls createSong and navigates to reader', (
     tester,
   ) async {

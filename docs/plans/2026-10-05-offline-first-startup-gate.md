@@ -2553,6 +2553,41 @@ Start after PR 1 merges:
 git checkout main && git pull && git checkout -b fix/offline-first-affordances
 ```
 
+**Reconciliation with `main` (2026-10-11, before Task 10).** This part was
+written before #85 merged; #86 (XU1–XU6), #87 (SO1–SO8), #88 (RW1–RW4) and
+#89 (IR1–IR2) merged since. Every "old code" snippet in Tasks 10–16 was
+checked against `main` at `02a9aa2` and still matches. Anchors and
+consistency findings:
+
+- `capabilityResolverProvider` is at `auth_providers.dart:1099`. It already
+  invalidates on every `AppAuthController` notification, so a user switch or
+  sign-out drops the in-memory sets before the next read.
+- `unified_sync_status_popup_test.dart` has **20** `ProviderScope(`s; Task 15
+  Step 1 adds the `syncFreshnessProvider` override to every one of them.
+- `test/presentation/shared/if_capability_test.dart` does not exist yet;
+  Task 13 creates it.
+- XU (#86): the resolver reads `AppAuthState.currentUserId` (signed-in user,
+  or the last known session's user in `sessionExpired`), and the store
+  answers only when the identity row names exactly that user and
+  organization. No other user's or organization's set can apply.
+- SO4 (#87): `LocalDataLifecycle.clearIdentity` now clears only when the row
+  belongs to the signing-out user. The codes live on that row, so they go
+  with it; a row that belongs to someone else keeps that someone's own set.
+  `writeCapabilityCodes` is one conditional `UPDATE` (not an identity or
+  marker mutation, so it does not need the D5.5 chain): after any clear the
+  row is gone and nothing matches.
+- **Strengthening (Task 12):** the no-stored-set path persists only while
+  `_version == capturedVersion`, like the background refresh already does.
+  A sign-out invalidates the resolver, so an answer that arrives after a
+  sign-out is never written, not even into a new row for the same user and
+  organization after they sign in again.
+- **Addition (Task 13):** the spec's PR 2 acceptance also lists "`IfCapability`
+  with no stored set and a failing resolve still shows its child"; Task 13's
+  new widget test file pins that too.
+- SG7: `syncFreshnessProvider` reads `activeCatalogContextProvider`, which
+  since XU2 only ever names the current user's context, so the indicator
+  cannot show another user's or organization's times.
+
 ### Task 10: `capabilityCodes` column, schema v3
 
 **Files:**

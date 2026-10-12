@@ -43,9 +43,17 @@ class LastKnownIdentityDatabase extends _$LastKnownIdentityDatabase {
           lastKnownIdentityRows.membershipRevokedAt,
         );
       }
+      if (from < 3) {
+        // SG6: pre-migration rows have no stored capabilities; null is the
+        // correct starting state, the same as a freshly written row.
+        await m.addColumn(
+          lastKnownIdentityRows,
+          lastKnownIdentityRows.capabilityCodes,
+        );
+      }
     },
   );
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 }

@@ -8,6 +8,7 @@ import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.
 import 'package:lyron_app/src/application/sync/unified_discard_controller.dart';
 import 'package:lyron_app/src/application/sync/unified_row_recovery_controller.dart';
 import 'package:lyron_app/src/application/sync/unified_sync_overview.dart';
+import 'package:lyron_app/src/presentation/sync/last_synced_format.dart';
 import 'package:lyron_app/src/presentation/sync/unified_sync_providers.dart';
 import 'package:lyron_app/src/router/app_routes.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
@@ -71,6 +72,8 @@ class UnifiedSyncStatusPopup extends ConsumerWidget {
                   ),
                 ],
               ),
+              const SizedBox(height: 8),
+              const _LastSyncedSummary(),
               const SizedBox(height: 12),
               Expanded(child: _PopupBody(overview: overview)),
             ],
@@ -425,6 +428,39 @@ class _ReasonChip extends StatelessWidget {
       visualDensity: VisualDensity.compact,
       side: BorderSide(color: color),
       labelStyle: TextStyle(color: color),
+    );
+  }
+}
+
+/// SG7: when songs and plans last synced, so offline data is never shown as
+/// if it were current.
+class _LastSyncedSummary extends ConsumerWidget {
+  const _LastSyncedSummary();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final freshness = ref.watch(syncFreshnessProvider);
+    if (freshness == null) {
+      return const SizedBox.shrink();
+    }
+    final now = DateTime.now();
+    final style = Theme.of(context).textTheme.bodySmall;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${AppStrings.unifiedSyncLastSyncedSongsLabel}: '
+          '${formatLastSynced(freshness.songsRefreshedAt, now: now)}',
+          key: const ValueKey('unified-sync-last-synced-songs'),
+          style: style,
+        ),
+        Text(
+          '${AppStrings.unifiedSyncLastSyncedPlansLabel}: '
+          '${formatLastSynced(freshness.plansRefreshedAt, now: now)}',
+          key: const ValueKey('unified-sync-last-synced-plans'),
+          style: style,
+        ),
+      ],
     );
   }
 }

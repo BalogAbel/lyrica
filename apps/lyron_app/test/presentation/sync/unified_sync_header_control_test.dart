@@ -103,4 +103,50 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('offline-cached or stale data draws a hollow dot (SG7)', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _overview(
+        UnifiedSyncHeaderStatus.synced,
+        freshness: UnifiedSyncFreshness.offlineCached,
+      ),
+    );
+    expect(
+      find.byKey(const ValueKey('unified-sync-header-dot-hollow')),
+      findsOneWidget,
+    );
+
+    await _pump(
+      tester,
+      _overview(
+        UnifiedSyncHeaderStatus.synced,
+        freshness: UnifiedSyncFreshness.stale,
+      ),
+    );
+    expect(
+      find.byKey(const ValueKey('unified-sync-header-dot-hollow')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('fresh data draws a filled dot', (tester) async {
+    await _pump(tester, _overview(UnifiedSyncHeaderStatus.synced));
+    expect(
+      find.byKey(const ValueKey('unified-sync-header-dot-filled')),
+      findsOneWidget,
+    );
+  });
+
+  test('freshness copy is human-readable, not an identifier (SG7)', () {
+    for (final copy in [
+      AppStrings.unifiedSyncFreshnessStale,
+      AppStrings.unifiedSyncFreshnessOfflineCached,
+    ]) {
+      expect(copy, isNot(contains('_')));
+      expect(copy, contains(' '));
+    }
+  });
 }

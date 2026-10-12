@@ -69,6 +69,17 @@ class $LastKnownIdentityRowsTable extends LastKnownIdentityRows
         type: DriftSqlType.dateTime,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _capabilityCodesMeta = const VerificationMeta(
+    'capabilityCodes',
+  );
+  @override
+  late final GeneratedColumn<String> capabilityCodes = GeneratedColumn<String>(
+    'capability_codes',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     rowId,
@@ -77,6 +88,7 @@ class $LastKnownIdentityRowsTable extends LastKnownIdentityRows
     organizationId,
     updatedAt,
     membershipRevokedAt,
+    capabilityCodes,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -136,6 +148,15 @@ class $LastKnownIdentityRowsTable extends LastKnownIdentityRows
         ),
       );
     }
+    if (data.containsKey('capability_codes')) {
+      context.handle(
+        _capabilityCodesMeta,
+        capabilityCodes.isAcceptableOrUnknown(
+          data['capability_codes']!,
+          _capabilityCodesMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -169,6 +190,10 @@ class $LastKnownIdentityRowsTable extends LastKnownIdentityRows
         DriftSqlType.dateTime,
         data['${effectivePrefix}membership_revoked_at'],
       ),
+      capabilityCodes: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}capability_codes'],
+      ),
     );
   }
 
@@ -186,6 +211,7 @@ class LastKnownIdentityRow extends DataClass
   final String? organizationId;
   final DateTime? updatedAt;
   final DateTime? membershipRevokedAt;
+  final String? capabilityCodes;
   const LastKnownIdentityRow({
     required this.rowId,
     required this.userId,
@@ -193,6 +219,7 @@ class LastKnownIdentityRow extends DataClass
     this.organizationId,
     this.updatedAt,
     this.membershipRevokedAt,
+    this.capabilityCodes,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -208,6 +235,9 @@ class LastKnownIdentityRow extends DataClass
     }
     if (!nullToAbsent || membershipRevokedAt != null) {
       map['membership_revoked_at'] = Variable<DateTime>(membershipRevokedAt);
+    }
+    if (!nullToAbsent || capabilityCodes != null) {
+      map['capability_codes'] = Variable<String>(capabilityCodes);
     }
     return map;
   }
@@ -226,6 +256,9 @@ class LastKnownIdentityRow extends DataClass
       membershipRevokedAt: membershipRevokedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(membershipRevokedAt),
+      capabilityCodes: capabilityCodes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(capabilityCodes),
     );
   }
 
@@ -243,6 +276,7 @@ class LastKnownIdentityRow extends DataClass
       membershipRevokedAt: serializer.fromJson<DateTime?>(
         json['membershipRevokedAt'],
       ),
+      capabilityCodes: serializer.fromJson<String?>(json['capabilityCodes']),
     );
   }
   @override
@@ -255,6 +289,7 @@ class LastKnownIdentityRow extends DataClass
       'organizationId': serializer.toJson<String?>(organizationId),
       'updatedAt': serializer.toJson<DateTime?>(updatedAt),
       'membershipRevokedAt': serializer.toJson<DateTime?>(membershipRevokedAt),
+      'capabilityCodes': serializer.toJson<String?>(capabilityCodes),
     };
   }
 
@@ -265,6 +300,7 @@ class LastKnownIdentityRow extends DataClass
     Value<String?> organizationId = const Value.absent(),
     Value<DateTime?> updatedAt = const Value.absent(),
     Value<DateTime?> membershipRevokedAt = const Value.absent(),
+    Value<String?> capabilityCodes = const Value.absent(),
   }) => LastKnownIdentityRow(
     rowId: rowId ?? this.rowId,
     userId: userId ?? this.userId,
@@ -276,6 +312,9 @@ class LastKnownIdentityRow extends DataClass
     membershipRevokedAt: membershipRevokedAt.present
         ? membershipRevokedAt.value
         : this.membershipRevokedAt,
+    capabilityCodes: capabilityCodes.present
+        ? capabilityCodes.value
+        : this.capabilityCodes,
   );
   LastKnownIdentityRow copyWithCompanion(LastKnownIdentityRowsCompanion data) {
     return LastKnownIdentityRow(
@@ -289,6 +328,9 @@ class LastKnownIdentityRow extends DataClass
       membershipRevokedAt: data.membershipRevokedAt.present
           ? data.membershipRevokedAt.value
           : this.membershipRevokedAt,
+      capabilityCodes: data.capabilityCodes.present
+          ? data.capabilityCodes.value
+          : this.capabilityCodes,
     );
   }
 
@@ -300,7 +342,8 @@ class LastKnownIdentityRow extends DataClass
           ..write('email: $email, ')
           ..write('organizationId: $organizationId, ')
           ..write('updatedAt: $updatedAt, ')
-          ..write('membershipRevokedAt: $membershipRevokedAt')
+          ..write('membershipRevokedAt: $membershipRevokedAt, ')
+          ..write('capabilityCodes: $capabilityCodes')
           ..write(')'))
         .toString();
   }
@@ -313,6 +356,7 @@ class LastKnownIdentityRow extends DataClass
     organizationId,
     updatedAt,
     membershipRevokedAt,
+    capabilityCodes,
   );
   @override
   bool operator ==(Object other) =>
@@ -323,7 +367,8 @@ class LastKnownIdentityRow extends DataClass
           other.email == this.email &&
           other.organizationId == this.organizationId &&
           other.updatedAt == this.updatedAt &&
-          other.membershipRevokedAt == this.membershipRevokedAt);
+          other.membershipRevokedAt == this.membershipRevokedAt &&
+          other.capabilityCodes == this.capabilityCodes);
 }
 
 class LastKnownIdentityRowsCompanion
@@ -334,6 +379,7 @@ class LastKnownIdentityRowsCompanion
   final Value<String?> organizationId;
   final Value<DateTime?> updatedAt;
   final Value<DateTime?> membershipRevokedAt;
+  final Value<String?> capabilityCodes;
   const LastKnownIdentityRowsCompanion({
     this.rowId = const Value.absent(),
     this.userId = const Value.absent(),
@@ -341,6 +387,7 @@ class LastKnownIdentityRowsCompanion
     this.organizationId = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.membershipRevokedAt = const Value.absent(),
+    this.capabilityCodes = const Value.absent(),
   });
   LastKnownIdentityRowsCompanion.insert({
     this.rowId = const Value.absent(),
@@ -349,6 +396,7 @@ class LastKnownIdentityRowsCompanion
     this.organizationId = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.membershipRevokedAt = const Value.absent(),
+    this.capabilityCodes = const Value.absent(),
   }) : userId = Value(userId),
        email = Value(email);
   static Insertable<LastKnownIdentityRow> custom({
@@ -358,6 +406,7 @@ class LastKnownIdentityRowsCompanion
     Expression<String>? organizationId,
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? membershipRevokedAt,
+    Expression<String>? capabilityCodes,
   }) {
     return RawValuesInsertable({
       if (rowId != null) 'row_id': rowId,
@@ -367,6 +416,7 @@ class LastKnownIdentityRowsCompanion
       if (updatedAt != null) 'updated_at': updatedAt,
       if (membershipRevokedAt != null)
         'membership_revoked_at': membershipRevokedAt,
+      if (capabilityCodes != null) 'capability_codes': capabilityCodes,
     });
   }
 
@@ -377,6 +427,7 @@ class LastKnownIdentityRowsCompanion
     Value<String?>? organizationId,
     Value<DateTime?>? updatedAt,
     Value<DateTime?>? membershipRevokedAt,
+    Value<String?>? capabilityCodes,
   }) {
     return LastKnownIdentityRowsCompanion(
       rowId: rowId ?? this.rowId,
@@ -385,6 +436,7 @@ class LastKnownIdentityRowsCompanion
       organizationId: organizationId ?? this.organizationId,
       updatedAt: updatedAt ?? this.updatedAt,
       membershipRevokedAt: membershipRevokedAt ?? this.membershipRevokedAt,
+      capabilityCodes: capabilityCodes ?? this.capabilityCodes,
     );
   }
 
@@ -411,6 +463,9 @@ class LastKnownIdentityRowsCompanion
         membershipRevokedAt.value,
       );
     }
+    if (capabilityCodes.present) {
+      map['capability_codes'] = Variable<String>(capabilityCodes.value);
+    }
     return map;
   }
 
@@ -422,7 +477,8 @@ class LastKnownIdentityRowsCompanion
           ..write('email: $email, ')
           ..write('organizationId: $organizationId, ')
           ..write('updatedAt: $updatedAt, ')
-          ..write('membershipRevokedAt: $membershipRevokedAt')
+          ..write('membershipRevokedAt: $membershipRevokedAt, ')
+          ..write('capabilityCodes: $capabilityCodes')
           ..write(')'))
         .toString();
   }
@@ -449,6 +505,7 @@ typedef $$LastKnownIdentityRowsTableCreateCompanionBuilder =
       Value<String?> organizationId,
       Value<DateTime?> updatedAt,
       Value<DateTime?> membershipRevokedAt,
+      Value<String?> capabilityCodes,
     });
 typedef $$LastKnownIdentityRowsTableUpdateCompanionBuilder =
     LastKnownIdentityRowsCompanion Function({
@@ -458,6 +515,7 @@ typedef $$LastKnownIdentityRowsTableUpdateCompanionBuilder =
       Value<String?> organizationId,
       Value<DateTime?> updatedAt,
       Value<DateTime?> membershipRevokedAt,
+      Value<String?> capabilityCodes,
     });
 
 class $$LastKnownIdentityRowsTableFilterComposer
@@ -496,6 +554,11 @@ class $$LastKnownIdentityRowsTableFilterComposer
 
   ColumnFilters<DateTime> get membershipRevokedAt => $composableBuilder(
     column: $table.membershipRevokedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get capabilityCodes => $composableBuilder(
+    column: $table.capabilityCodes,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -538,6 +601,11 @@ class $$LastKnownIdentityRowsTableOrderingComposer
     column: $table.membershipRevokedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get capabilityCodes => $composableBuilder(
+    column: $table.capabilityCodes,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$LastKnownIdentityRowsTableAnnotationComposer
@@ -568,6 +636,11 @@ class $$LastKnownIdentityRowsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get membershipRevokedAt => $composableBuilder(
     column: $table.membershipRevokedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get capabilityCodes => $composableBuilder(
+    column: $table.capabilityCodes,
     builder: (column) => column,
   );
 }
@@ -624,6 +697,7 @@ class $$LastKnownIdentityRowsTableTableManager
                 Value<String?> organizationId = const Value.absent(),
                 Value<DateTime?> updatedAt = const Value.absent(),
                 Value<DateTime?> membershipRevokedAt = const Value.absent(),
+                Value<String?> capabilityCodes = const Value.absent(),
               }) => LastKnownIdentityRowsCompanion(
                 rowId: rowId,
                 userId: userId,
@@ -631,6 +705,7 @@ class $$LastKnownIdentityRowsTableTableManager
                 organizationId: organizationId,
                 updatedAt: updatedAt,
                 membershipRevokedAt: membershipRevokedAt,
+                capabilityCodes: capabilityCodes,
               ),
           createCompanionCallback:
               ({
@@ -640,6 +715,7 @@ class $$LastKnownIdentityRowsTableTableManager
                 Value<String?> organizationId = const Value.absent(),
                 Value<DateTime?> updatedAt = const Value.absent(),
                 Value<DateTime?> membershipRevokedAt = const Value.absent(),
+                Value<String?> capabilityCodes = const Value.absent(),
               }) => LastKnownIdentityRowsCompanion.insert(
                 rowId: rowId,
                 userId: userId,
@@ -647,6 +723,7 @@ class $$LastKnownIdentityRowsTableTableManager
                 organizationId: organizationId,
                 updatedAt: updatedAt,
                 membershipRevokedAt: membershipRevokedAt,
+                capabilityCodes: capabilityCodes,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
