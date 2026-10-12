@@ -1,5 +1,4 @@
 import 'package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_line_scanner.dart';
-import 'package:lyron_app/src/presentation/song_editor/song_editor_directives.dart';
 import 'package:lyron_app/src/presentation/song_editor/song_editor_state.dart';
 
 class SongEditorController {
@@ -51,7 +50,7 @@ class SongEditorController {
       source: _upsertDirective(
         _state.source,
         directiveName: 'transpose',
-        value: currentPreLyricDirectiveInt(_state.source, 'transpose') + 1,
+        value: _state.parsedSong.baseTranspose + 1,
       ),
     );
   }
@@ -61,7 +60,7 @@ class SongEditorController {
       source: _upsertDirective(
         _state.source,
         directiveName: 'transpose',
-        value: currentPreLyricDirectiveInt(_state.source, 'transpose') - 1,
+        value: _state.parsedSong.baseTranspose - 1,
       ),
     );
   }
@@ -71,7 +70,7 @@ class SongEditorController {
       source: _upsertDirective(
         _state.source,
         directiveName: 'capo',
-        value: currentPreLyricDirectiveInt(_state.source, 'capo') + 1,
+        value: _state.parsedSong.baseCapo + 1,
       ),
     );
   }
@@ -81,7 +80,7 @@ class SongEditorController {
       source: _upsertDirective(
         _state.source,
         directiveName: 'capo',
-        value: currentPreLyricDirectiveInt(_state.source, 'capo') - 1,
+        value: _state.parsedSong.baseCapo - 1,
         clampAtZero: true,
       ),
     );

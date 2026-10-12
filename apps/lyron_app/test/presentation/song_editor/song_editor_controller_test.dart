@@ -154,4 +154,28 @@ void main() {
     // Still a valid, parseable ChordPro sample with the placeholder title.
     expect(controller.state.parsedSong.title, 'My New Song');
   });
+
+  test(
+    'editor reads the last base transpose and capo before the lyric (E1)',
+    () {
+      final controller = SongEditorController(
+        source: '{transpose: 1}\n{transpose: 3}\n{capo: 1}\n{capo: 2}\n[A]x\n',
+      );
+
+      expect(controller.state.parsedSong.baseTranspose, 3);
+      expect(controller.state.parsedSong.baseCapo, 2);
+    },
+  );
+
+  test('editor skips an invalid base transpose and uses the next (E2)', () {
+    final controller = SongEditorController(
+      source: '{transpose: x}\n{transpose: 2}\n[A]x\n',
+    );
+
+    expect(controller.state.parsedSong.baseTranspose, 2);
+
+    controller.transposeUp();
+
+    expect(controller.state.parsedSong.baseTranspose, 3);
+  });
 }

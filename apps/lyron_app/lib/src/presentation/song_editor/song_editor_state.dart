@@ -1,6 +1,5 @@
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
 import 'package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_parser.dart';
-import 'package:lyron_app/src/presentation/song_editor/song_editor_directives.dart';
 
 enum SongEditorCanonicalViewMode { source, preview }
 
@@ -71,8 +70,6 @@ class SongEditorParsedSong {
 SongEditorParsedSong _parseSongEditorSource(String source) {
   final parser = ChordproParser();
   final parsedSong = parser.parse(source);
-  final transpose = currentPreLyricDirectiveInt(source, 'transpose');
-  final capo = currentPreLyricDirectiveInt(source, 'capo');
 
   return SongEditorParsedSong(
     title: parsedSong.title,
@@ -81,8 +78,8 @@ SongEditorParsedSong _parseSongEditorSource(String source) {
     sourceKey: parsedSong.sourceKey,
     tempoBpm: parsedSong.tempoBpm,
     tags: parsedSong.tags,
-    baseTranspose: transpose,
-    baseCapo: capo,
+    baseTranspose: parsedSong.baseTranspose,
+    baseCapo: parsedSong.baseCapo,
     sections: parsedSong.sections,
     diagnostics: parsedSong.diagnostics,
   );

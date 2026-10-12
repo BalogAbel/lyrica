@@ -88,4 +88,17 @@ void main() {
       expect(projection.preview.capoDirectiveText, 'Capo 3');
     },
   );
+
+  test('summary reads key, transpose and capo past a comment (E9)', () {
+    final controller = SongEditorController(
+      source:
+          '{title: T}\n{comment:<Intro>}\n{key: G}\n{transpose: 2}\n{capo: 3}\n[A]x\n',
+    );
+
+    final projection = SongEditorProjection(state: controller.state);
+
+    expect(projection.summaryKey, 'G');
+    expect(projection.summaryTranspose, '+2');
+    expect(projection.summaryCapo, '3');
+  });
 }
