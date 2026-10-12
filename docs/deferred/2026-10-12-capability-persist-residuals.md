@@ -53,3 +53,5 @@ Small gaps from the review ledger that remain open:
 
 The next change to capability resolution or the auth persistence path (F3, F4),
 or a test-hardening pass over the sync surface.
+
+Roadmap (2026-10-12): scheduled in S6b (F3, F4 and the test-strength gaps).

@@ -56,3 +56,5 @@ PG11: the items stream is a primary-key range scan filtered by
 `organization_id`. Acceptable for a single-organization database. If it ever
 matters, add an `(organization_id, id)` index as a separate backend chore
 (hosted deploys are manual).
+
+Roadmap (2026-10-12): scheduled in S5b (R2, fixed with a membership re-check after the child streams, not the `content_version > 1` rejection, because a plan whose sessions were all deleted legitimately has that shape) and S6b (R3); R1 and R4 stay trigger-gated (S9).

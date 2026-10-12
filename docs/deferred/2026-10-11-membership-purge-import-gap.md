@@ -30,3 +30,5 @@ when this entry is picked up, unless a production reader needs it by then.
 ## Trigger
 
 The next change to the membership purge or to ADR-035.
+
+Roadmap (2026-10-12): scheduled in S3 PR 2 (it amends ADR-035 anyway; use `isRunningFor(userId)`).

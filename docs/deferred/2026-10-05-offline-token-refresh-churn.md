@@ -79,3 +79,5 @@ Pick this up when one of these happens:
   rotated the token.
 - The startup path must still never wait on any of this (2026-10-05 spec
   invariant).
+
+Roadmap (2026-10-12): stays trigger-gated (S9).

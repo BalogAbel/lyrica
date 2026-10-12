@@ -32,3 +32,5 @@ data change.
 
 The next change to the unified sync status popup, or a copy pass over the sync
 surface.
+
+Roadmap (2026-10-12): scheduled in S6a.

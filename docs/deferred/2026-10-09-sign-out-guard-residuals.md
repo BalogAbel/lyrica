@@ -224,3 +224,5 @@ the next change to the import controller's state machine.
 
 No fixed slice. Pick each up with its own trigger above, or earlier if
 reported from the field.
+
+Roadmap (2026-10-12): scheduled in S6a (R8, R15, as feedback fixes); R1–R7, R9–R14 and R18–R20 stay trigger-gated (S9).
