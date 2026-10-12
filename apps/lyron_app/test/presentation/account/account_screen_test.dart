@@ -1,5 +1,6 @@
 // ignore_for_file: subtype_of_sealed_class
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -75,6 +76,42 @@ class _DeleteRecordingController extends AppAuthController {
   }
 }
 
+// FB9 (docs/specs/2026-10-12-sync-and-account-feedback.md): the Delete-account
+// RPC failed, offline or rejected.
+class _FailingDeleteController extends AppAuthController {
+  _FailingDeleteController(this.error) : super(_StubRepo());
+  final Object error;
+  int deleteCalls = 0;
+
+  @override
+  Future<void> deleteAccount() async {
+    deleteCalls += 1;
+    throw error;
+  }
+}
+
+/// Records what the Account screen reports through `FlutterError.onError` for
+/// the rest of the test. Everything else, including the test framework's own
+/// report of an unhandled asynchronous error, is forwarded to the original
+/// handler, so a regression fails the test instead of being swallowed.
+List<FlutterErrorDetails> _recordAccountScreenReports() {
+  final reported = <FlutterErrorDetails>[];
+  final original = FlutterError.onError;
+  FlutterError.onError = (details) {
+    if (details.library == 'AccountScreen') {
+      reported.add(details);
+    } else {
+      original?.call(details);
+    }
+  };
+  addTearDown(() => FlutterError.onError = original);
+  return reported;
+}
+
+const _deleteAccountFailedText =
+    'Could not confirm the account deletion. Nothing was removed from this '
+    'device. Check your connection and try again.';
+
 void main() {
   testWidgets('delete confirmation triggers deleteAccount', (tester) async {
     final controller = _RecordingController();
@@ -128,6 +165,88 @@ void main() {
       expect(controller.deleteCalls, 0);
     },
   );
+
+  Future<void> pumpAccountScreen(
+    WidgetTester tester,
+    AppAuthController controller,
+  ) => tester.pumpWidget(
+    ProviderScope(
+      overrides: [appAuthControllerProvider.overrideWith((_) => controller)],
+      child: const MaterialApp(home: AccountScreen()),
+    ),
+  );
+
+  Future<void> confirmDelete(WidgetTester tester) async {
+    await tester.tap(find.text(AppStrings.deleteAccountAction));
+    await tester.pump();
+    await tester.tap(find.text(AppStrings.deleteAccountConfirmAction));
+    await tester.pumpAndSettle();
+  }
+
+  // DA1 (FB9): an escaped error was an unhandled asynchronous error, which
+  // fails this test through the test zone; the screen now catches it.
+  testWidgets('a failed Delete account shows the message, leaves no spinner '
+      'and the tile works again (DA1)', (tester) async {
+    _recordAccountScreenReports();
+    final controller = _FailingDeleteController(StateError('rpc rejected'));
+    await pumpAccountScreen(tester, controller);
+
+    await confirmDelete(tester);
+
+    expect(controller.deleteCalls, 1);
+    expect(
+      find.descendant(
+        of: find.byType(SnackBar),
+        matching: find.text(_deleteAccountFailedText),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    final tile = tester.widget<ListTile>(
+      find.widgetWithText(ListTile, AppStrings.deleteAccountAction),
+    );
+    expect(tile.onTap, isNotNull);
+
+    // The tile can be used again: a second confirmation reaches the
+    // controller.
+    await confirmDelete(tester);
+    expect(controller.deleteCalls, 2);
+  });
+
+  // DA2 (FB9, ADR-036): a defect is reported once with a static context and no
+  // user data; an offline user is a condition, not a defect.
+  testWidgets('a non-connectivity Delete account failure is reported once '
+      'without user data (DA2)', (tester) async {
+    final reported = _recordAccountScreenReports();
+    final error = StateError('delete failed for owner@example.com');
+    await pumpAccountScreen(tester, _FailingDeleteController(error));
+
+    await confirmDelete(tester);
+
+    expect(reported, hasLength(1));
+    expect(reported.single.exception, same(error));
+    expect(reported.single.library, 'AccountScreen');
+    expect(reported.single.informationCollector, isNull);
+    expect(
+      reported.single.context.toString(),
+      isNot(contains('owner@example.com')),
+    );
+    expect(find.text(_deleteAccountFailedText), findsOneWidget);
+  });
+
+  testWidgets('a connectivity Delete account failure is not reported but '
+      'still shows the message (DA2)', (tester) async {
+    final reported = _recordAccountScreenReports();
+    await pumpAccountScreen(
+      tester,
+      _FailingDeleteController(const SocketException('offline')),
+    );
+
+    await confirmDelete(tester);
+
+    expect(reported, isEmpty);
+    expect(find.text(_deleteAccountFailedText), findsOneWidget);
+  });
 
   SignOutCommand commandWith({
     required int pendingCount,

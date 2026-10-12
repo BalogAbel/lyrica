@@ -363,6 +363,8 @@ class AppStrings {
   static const deleteAccountConfirmMessage =
       'Your account, memberships, and any pending offline changes will be removed permanently.';
   static const deleteAccountConfirmAction = 'Delete permanently';
+  static const deleteAccountFailedMessage =
+      'Could not confirm the account deletion. Nothing was removed from this device. Check your connection and try again.';
   static const cancelAction = 'Cancel';
   static const magicLinkSendFailureMessage =
       'Could not send magic link. Please try again.';
