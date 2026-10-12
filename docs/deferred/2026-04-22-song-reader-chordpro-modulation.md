@@ -34,7 +34,7 @@ Any future slice that changes ChordPro transpose semantics must update this note
 
 ## Roadmap (2026-10-01)
 
-`docs/plans/2026-10-01-delivery-roadmap.md` schedules the remaining item:
+`docs/plans/2026-10-01-delivery-roadmap.md` scheduled both items; only S8 remains:
 
 - **Base transpose/capo alignment (former item 1) was slice S2**
   (`fix/chordpro-base-directives`) and is resolved by

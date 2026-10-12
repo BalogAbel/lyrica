@@ -404,8 +404,8 @@ check(
 # ADR-027). Since S2 the Dart parser closes its key window only at the first
 # lyric line or the first non-empty tab content line; start_of_*, end_of_*,
 # tab starts and comments do not close it. SQL still closes on every
-# start_of_* / end_of_* (including start_of_tab). Each check below is mirrored
-# by a test in the Dart group 'ADR-027 key-window parity fixture'
+# start_of_* / end_of_* (including start_of_tab). Each check labelled
+# ACCEPTED DIVERGENCE or PARITY below is mirrored by a test in the Dart group 'ADR-027 key-window parity fixture'
 # (apps/lyron_app/test/infrastructure/song_library/chordpro/chordpro_parser_test.dart).
 # A change on EITHER side must update BOTH pins and ADR-027.
 check(

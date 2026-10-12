@@ -139,13 +139,18 @@ and an empty tab environment do not end it. Since S2 the section-comment
 trigger is gone on the Dart side, so the two implementations agree on
 `{c: Verse}` followed by `{key: G}` (both read `G`).
 
-The accepted divergence: when a `{start_of_*}`, an `{end_of_*}` or a tab
-environment start stands before `{key}` with no lyric line before it, SQL's
+The accepted divergence: when a `{start_of_*}`, an `{end_of_*}` or an empty
+tab environment stands before `{key}` with no lyric line before it, SQL's
 window is already closed (it derives no key, or an earlier one), while the
 Dart window is still open and the parser reads the key. Examples:
 `{start_of_verse}\n{key: G}` and `{start_of_tab}\n{end_of_tab}\n{key: G}`
 give SQL `null` and Dart `G`. A tab with content before the key
 (`{start_of_tab}\ne|---\n{end_of_tab}\n{key: G}`) is parity: both give `null`.
+
+The header comments of `202607290004_derive_song_metadata.sql` and of
+`chordpro_derive_key_signature` still name the pre-S2 section-comment
+divergence. The migration is applied and is not edited; this section is the
+authoritative description.
 
 Why it is accepted:
 
