@@ -117,7 +117,7 @@ Retry may appear for retryable unsynced rows as well as recovery rows where retr
 
 ### Reason Phrases
 
-Each row carries one reason chip. Song rows and plan rows use the same phrases (the `AppStrings.unifiedSyncReason*` constants):
+Each row carries one reason chip. Song rows and plan rows use the same phrases. The source of truth is the `unifiedSyncReason*` constants in `apps/lyron_app/lib/src/shared/app_strings.dart`; this table mirrors them and is updated with them:
 
 | Domain reason | Chip |
 |---|---|

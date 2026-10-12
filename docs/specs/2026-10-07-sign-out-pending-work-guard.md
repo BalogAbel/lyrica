@@ -9,8 +9,11 @@
 > which changed feedback only: the SO7 import refusal gives `blockedByImport`
 > (was `cancelled`), a throwing confirmation gives `failed` (was `cancelled`),
 > and a refused, failed or superseded sign-out shows one snackbar. The
-> statements below are amended in place. A failed Delete account is also
-> caught and shown now (FB9), and the SO8 refusal shows its own message.
+> statements on the sign-out outcomes below (the enum list, SO3, SO7, AC6) are
+> amended in place. The Delete account change is only a pointer, not an
+> amendment of SO8: a failed Delete account is also caught and shown now (FB9),
+> and the SO8 refusal shows its own message; SO8 and its text are otherwise
+> unchanged.
 
 **Branch:** `fix/sign-out-pending-work-guard`
 **Roadmap:** a small fix PR after the cross-user ownership PR (#86) and

@@ -20,10 +20,10 @@ implemented.
 At a 360 px wide phone the popup's fixed-width controls fill the dialog and
 leave the title and the chips no width:
 
-- the header `Row` holds the title in an `Expanded` plus **Discard all** and
-  **Sync now** (a filled button with an icon and a label). Together the two
-  buttons take most of the dialog's content width, so the title is squeezed to
-  nothing;
+- the header `Row` holds the title in an `Expanded` plus **Discard all** (shown
+  only while there is unsynced work) and **Sync now** (a filled button with an
+  icon and a label). Together the two buttons take most of the dialog's
+  content width, so the title is squeezed to nothing;
 - a conflict row puts **Keep mine** and **Discard mine** in the `ListTile`'s
   `trailing`. The `trailing` takes its natural width first, so the title and
   the chips of the row get what is left, which is close to zero.

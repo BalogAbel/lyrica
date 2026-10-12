@@ -183,7 +183,7 @@ Size legend:
 | ID | Branch | Scope | Deferred sources | Size | Risk |
 |---|---|---|---|---|---|
 | S1 | `fix/direct-dml-write-rpc-bypass` | **Merged (PR #84).** Revoke every table privilege except `SELECT` from `anon`/`authenticated` on all ten `public` tables. Drop the six `for all` policies (each is covered by a select policy, so dropping replaces the planned narrowing). Revoke `postgres`'s default privileges in `public` from `anon`, `authenticated` and `service_role`. Contract suites impersonate the real role; fixtures moved to `postgres`. ADR-039, plus correction notes in `architecture.md`, ADR-026, ADR-027 and ADR-038 | `2026-09-30-direct-dml-bypasses-write-rpcs.md` (resolved, removed) | M | medium |
-| S0 | `fix/offline-first-startup-gate` | **Merged (PRs #85, #90).** Field-reported bug, 2 PRs. (1) The membership gate decides from the last known identity; `verifiedEmpty` closes it only after the D5 purge; first run shows a loading state; auth-stream errors are handled; an integration test uses the real gotrue client. (2) Persist the last known capabilities (S6 option (a), pulled forward) and show a visible "last synced" indicator | `2026-09-30-capability-gating-offline-cold-start.md` (option (a) only) | M | medium |
+| S0 | `fix/offline-first-startup-gate` | **Merged (PRs #85, #90).** Field-reported bug, 2 PRs. (1) The membership gate decides from the last known identity; `verifiedEmpty` closes it only after the D5 purge; first run shows a loading state; auth-stream errors are handled; an integration test uses the real gotrue client. (2) Persist the last known capabilities (S6 option (a), pulled forward) and show a visible "last synced" indicator | `2026-09-30-capability-gating-offline-cold-start.md` (option (a) only; entry removed in S6a) | M | medium |
 | S5a | `fix/paged-remote-pulls` | **Merged (PR #91, `0390d79`).** A shared keyset paging helper (`order(id).gt(id, last).limit(n)`, ends only on an empty page, strictly increasing keys checked), not `.range()` plus `count=exact`: offset pages can skip a row that a count check does not catch. The catalog reads summaries and sources in one organization-scoped stream (no per-song requests); planning reads plans, sessions and session items as three organization-wide streams (embedded items were truncated too). ADR-041; spec `docs/specs/2026-10-12-paged-remote-pulls.md` | `2026-09-30-planning-pull-unpaged-reads.md` (resolved, removed) | S–M | low–medium |
 | S2 | `fix/chordpro-base-directives` | **Merged (PR #92, `c561d20`).** One base-region predicate shared by the parser, the editor read and the editor write: base `{transpose}`, `{capo}` and `{key}` are read before the first lyric or chord line (or the first tab content line). Comments and section markers no longer close it. The editor uses the parser-derived base values, and its write never touches in-song directives. Spec: `docs/specs/2026-10-12-chordpro-base-directives.md` | `2026-04-22-song-reader-chordpro-modulation.md`, item 1 | S | low |
 | S3 | `feat/personal-song-settings` | Personal song layer foundation, plus per-user transpose and capo at song and plan scope, in 3 PRs: (1) backend tables, RPCs, RLS and contract tests; (2) local Drift store, outbox and pull-cursor sync, integrated with the purge lifecycle, storage budget and sync overview; (3) reader resolution and UX. PR 2 also closes the membership-purge import gap (it amends ADR-035 anyway; use `isRunningFor(userId)`). The S3 brainstorm decides how the new pull and outbox writer behave around a purge (no resurrection after a purge) and re-evaluates the session-transition coordinator at that point, before adding another local guard | `2026-10-11-membership-purge-import-gap.md` (PR 2) | L | medium |
@@ -462,8 +462,8 @@ S5a left open. Each affected deferred document carries a one-line
 
 - **S6a** `fix/sync-and-account-feedback` (S–M, copy and feedback only):
   - the rejected-delete copy (the old S6 option b,
-    `2026-09-30-capability-gating-offline-cold-start.md`);
-  - `2026-10-12-sync-reason-chip-copy.md`;
+    `2026-09-30-capability-gating-offline-cold-start.md`, removed in S6a);
+  - `2026-10-12-sync-reason-chip-copy.md` (removed in S6a);
   - `2026-10-05-membership-revoked-notice.md` option (b);
   - `2026-10-09-sign-out-guard-residuals.md` R8 (no feedback for a refused
     sign-out) and R15 (a failed Delete account is unhandled).
@@ -489,8 +489,8 @@ decide how S3's pull and outbox writer behave around a purge (no
 resurrection after a purge), and re-evaluate the session-transition
 coordinator at that point, before adding another local guard.
 
-**R8 and R15 are feedback fixes, not transition guards.** Picking them up in
-S6a does not trigger the session-transition coordinator
+**R8 and R15 are feedback fixes, not transition guards.** Closing them in
+S6a did not trigger the session-transition coordinator
 (`2026-10-11-session-transition-coordinator.md` records this).
 
 **Stay trigger-gated (S9):**
