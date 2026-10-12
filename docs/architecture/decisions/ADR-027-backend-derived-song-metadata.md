@@ -6,6 +6,10 @@
 - Plan: `docs/plans/2026-07-29-read-boundary-and-derived-song-metadata.md`
 - Findings: SEC-4
 - Closes: `docs/deferred/2026-05-09-song-write-derived-fields.md`
+- Amended: 2026-10-12 — the Dart parser's key window moved (S2, BD2/BD8 of
+  `docs/specs/2026-10-12-chordpro-base-directives.md`): it no longer closes on
+  a section comment, `start_of_*` or `end_of_*`, so the old "Known divergence"
+  is gone and a new one (below) replaces it. SQL is unchanged.
 
 ## Context
 
@@ -116,35 +120,59 @@ plus a whitespace-only line and an ordinary lyric line.
 
 ## Known divergence
 
-`chordpro_parser.dart:62` honours the `key` directive only while
-`hasSeenSongContent` is false — a "key window" that closes on the first
-lyric line, any `start_of_*` directive, any `end_of_*` directive, or a
-`{comment}`/`{c}` directive that `_parseCommentSection` recognises as a
-section start (`chordpro_parser.dart:138`). `public.chordpro_scan_directives`
-(`supabase/migrations/202607290004_derive_song_metadata.sql`) reproduces the
-first three triggers exactly, tracked as it walks lines in order, and
-exposes the result per directive as `key_window_open`, which
-`chordpro_derive_key_signature` filters on. It does **not** reproduce the
-fourth: comment-as-section recognition (`_parseCommentSection`) is itself a
-small parser — unwrapping `<...>`/`[...]` wrappers, then regex-matching a
-bare word against `verse`/`chorus`/`bridge`/`intro`/anything else — that
-would have to be duplicated in SQL to close the window on it. Reproducing it
-would add more of exactly the parser surface this finding treats as risk, and
-would put every future comment-section rule in two places to keep in sync.
+*Rewritten 2026-10-12 (S2). The previous divergence, a section-like
+`{comment}`/`{c}` before `{key}`, no longer exists.*
 
-Concretely: a source where a `{comment}`/`{c}` directive that Dart reads as a
-section start (e.g. `{c: Verse}`) precedes a `{key:}` directive, with no
-prior lyric line or `start_of_*`/`end_of_*` directive, derives a key
-signature in SQL that the real Dart parser would have ignored (its key
-window would already be closed by the comment). This is the one accepted
-divergence: narrow, named, and pinned by a contract test
-(`scripts/tests/song-derived-metadata-contract-test.sh`, testing-strategy
-item 17) that asserts the SQL's actual behaviour, so a future change on
-either side — SQL growing comment-section support, or the Dart parser's rule
-changing — fails that assertion loudly instead of the two silently drifting
-further apart. Tab-block inertness and the key window's other three triggers
-are fully reproduced, not approximated; only this fourth trigger is the
-accepted gap.
+`public.chordpro_scan_directives`
+(`supabase/migrations/202607290004_derive_song_metadata.sql`) tracks a "key
+window" as it walks lines in order and exposes it per directive as
+`key_window_open`, which `chordpro_derive_key_signature` filters on. In SQL
+the window closes on the first lyric line, on any `start_of_*` directive
+(including `start_of_tab`) and on any `end_of_*` directive. A comment never
+closes it.
+
+The Dart parser reads the base `key` from the base region defined in
+`chordpro_line_scanner.dart` (`ChordproBaseRegion`, BD1/BD2 of the S2 spec).
+That region ends at the first lyric line or at the first non-empty content
+line inside a tab environment. Comments, `start_of_*`, `end_of_*`, blank lines
+and an empty tab environment do not end it. Since S2 the section-comment
+trigger is gone on the Dart side, so the two implementations agree on
+`{c: Verse}` followed by `{key: G}` (both read `G`).
+
+The accepted divergence: when a `{start_of_*}`, an `{end_of_*}` or a tab
+environment start stands before `{key}` with no lyric line before it, SQL's
+window is already closed (it derives no key, or an earlier one), while the
+Dart window is still open and the parser reads the key. Examples:
+`{start_of_verse}\n{key: G}` and `{start_of_tab}\n{end_of_tab}\n{key: G}`
+give SQL `null` and Dart `G`. A tab with content before the key
+(`{start_of_tab}\ne|---\n{end_of_tab}\n{key: G}`) is parity: both give `null`.
+
+Why it is accepted:
+
+- Nobody reads `songs.key_signature` today. The catalog pull selects
+  `id, slug, title, version, chordpro_source`, and only the write RPCs write
+  the column. The reader and the editor take the key from the source through
+  the Dart parser.
+- Aligning the server would need a tab-content rule in SQL as well (the
+  window would close on the first non-empty tab line rather than on
+  `start_of_tab`), which is more duplicated parser surface, the cost this ADR
+  weighs against.
+
+Pinned on both sides, so either side changing fails loudly instead of the two
+silently drifting further apart:
+
+- SQL: the key-window checks in
+  `scripts/tests/song-derived-metadata-contract-test.sh` (Section D) assert SQL's actual result for each source
+  above, labelled `ACCEPTED DIVERGENCE` or `PARITY`.
+- Dart: the group `ADR-027 key-window parity fixture` in
+  `apps/lyron_app/test/infrastructure/song_library/chordpro/chordpro_parser_test.dart`
+  asserts the parser's actual result for the same sources, and names the
+  matching contract-test check in each test name.
+
+A change to the key window on either side must update both pins and this
+section. Aligning the server (a migration of `chordpro_scan_directives`, pins
+flipped to parity) is deferred:
+`docs/deferred/2026-10-12-key-signature-window-server-alignment.md`.
 
 ## Risks accepted
 

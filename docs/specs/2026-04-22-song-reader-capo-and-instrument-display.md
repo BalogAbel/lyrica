@@ -1,6 +1,6 @@
 # Song Reader Capo And Instrument Display Spec
 
-> Status: Proposed
+> Status: Proposed. Partially superseded (2026-10-12): base `key`, `capo` and `transpose` values are now read per `docs/specs/2026-10-12-chordpro-base-directives.md` (one base region shared by parser, editor read and editor write; comments and section markers no longer close it).
 
 > This spec extends reader behavior defined in `docs/specs/2026-03-22-tablet-first-chordpro-song-reader.md`, `docs/specs/2026-04-13-song-reader-ui-discovery.md`, and `docs/specs/2026-04-16-song-reader-tablet-immersive-shell.md`.
 

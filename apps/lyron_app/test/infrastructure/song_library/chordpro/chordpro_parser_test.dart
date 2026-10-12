@@ -631,49 +631,47 @@ Line two
   );
 
   // ADR-027 key-window parity fixture. Each case mirrors a check in
-  // scripts/tests/song-derived-metadata-contract-test.sh. A change on either
-  // side (parser or SQL) must update both pins and ADR-027.
+  // scripts/tests/song-derived-metadata-contract-test.sh (Section D, named in
+  // each test below). A change on either side (parser or SQL) must update
+  // both pins and ADR-027.
   group('ADR-027 key-window parity fixture', () {
     String? parsedKey(String source) =>
         ChordproParser().parse(source).sourceKey;
 
-    test('section comment before key reads G (parity; SQL: G; contract test: '
-        'Item 17 check, a comment Dart reads as a section start does not close '
-        'the window in SQL)', () {
+    test('section comment before key reads G (PARITY since S2; SQL: G; '
+        'contract test: "key window: a section-like comment does not close '
+        'the window")', () {
       expect(parsedKey('{c: Verse}\n{key: G}'), 'G');
     });
 
-    test(
-      '{start_of_verse} before key reads G (accepted divergence; SQL: null; '
-      'contract test: key window ignored once a start_of_* directive was seen)',
-      () {
-        expect(parsedKey('{start_of_verse}\n{key: G}'), 'G');
-      },
-    );
+    test('{start_of_verse} before key reads G (ACCEPTED DIVERGENCE; SQL: null; '
+        'contract test: "key window: ignored once a start_of_* directive has '
+        'been seen")', () {
+      expect(parsedKey('{start_of_verse}\n{key: G}'), 'G');
+    });
 
-    test(
-      '{end_of_verse} before key reads G (accepted divergence; SQL: null; '
-      'contract test: key window ignored once an end_of_* directive was seen)',
-      () {
-        expect(parsedKey('{end_of_verse}\n{key: G}'), 'G');
-      },
-    );
+    test('{end_of_verse} before key reads G (ACCEPTED DIVERGENCE; SQL: null; '
+        'contract test: "key window: ignored once an end_of_* directive has '
+        'been seen")', () {
+      expect(parsedKey('{end_of_verse}\n{key: G}'), 'G');
+    });
 
-    test('empty tab block before key reads G (accepted divergence; SQL: null; '
-        'contract test: empty tab block closes the SQL key window)', () {
+    test('empty tab block before key reads G (ACCEPTED DIVERGENCE; SQL: null; '
+        'contract test: "key window: an empty tab block closes the '
+        'window")', () {
       expect(parsedKey('{start_of_tab}\n{end_of_tab}\n{key: G}'), 'G');
     });
 
-    test('tab content before key reads null (parity; SQL: null; contract test: '
-        'tab content closes the key window)', () {
+    test('tab content before key reads null (PARITY; SQL: null; contract '
+        'test: "key window: tab content closes the window")', () {
       expect(
         parsedKey('{start_of_tab}\ne|---\n{end_of_tab}\n{key: G}'),
         isNull,
       );
     });
 
-    test('lyric line before key reads null (parity; SQL: null; contract test: '
-        'key window ignored once a lyric line has been seen)', () {
+    test('lyric line before key reads null (PARITY; SQL: null; contract test: '
+        '"key window: ignored once a lyric line has been seen")', () {
       expect(parsedKey('[C] Amazing grace\n{key: G}'), isNull);
     });
   });

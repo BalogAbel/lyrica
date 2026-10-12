@@ -101,4 +101,16 @@ void main() {
     expect(projection.summaryTranspose, '+2');
     expect(projection.summaryCapo, '3');
   });
+
+  test('a transpose line inside a tab is tab text, not a base value (BD5)', () {
+    final controller = SongEditorController(
+      source:
+          '{title: T}\n{start_of_tab}\n{transpose: 2}\ne|--|\n{end_of_tab}\n[A]x\n',
+    );
+
+    final projection = SongEditorProjection(state: controller.state);
+
+    expect(controller.state.parsedSong.baseTranspose, 0);
+    expect(projection.summaryTranspose, '0');
+  });
 }
