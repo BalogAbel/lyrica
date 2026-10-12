@@ -1,7 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/application/song_library/active_catalog_context.dart';
+import 'package:lyron_app/src/application/song_library/song_library_service.dart';
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
+import 'package:lyron_app/src/domain/song/song_source.dart';
 import 'package:lyron_app/src/domain/song/song_summary.dart';
 
 void main() {
@@ -69,4 +72,63 @@ void main() {
       ['Alpha', 'Beta', 'Gamma'],
     );
   });
+
+  test(
+    'reader keeps every parsed base value when the title falls back',
+    () async {
+      const context = ActiveCatalogContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+      final container = ProviderContainer(
+        overrides: [
+          activeCatalogContextProvider.overrideWithValue(context),
+          songLibraryServiceProvider.overrideWithValue(
+            _FallbackTitleService(
+              source:
+                  '{transpose: 2}\n{capo: 3}\n{key: G}\n{artist: A}\n'
+                  '{tempo: 90}\n{tags: x}\n[G]Hello\n',
+              summary: const SongSummary(id: 'song-1', title: 'Summary Title'),
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final song = (await container.read(
+        songLibraryReaderProvider('song-1').future,
+      )).song;
+
+      expect(song.title, 'Summary Title');
+      expect(song.baseTranspose, 2);
+      expect(song.baseCapo, 3);
+      expect(song.sourceKey, 'G');
+      expect(song.artist, 'A');
+      expect(song.tempoBpm, 90);
+      expect(song.tags, ['x']);
+      expect(song.sections, isNotEmpty);
+    },
+  );
+}
+
+class _FallbackTitleService implements SongLibraryService {
+  _FallbackTitleService({required this.source, required this.summary});
+
+  final String source;
+  final SongSummary summary;
+
+  @override
+  Future<SongSource> getSongSource({
+    required ActiveCatalogContext context,
+    required String songId,
+  }) async => SongSource(id: songId, source: source);
+
+  @override
+  Future<SongSummary?> getSongSummaryById({
+    required ActiveCatalogContext context,
+    required String songId,
+  }) async => summary;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
