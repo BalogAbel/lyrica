@@ -116,10 +116,13 @@ String _upsertDirective(
   final scanned = ChordproLineScanner()
       .scan(ChordproNormalizer().normalize(source))
       .toList();
-  assert(
-    records.length == scanned.length,
-    'line records must match the normalized scanner line count',
-  );
+  // Unreachable today: the normalizer maps each line to exactly one line, so
+  // record i is always scanned line i + 1. This runtime check (not an
+  // assert, which release builds skip) makes a future normalizer change that
+  // breaks the mapping a no-op instead of an edit to the wrong line.
+  if (records.length != scanned.length) {
+    return source;
+  }
   final region = ChordproBaseRegion.of(scanned);
 
   final occurrences = <int>[
