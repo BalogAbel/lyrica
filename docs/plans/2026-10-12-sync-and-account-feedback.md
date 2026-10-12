@@ -1,6 +1,7 @@
 # Plan: Sync and Account Feedback (S6a)
 
-> Status: in progress (2026-10-12) on `fix/sync-and-account-feedback`.
+> Status: implemented (2026-10-12) on `fix/sync-and-account-feedback`, PR
+> pending merge.
 
 - Spec: `docs/specs/2026-10-12-sync-and-account-feedback.md` (FB1–FB15,
   CP/SF/DA/L acceptance criteria)
@@ -174,6 +175,10 @@ One Opus 5.5 adversarial whole-diff review. Claim to disprove:
 
 Blocking findings only that claim. At most one fix round. Everything else is
 deferred with a document.
+
+## Final review outcome
+
+Pending: the adversarial whole-diff review runs after this task.
 
 ## Manual device check (after the PR)
 

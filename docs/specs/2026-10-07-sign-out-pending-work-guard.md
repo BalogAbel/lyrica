@@ -3,6 +3,14 @@
 > Status: approved 2026-10-09 with two additions (W3 offline sign-out, the
 > explicit catalog lifetime in SO1); implemented on
 > `fix/sign-out-pending-work-guard` (Tasks 1–6)
+>
+> Amended 2026-10-12 by S6a
+> (`docs/specs/2026-10-12-sync-and-account-feedback.md`, FB6, FB7 and FB9),
+> which changed feedback only: the SO7 import refusal gives `blockedByImport`
+> (was `cancelled`), a throwing confirmation gives `failed` (was `cancelled`),
+> and a refused, failed or superseded sign-out shows one snackbar. The
+> statements below are amended in place. A failed Delete account is also
+> caught and shown now (FB9), and the SO8 refusal shows its own message.
 
 **Branch:** `fix/sign-out-pending-work-guard`
 **Roadmap:** a small fix PR after the cross-user ownership PR (#86) and
@@ -162,7 +170,14 @@ screen has no in-app link; it is reachable at `/account` (by URL on web).
 sign-out rule once. It has no `Ref`; its inputs are injected:
 
 ```dart
-enum SignOutOutcome { signedOut, cancelled, superseded, alreadyRunning, failed }
+enum SignOutOutcome {
+  signedOut,
+  cancelled,
+  superseded,
+  alreadyRunning,
+  failed,
+  blockedByImport, // S6a (FB6): the SO7 import refusal; the flow produces it
+}
 
 typedef SignOutConfirmation = Future<bool> Function(int? pendingCount);
 
@@ -296,9 +311,10 @@ at the local sign-out:
 error. An error from the sign-out sequence (for example a failed local
 purge) is reported once through `reportError`; the outcome is `failed` and
 the lock is released, so the user can try again. An error while asking (the
-confirmation callback throws) is reported once and counts as not confirmed
-(`cancelled`). An unreadable count is not an error; it becomes `null`
-(SO2).
+confirmation callback throws) is reported once, counts as not confirmed and
+gives `failed`: the user never chose, so it is not `cancelled` (FB6 of S6a;
+it was `cancelled` before). Nothing is deleted either way. An unreadable count
+is not an error; it becomes `null` (SO2).
 
 ### SO4 — the identity clear targets the user who signed out (closes O1)
 
@@ -397,8 +413,10 @@ and sync only removes or transitions rows.
   before listeners are notified, so a throwing listener cannot leak it.
   Every running phase ends on its own, so the link is always released.
 - The shared sign-out path (`signOutWithPendingWorkGuard`) refuses while a
-  run is in progress and returns `cancelled` without asking, so every
-  sign-out control inherits the rule (the Account screen included).
+  run is in progress and returns `blockedByImport` without asking, so every
+  sign-out control inherits the rule (the Account screen included). The
+  refusal shows a snackbar (FB7 of S6a); it returned `cancelled`, the value
+  of the user's own Cancel, before S6a (FB6).
 - The song list disables both Sign out and Import while a run is in
   progress; `startImport` does not start a second run, and `reset()` does
   not interrupt a running phase.
@@ -527,7 +545,7 @@ the spec and are red before their task and green after.
   when the user changes during the count or the dialog, and
   `alreadyRunning` for a second run; a failing sign-out sequence gives
   `failed`, is reported once and releases the lock; a throwing confirmation
-  is reported once and gives `cancelled`.
+  is reported once and gives `failed` (FB6 of S6a; `cancelled` before).
 - **AC7 (SO1 catalog lifetime):** with nothing else listening to the catalog
   controller, it stays alive through the whole sign-out sequence and is
   released after it.

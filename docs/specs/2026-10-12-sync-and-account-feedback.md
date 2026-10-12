@@ -2,7 +2,8 @@
 
 > Status: design gate approved 2026-10-12 (FB1–FB12, copy table, red-test
 > list); the UI-language addendum (FB13–FB15) approved the same day.
-> Implemented on `fix/sync-and-account-feedback`.
+> Implemented (2026-10-12) on `fix/sync-and-account-feedback`, PR pending
+> merge.
 
 **Branch:** `fix/sync-and-account-feedback` (from `main` at `c561d20`)
 **Roadmap:** S6a in `docs/plans/2026-10-01-delivery-roadmap.md`, "Deferred
