@@ -262,10 +262,12 @@ Line two
     expect(song.baseTranspose, 0);
   });
 
-  test('treats body directives before the first lyric as song content', () {
-    final parser = ChordproParser();
+  test(
+    'reads base key, capo and transpose after a section comment before the first lyric',
+    () {
+      final parser = ChordproParser();
 
-    final song = parser.parse('''
+      final song = parser.parse('''
 {title:Example Song}
 {comment:<Verse>}
 {key:G}
@@ -274,9 +276,71 @@ Line two
 [C]Line one
 ''');
 
+      expect(song.sourceKey, 'G');
+      expect(song.baseCapo, 2);
+      expect(song.baseTranspose, 4);
+      expect(song.diagnostics, isEmpty);
+    },
+  );
+
+  test('reads base directives after {start_of_verse} (P2)', () {
+    final song = ChordproParser().parse(
+      '{start_of_verse}\n{key:G}\n{capo:2}\n{transpose:4}\n[C]x\n',
+    );
+
+    expect(song.sourceKey, 'G');
+    expect(song.baseCapo, 2);
+    expect(song.baseTranspose, 4);
+    expect(song.diagnostics, isEmpty);
+  });
+
+  test('reads base directives after an empty chorus block (P3)', () {
+    final song = ChordproParser().parse(
+      '{start_of_chorus}\n{end_of_chorus}\n{key:G}\n{capo:2}\n{transpose:4}\n[C]x\n',
+    );
+
+    expect(song.sourceKey, 'G');
+    expect(song.baseCapo, 2);
+    expect(song.baseTranspose, 4);
+    expect(song.diagnostics, isEmpty);
+  });
+
+  test('last valid transpose wins across a section comment (P4)', () {
+    final song = ChordproParser().parse(
+      '{transpose:1}\n{comment:<Intro>}\n{transpose:3}\n[C]x\n',
+    );
+
+    expect(song.baseTranspose, 3);
+  });
+
+  test('invalid capo in the base region warns and is ignored (P5)', () {
+    final song = ChordproParser().parse(
+      '{comment:<Intro>}\n{capo:abc}\n[C]x\n',
+    );
+
+    expect(song.baseCapo, 0);
+    expect(song.diagnostics, hasLength(1));
+    expect(song.diagnostics.single.severity, ParseDiagnosticSeverity.warning);
+    expect(song.diagnostics.single.context, 'capo:abc');
+  });
+
+  test('capo after tab content stays ignored (P6)', () {
+    final song = ChordproParser().parse(
+      '{start_of_tab}\ne|---\n{end_of_tab}\n{capo:5}\n[C]x\n',
+    );
+
+    expect(song.baseCapo, 0);
+  });
+
+  test('in-song key, capo and transpose produce no diagnostics (P7)', () {
+    final song = ChordproParser().parse(
+      '[C]x\n{key:D}\n{capo:7}\n{transpose:3}\n[D]y\n',
+    );
+
     expect(song.sourceKey, isNull);
     expect(song.baseCapo, 0);
     expect(song.baseTranspose, 0);
+    expect(song.diagnostics, isEmpty);
   });
 
   test(
@@ -565,4 +629,52 @@ Line two
       expect(song.diagnostics, isEmpty);
     },
   );
+
+  // ADR-027 key-window parity fixture. Each case mirrors a check in
+  // scripts/tests/song-derived-metadata-contract-test.sh. A change on either
+  // side (parser or SQL) must update both pins and ADR-027.
+  group('ADR-027 key-window parity fixture', () {
+    String? parsedKey(String source) =>
+        ChordproParser().parse(source).sourceKey;
+
+    test('section comment before key reads G (parity; SQL: G; contract test: '
+        'Item 17 check, a comment Dart reads as a section start does not close '
+        'the window in SQL)', () {
+      expect(parsedKey('{c: Verse}\n{key: G}'), 'G');
+    });
+
+    test(
+      '{start_of_verse} before key reads G (accepted divergence; SQL: null; '
+      'contract test: key window ignored once a start_of_* directive was seen)',
+      () {
+        expect(parsedKey('{start_of_verse}\n{key: G}'), 'G');
+      },
+    );
+
+    test(
+      '{end_of_verse} before key reads G (accepted divergence; SQL: null; '
+      'contract test: key window ignored once an end_of_* directive was seen)',
+      () {
+        expect(parsedKey('{end_of_verse}\n{key: G}'), 'G');
+      },
+    );
+
+    test('empty tab block before key reads G (accepted divergence; SQL: null; '
+        'contract test: empty tab block closes the SQL key window)', () {
+      expect(parsedKey('{start_of_tab}\n{end_of_tab}\n{key: G}'), 'G');
+    });
+
+    test('tab content before key reads null (parity; SQL: null; contract test: '
+        'tab content closes the key window)', () {
+      expect(
+        parsedKey('{start_of_tab}\ne|---\n{end_of_tab}\n{key: G}'),
+        isNull,
+      );
+    });
+
+    test('lyric line before key reads null (parity; SQL: null; contract test: '
+        'key window ignored once a lyric line has been seen)', () {
+      expect(parsedKey('[C] Amazing grace\n{key: G}'), isNull);
+    });
+  });
 }

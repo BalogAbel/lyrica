@@ -16,12 +16,14 @@ class ChordproParser {
     var tags = const <String>[];
     var baseTranspose = 0;
     var baseCapo = 0;
-    var hasSeenSongContent = false;
     final sections = <_SectionBuilder>[];
     final diagnostics = <ParseDiagnostic>[];
     _SectionBuilder? currentSection;
 
-    for (final line in _lineScanner.scan(source)) {
+    final lines = _lineScanner.scan(source).toList(growable: false);
+    final baseRegion = ChordproBaseRegion.of(lines);
+
+    for (final line in lines) {
       if (line.kind == ChordproLineKind.empty) {
         if (currentSection != null) {
           if (currentSection.kind == SongSectionKind.tab) {
@@ -33,7 +35,6 @@ class ChordproParser {
           }
         }
       } else if (line.kind == ChordproLineKind.lyric) {
-        hasSeenSongContent = true;
         currentSection = _ensureSection(
           sections: sections,
           currentSection: currentSection,
@@ -59,7 +60,7 @@ class ChordproParser {
         } else if (directiveName == 'artist') {
           artist = line.directiveValue?.trim();
         } else if (directiveName == 'key') {
-          if (!hasSeenSongContent) {
+          if (baseRegion.contains(line)) {
             final normalizedKey = line.directiveValue?.trim();
             if (normalizedKey == null || normalizedKey.isEmpty) {
               diagnostics.add(
@@ -78,7 +79,7 @@ class ChordproParser {
             }
           }
         } else if (directiveName == 'capo') {
-          if (!hasSeenSongContent) {
+          if (baseRegion.contains(line)) {
             final parsedCapo = _parseDirectiveInteger(
               directiveValue: line.directiveValue,
               directiveName: directiveName,
@@ -102,7 +103,7 @@ class ChordproParser {
             }
           }
         } else if (directiveName == 'transpose') {
-          if (!hasSeenSongContent) {
+          if (baseRegion.contains(line)) {
             final parsedTranspose = _parseDirectiveInteger(
               directiveValue: line.directiveValue,
               directiveName: directiveName,
@@ -135,7 +136,6 @@ class ChordproParser {
             if (!_isSameSection(currentSection, parsedSection)) {
               sections.add(parsedSection);
               currentSection = parsedSection;
-              hasSeenSongContent = true;
             }
           } else {
             // Not a section header — inline comment line.
@@ -147,7 +147,6 @@ class ChordproParser {
             targetSection.lines.add(CommentLine(text: commentValue));
           }
         } else if (directiveName.startsWith('start_of_')) {
-          hasSeenSongContent = true;
           final sectionType = directiveName.substring('start_of_'.length);
           final labelOverride = line.directiveValue?.trim();
 
@@ -198,7 +197,6 @@ class ChordproParser {
               currentSection = section;
           }
         } else if (directiveName.startsWith('end_of_')) {
-          hasSeenSongContent = true;
           currentSection = null;
         } else {
           final targetSection = _ensurePreambleOrCurrentSection(
