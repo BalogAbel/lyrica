@@ -36,7 +36,7 @@
 > wipe fix merged as #88 (`22864df`, 2026-10-11), ADR-029 amended
 > (`docs/specs/2026-10-11-reauth-wipe-recount.md`); next is the import-run
 > ownership fix, then S0 PR 2. The import-run ownership fix merged as #89
-> (`02a9aa2`); S0 PR 2 is implemented (PR pending merge). The
+> (`02a9aa2`); S0 PR 2 is implemented (PR pending merge); after it merges, S0 is implemented (PR 1 and PR 2). Next: S5a. The
 > session-transition coordinator it surfaced stays deferred
 > (`docs/deferred/2026-10-11-session-transition-coordinator.md`); the
 > membership-revocation purge has the same import gap RW3 closes here

@@ -7,7 +7,7 @@ ADR-040.
 **Files:**
 - `apps/lyron_app/lib/src/shared/app_strings.dart`
   (`unifiedSyncReason*` constants)
-- `apps/lyron_app/lib/src/presentation/shared/unified_sync_status_popup.dart`
+- `apps/lyron_app/lib/src/presentation/sync/unified_sync_status_popup.dart`
   (renders the reason chips)
 
 **Status:** pre-existing; not changed by SG7. Not implemented.
