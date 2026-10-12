@@ -37,7 +37,8 @@
 > (`docs/specs/2026-10-11-reauth-wipe-recount.md`); next is the import-run
 > ownership fix, then S0 PR 2. The import-run ownership fix merged as #89
 > (`02a9aa2`). S0 PR 2 merged as #90 (`4dbd9de`, 2026-10-12); S0 complete
-> (PR 1 and PR 2). S5a in progress (`fix/paged-remote-pulls`). The
+> (PR 1 and PR 2). S5a is implemented on `fix/paged-remote-pulls` (PR pending
+> merge; ADR-041, `docs/specs/2026-10-12-paged-remote-pulls.md`). Next: S2. The
 > session-transition coordinator it surfaced stays deferred
 > (`docs/deferred/2026-10-11-session-transition-coordinator.md`); the
 > membership-revocation purge has the same import gap RW3 closes here
@@ -129,7 +130,8 @@ Found during this analysis. Each one is recorded in `docs/deferred/`.
    than 1000 sessions in one plan. A failed refresh is not an acceptable
    fail-safe for the catalog, because a large library would never refresh
    again, so the catalog must page.
-   → `docs/deferred/2026-09-30-planning-pull-unpaged-reads.md`
+   → `docs/deferred/2026-09-30-planning-pull-unpaged-reads.md` (resolved by S5a,
+   removed)
 2. **`memberships` also has a `for all` write policy.** The policy is
    "memberships are manageable by capability"
    (`202603210001_initial_schema.sql`). Through direct DML, a role change
@@ -175,7 +177,7 @@ Size legend:
 |---|---|---|---|---|---|
 | S1 | `fix/direct-dml-write-rpc-bypass` | **Merged (PR #84).** Revoke every table privilege except `SELECT` from `anon`/`authenticated` on all ten `public` tables. Drop the six `for all` policies (each is covered by a select policy, so dropping replaces the planned narrowing). Revoke `postgres`'s default privileges in `public` from `anon`, `authenticated` and `service_role`. Contract suites impersonate the real role; fixtures moved to `postgres`. ADR-039, plus correction notes in `architecture.md`, ADR-026, ADR-027 and ADR-038 | `2026-09-30-direct-dml-bypasses-write-rpcs.md` (resolved, removed) | M | medium |
 | S0 | `fix/offline-first-startup-gate` | **Merged (PRs #85, #90).** Field-reported bug, 2 PRs. (1) The membership gate decides from the last known identity; `verifiedEmpty` closes it only after the D5 purge; first run shows a loading state; auth-stream errors are handled; an integration test uses the real gotrue client. (2) Persist the last known capabilities (S6 option (a), pulled forward) and show a visible "last synced" indicator | `2026-09-30-capability-gating-offline-cold-start.md` (option (a) only) | M | medium |
-| S5a | `fix/paged-remote-pulls` | A shared paging helper: `.range()` pages ordered by a unique key, de-duplication by id, and a `count=exact` completeness check. Applied to the planning plan and session pulls and to the song catalog list | `2026-09-30-planning-pull-unpaged-reads.md` | S–M | low–medium |
+| S5a | `fix/paged-remote-pulls` | **Implemented (PR pending merge).** A shared keyset paging helper (`order(id).gt(id, last).limit(n)`, ends only on an empty page, strictly increasing keys checked), not `.range()` plus `count=exact`: offset pages can skip a row that a count check does not catch. The catalog reads summaries and sources in one organization-scoped stream (no per-song requests); planning reads plans, sessions and session items as three organization-wide streams (embedded items were truncated too). ADR-041; spec `docs/specs/2026-10-12-paged-remote-pulls.md` | `2026-09-30-planning-pull-unpaged-reads.md` (resolved, removed) | S–M | low–medium |
 | S2 | `fix/chordpro-base-directives` | Read base `{transpose}` and `{capo}` consistently before the first lyric or chord line. `{comment}` no longer closes that base boundary. The editor uses the parser-derived base values. Update the parser tests | `2026-04-22-song-reader-chordpro-modulation.md`, item 1 | S | low |
 | S3 | `feat/personal-song-settings` | Personal song layer foundation, plus per-user transpose and capo at song and plan scope, in 3 PRs: (1) backend tables, RPCs, RLS and contract tests; (2) local Drift store, outbox and pull-cursor sync, integrated with the purge lifecycle, storage budget and sync overview; (3) reader resolution and UX | — (new) | L | medium |
 | S4 | `feat/song-annotations` | Annotations on the personal layer. Starts with a prototype in `docs/prototypes/`, then 2–3 PRs: (1) anchor model, overlay renderer and typed notes; (2) gesture marks (circle, underline, highlight) snapped to content; (3) free ink anchored to words, if the spec keeps it. Native (tablet and phone) first; web is best-effort | — (new) | XL | high |

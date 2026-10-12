@@ -3248,7 +3248,8 @@ Found, not fixed in code:
   would get its full `content_version` next to a truncated session list,
   which breaks I7.
   - Deferred as `docs/deferred/2026-09-30-planning-pull-unpaged-reads.md`,
-    because it depends on data volume.
+    because it depends on data volume. Resolved on 2026-10-12 by
+    `docs/specs/2026-10-12-paged-remote-pulls.md` (ADR-041).
   - The spec (I7) and the pull's I7 comment name the limit.
 - **New-row value comes from the caller (minor, latent).**
   `upsertSyncedPlan` stores the passed `contentVersion` for a brand-new row

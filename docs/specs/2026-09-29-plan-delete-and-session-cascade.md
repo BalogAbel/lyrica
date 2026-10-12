@@ -196,7 +196,8 @@ Eight deferred docs came out of this slice:
   `docs/specs/2026-10-01-direct-table-dml-lockdown.md`.
 - `docs/deferred/2026-09-30-planning-pull-unpaged-reads.md`: the pull's
   unpaged reads can be truncated at PostgREST's `max_rows`, which would break
-  I7 for a plan with over 1000 sessions; found by gate 2.
+  I7 for a plan with over 1000 sessions; found by gate 2. Resolved on
+  2026-10-12 by `docs/specs/2026-10-12-paged-remote-pulls.md` (ADR-041).
 - `docs/deferred/2026-09-30-session-rename-retry-never-rebases.md`: a retried
   conflicted session rename never rebases; found by gate 3, predates the slice.
 - `docs/deferred/2026-09-30-stranded-create-tombstones.md`: create tombstones
@@ -329,10 +330,10 @@ the projection's `contentVersion` behind its children, which gives a false
 conflict (safe). It can never leave `contentVersion` ahead of its children,
 which would give a false acceptance.
 
-Known limit: the pull's top-level reads are unpaged. PostgREST's `max_rows`
-cap (1000) could truncate the session list of a plan with more than 1000
-sessions, which would put `contentVersion` ahead of the projected sessions.
-See `docs/deferred/2026-09-30-planning-pull-unpaged-reads.md`.
+The pull reads plans, then sessions, then session items as three
+organization-wide keyset-paged streams, so PostgREST's `max_rows` cap cannot
+truncate a plan's children (`docs/specs/2026-10-12-paged-remote-pulls.md`,
+PG5; ADR-041). The earlier known limit (unpaged reads) is resolved.
 
 ## Decisions
 
