@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:lyron_app/src/application/auth/current_user_ownership.dart';
+import 'package:lyron_app/src/application/observability/observability.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_remote_refresh_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_payload.dart';
@@ -9,6 +10,7 @@ import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
 import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
+import 'package:lyron_app/src/shared/keyset_paging.dart';
 
 typedef PlanningAuthSessionReader = AppAuthSession? Function();
 typedef PlanningLocalStoreReader = PlanningLocalStore Function();
@@ -31,7 +33,9 @@ class PlanningSyncController extends ChangeNotifier {
     required this._authSessionReader,
     this._lastKnownIdentityReader,
     DateTime Function()? clock,
+    Observability? observability,
   }) : _clock = clock ?? (() => DateTime.now().toUtc()),
+       _observability = observability ?? const NoopObservability(),
        _state = const PlanningSyncState.initial();
 
   final PlanningLocalStoreReader _localStore;
@@ -40,6 +44,7 @@ class PlanningSyncController extends ChangeNotifier {
   final PlanningAuthSessionReader _authSessionReader;
   final LastKnownIdentityReader? _lastKnownIdentityReader;
   final DateTime Function() _clock;
+  final Observability _observability;
 
   PlanningSyncState _state;
   String? _lastAuthenticatedUserId;
@@ -318,6 +323,7 @@ class PlanningSyncController extends ChangeNotifier {
     try {
       final payload = await _remoteRepository().fetchPlanningSyncPayload(
         organizationId: organizationId,
+        shouldContinue: () => !_isStale(generation),
       );
       if (_isStale(generation)) {
         return;
@@ -340,9 +346,24 @@ class PlanningSyncController extends ChangeNotifier {
           lastRefreshedAt: _clock(),
         ),
       );
-    } catch (_) {
+    } catch (error, stackTrace) {
+      // A stale generation means the refresh was abandoned (including a
+      // PagedReadAbortedException from the stream): no state, no report.
       if (_isStale(generation)) {
         return;
+      }
+      if (error is PagedReadContractException) {
+        // PG8: the server or client library broke the paging contract. Never
+        // include keys or row data (ADR-036).
+        _observability.captureException(
+          error,
+          stackTrace,
+          extra: {
+            'stream': error.stream,
+            'reason': error.reason.name,
+            'pageIndex': error.pageIndex,
+          },
+        );
       }
 
       _setState(

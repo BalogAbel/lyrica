@@ -6,6 +6,7 @@ import 'package:lyron_app/src/application/auth/app_auth_state.dart';
 import 'package:lyron_app/src/application/auth/reauth_prompt_controller.dart';
 import 'package:lyron_app/src/application/auth_providers.dart';
 import 'package:lyron_app/src/application/core_providers.dart';
+import 'package:lyron_app/src/application/observability/observability_providers.dart';
 import 'package:lyron_app/src/application/planning/active_planning_context_controller.dart';
 import 'package:lyron_app/src/application/planning/budgeted_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/drift_planning_mutation_store.dart';
@@ -350,6 +351,7 @@ final planningSyncControllerProvider =
             organizationId: identity.organizationId,
           );
         },
+        observability: ref.watch(observabilityProvider),
       );
       Future<void> handleVerifiedEmptyMembership({required String userId}) {
         return controller.handleVerifiedEmptyMembership(userId: userId);
