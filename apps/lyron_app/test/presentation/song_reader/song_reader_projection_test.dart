@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
+import 'package:lyron_app/src/infrastructure/song_library/chordpro/chordpro_parser.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 
@@ -221,5 +222,24 @@ void main() {
     );
 
     expect(projection.effectiveKey, isNull);
+  });
+
+  test('applies base transpose set after a section comment (R1)', () {
+    final song = ChordproParser().parse(
+      '{title:T}\n{comment:<Intro>}\n{transpose: 2}\n[C]Hello\n',
+    );
+
+    final projection = SongReaderProjection(
+      song: song,
+      state: SongReaderState(),
+    );
+
+    expect(
+      (projection.sections.first.lines.first as SongReaderLyricLineProjection)
+          .segments
+          .first
+          .displayChord,
+      'D',
+    );
   });
 }

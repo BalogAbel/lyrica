@@ -104,3 +104,5 @@ local store, so it joins the ADR-035 purge contract. S3 adds another such
 store, so S6 must not run in parallel with S3.
 
 **Update (2026-10-05):** option (a) shipped in S0 PR 2. S6 picks up option (b) only.
+
+Roadmap (2026-10-12): scheduled in S6a (option b).

@@ -239,3 +239,5 @@ upgrade.
   gate.
 
 See slices S6 and S9 in `docs/plans/2026-10-01-delivery-roadmap.md`.
+
+Roadmap (2026-10-12): scheduled in S6b (S6 was split; the org-id leak, the `sessionExpired` test and the scrub hooks move with S6b).

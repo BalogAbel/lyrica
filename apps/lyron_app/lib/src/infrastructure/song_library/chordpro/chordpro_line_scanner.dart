@@ -18,6 +18,45 @@ class ChordproLine {
   bool get isDirective => kind == ChordproLineKind.directive;
 }
 
+/// The base region of a ChordPro source (BD1, BD2): every line before the
+/// first song-content line. Base `key`, `capo` and `transpose` are read only
+/// from directives in this region; nothing else closes it.
+class ChordproBaseRegion {
+  const ChordproBaseRegion._(this.boundaryLineNumber);
+
+  factory ChordproBaseRegion.of(Iterable<ChordproLine> lines) {
+    var inTab = false;
+    for (final line in lines) {
+      if (line.kind == ChordproLineKind.lyric) {
+        return ChordproBaseRegion._(line.lineNumber);
+      }
+      if (line.kind == ChordproLineKind.empty) {
+        continue;
+      }
+
+      final name = line.directiveName ?? '';
+      if (inTab) {
+        if (!name.startsWith('end_of_')) {
+          return ChordproBaseRegion._(line.lineNumber);
+        }
+        inTab = false;
+      } else if (name == 'start_of_tab') {
+        inTab = true;
+      }
+    }
+    return const ChordproBaseRegion._(null);
+  }
+
+  /// 1-based line number of the first song-content line, or null when the
+  /// source has no song content (the whole source is the base region).
+  final int? boundaryLineNumber;
+
+  bool contains(ChordproLine line) {
+    final boundary = boundaryLineNumber;
+    return boundary == null || line.lineNumber < boundary;
+  }
+}
+
 class ChordproLineScanner {
   Iterable<ChordproLine> scan(String source) sync* {
     final normalizedSource = source.replaceAll('\r\n', '\n');

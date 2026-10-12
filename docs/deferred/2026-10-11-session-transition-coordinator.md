@@ -76,3 +76,5 @@ Re-evaluate when either of these happens:
   multi-account).
 
 Before adding another local guard at that point, write the coordinator spec.
+
+Roadmap (2026-10-12): stays trigger-gated (S9). Picking up R8 and R15 in S6a does not trigger it: they are feedback fixes, not transition guards. The S3 brainstorm re-evaluates it before S3 adds another local guard around a purge.

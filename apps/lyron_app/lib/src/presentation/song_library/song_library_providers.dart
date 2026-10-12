@@ -246,7 +246,12 @@ final songLibraryReaderProvider = FutureProvider.autoDispose
             song = ParsedSong(
               title: summary.title,
               subtitle: parsedSong.subtitle,
+              artist: parsedSong.artist,
               sourceKey: parsedSong.sourceKey,
+              tempoBpm: parsedSong.tempoBpm,
+              tags: parsedSong.tags,
+              baseTranspose: parsedSong.baseTranspose,
+              baseCapo: parsedSong.baseCapo,
               sections: parsedSong.sections,
               diagnostics: parsedSong.diagnostics,
             );

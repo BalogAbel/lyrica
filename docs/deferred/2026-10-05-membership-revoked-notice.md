@@ -75,3 +75,5 @@ Pick this up when one of these happens:
 - It must not set or clear `membershipRevokedAt`. It only reads it.
 - Red tests first. The notice shows only in the declined-purge state, and
   clears on a fresh `selected` resolution and on purge.
+
+Roadmap (2026-10-12): scheduled in S6a (option b); option (a) stays trigger-gated (S9).

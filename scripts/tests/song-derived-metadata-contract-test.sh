@@ -280,6 +280,9 @@ check(
     scan("[C] lyric line\n{key: G}", with_window=True) == [("key", "G", False)],
     str(scan("[C] lyric line\n{key: G}", with_window=True)),
 )
+# The next two scanner pins are the SQL half of THE ACCEPTED DIVERGENCE (the
+# Dart parser, since S2, does not close its key window on start_of_* /
+# end_of_*); see ADR-027 and the derive_key checks in Section D.
 check(
     "scanner: key_window_open is false once a start_of_* directive has been seen",
     scan("{start_of_verse}\n{key: G}", with_window=True)
@@ -396,6 +399,15 @@ check(
 
 # Item 15: the key window -- honoured before any song content, ignored after
 # a lyric line, after a start_of_*, and after an end_of_*.
+#
+# Key-window pins (S2, docs/specs/2026-10-12-chordpro-base-directives.md,
+# ADR-027). Since S2 the Dart parser closes its key window only at the first
+# lyric line or the first non-empty tab content line; start_of_*, end_of_*,
+# tab starts and comments do not close it. SQL still closes on every
+# start_of_* / end_of_* (including start_of_tab). Each check labelled
+# ACCEPTED DIVERGENCE or PARITY below is mirrored by a test in the Dart group 'ADR-027 key-window parity fixture'
+# (apps/lyron_app/test/infrastructure/song_library/chordpro/chordpro_parser_test.dart).
+# A change on EITHER side must update BOTH pins and ADR-027.
 check(
     "key window: honoured before any lyric line or section directive",
     derive_key("{key: G}\n[C] Amazing grace") == "G",
@@ -406,29 +418,48 @@ check(
     derive_key("[C] Amazing grace\n{key: G}") is None,
     str(derive_key("[C] Amazing grace\n{key: G}")),
 )
+# THE ACCEPTED DIVERGENCE (SQL None, Dart parser reads 'G'): see ADR-027.
 check(
-    "key window: ignored once a start_of_* directive has been seen",
+    "key window: ignored once a start_of_* directive has been seen "
+    "(ACCEPTED DIVERGENCE: SQL None, Dart parser reads 'G')",
     derive_key("{start_of_verse}\n{key: G}") is None,
     str(derive_key("{start_of_verse}\n{key: G}")),
 )
+# THE ACCEPTED DIVERGENCE (SQL None, Dart parser reads 'G'): see ADR-027.
 check(
-    "key window: ignored once an end_of_* directive has been seen",
+    "key window: ignored once an end_of_* directive has been seen "
+    "(ACCEPTED DIVERGENCE: SQL None, Dart parser reads 'G')",
     derive_key("{end_of_verse}\n{key: G}") is None,
     str(derive_key("{end_of_verse}\n{key: G}")),
 )
-
-# Item 17: the one accepted divergence, pinned explicitly. The Dart parser
-# treats {c: Verse} as a section-start comment (_parseCommentSection matches
-# a bare word like "Verse"), which would close the key window, so the real
-# parser would leave the key null here. chordpro_scan_directives does not
-# implement comment-as-section recognition, so this SAME source derives a
-# key in SQL. This asserts the SQL's actual behaviour and names the
-# divergence, so a future change on either side (SQL growing comment
-# support, or the Dart parser's rule changing) fails this assertion loudly
-# instead of the two silently drifting further apart.
+# THE ACCEPTED DIVERGENCE: start_of_tab sets has_seen_song_content in SQL
+# (chordpro_scan_directives: v_name = 'start_of_tab'), so even an empty tab
+# block closes the window. The Dart parser closes only on a non-empty tab
+# content line, so it reads 'G'.
 check(
-    "key window: accepted divergence -- a comment Dart reads as a section "
-    "start does not close the window in SQL (see ADR-027)",
+    "key window: an empty tab block closes the window "
+    "(ACCEPTED DIVERGENCE: SQL None, Dart parser reads 'G')",
+    derive_key("{start_of_tab}\n{end_of_tab}\n{key: G}") is None,
+    str(derive_key("{start_of_tab}\n{end_of_tab}\n{key: G}")),
+)
+# PARITY: tab content closes the window on both sides (SQL via start_of_tab,
+# Dart via the first non-empty tab line).
+check(
+    "key window: tab content closes the window (PARITY: SQL None, Dart parser null)",
+    derive_key("{start_of_tab}\ne|---\n{end_of_tab}\n{key: G}") is None,
+    str(derive_key("{start_of_tab}\ne|---\n{end_of_tab}\n{key: G}")),
+)
+
+# Item 17: PARITY (since S2). The Dart parser used to treat {c: Verse} as a
+# section-start comment that closed its key window, while
+# chordpro_scan_directives never implemented that rule, so the two sides
+# diverged here. Since S2 (docs/specs/2026-10-12-chordpro-base-directives.md)
+# the parser no longer closes the key window on a comment either: both sides
+# read G. This pins SQL's behaviour; the Dart side is pinned by the same
+# source in the group 'ADR-027 key-window parity fixture'.
+check(
+    "key window: a section-like comment does not close the window "
+    "(PARITY since S2: SQL 'G', Dart parser 'G'; see ADR-027)",
     derive_key("{c: Verse}\n{key: G}") == "G",
     str(derive_key("{c: Verse}\n{key: G}")),
 )
