@@ -1019,6 +1019,60 @@ void main() {
     expect(sequenceRuns, 1);
   });
 
+  // SF7 (FB8): the menu item was built enabled and the import started while
+  // the menu was open. The song list used to return here without a word; the
+  // shared flow now performs the same check and says why.
+  testWidgets('choosing Sign out after an import started shows the refusal '
+      '(SF7)', (tester) async {
+    var sequenceRuns = 0;
+    final importController = _StatefulImportController();
+    await tester.pumpWidget(
+      buildApp(
+        songs: const [
+          SongSummary(id: 'egy_ut', slug: 'egy-ut', title: 'Egy út'),
+        ],
+        extraOverrides: [
+          chordProImportControllerProvider.overrideWith(
+            (_) => importController,
+          ),
+          signOutCommandProvider.overrideWithValue(
+            SignOutCommand(
+              currentUserIdReader: () => 'user-1',
+              countPendingWork: ({required userId}) async => 0,
+              signOut: (_) async {
+                sequenceRuns += 1;
+                return true;
+              },
+              reportError: (_, _) {},
+            ),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('song-list-overflow-menu')));
+    await tester.pumpAndSettle();
+    expect(find.byType(SnackBar), findsNothing);
+
+    importController.setImportState(const ImportCommitting());
+    await tester.pump();
+    await tester.tap(find.text(AppStrings.signOutAction));
+    await tester.pumpAndSettle();
+
+    expect(sequenceRuns, 0);
+    expect(
+      find.descendant(
+        of: find.byType(SnackBar),
+        matching: find.text(
+          'Sign-out is unavailable while an import is running. '
+          'Try again when it finishes.',
+        ),
+      ),
+      findsOneWidget,
+    );
+  });
+
   group('import state seeded before the screen is built (SO7)', () {
     const memberCatalogState = CatalogSnapshotState(
       context: ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),

@@ -161,12 +161,8 @@ class _SongListScreenState extends ConsumerState<SongListScreen> {
                         .startImport(),
                   );
                 case _SongListMenuAction.signOut:
-                  // The import may have started while the menu was open.
-                  if (isImportRunning(
-                    ref.read(chordProImportControllerProvider),
-                  )) {
-                    return;
-                  }
+                  // An import may have started while the menu was open: the
+                  // flow refuses it (SO7) and says why (FB8).
                   unawaited(signOutWithPendingWorkGuard(context, ref));
               }
             },

@@ -62,6 +62,11 @@ class AppStrings {
   static const unsyncedSignOutUnknownPendingMessage =
       'Unsynced changes could not be counted. Signing out will permanently discard any changes that have not synced.';
   static const unsyncedSignOutConfirmAction = 'Discard and sign out';
+  static const signOutBlockedByImportMessage =
+      'Sign-out is unavailable while an import is running. Try again when it finishes.';
+  static const signOutFailedMessage = 'Sign-out did not complete. Try again.';
+  static const signOutSupersededMessage =
+      'The signed-in account changed, so this sign-out was stopped.';
   static const songDeleteBlockedMessage =
       'This song cannot be deleted because a session still references it.';
   static const songConflictTitle = 'Song conflict';

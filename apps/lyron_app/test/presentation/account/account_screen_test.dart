@@ -8,9 +8,11 @@ import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
 import 'package:lyron_app/src/application/auth/sign_out_command.dart';
 import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/application/song_library/chordpro_import_service.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 import 'package:lyron_app/src/presentation/account/account_screen.dart';
+import 'package:lyron_app/src/presentation/song_library/chordpro_import_controller.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 class _StubRepo implements AuthRepository {
@@ -169,6 +171,48 @@ void main() {
     expect(signedOut, isTrue);
   });
 
+  // SF8 (SO7, FB7): the Account tile inherits the refusal through the shared
+  // flow and now says why.
+  testWidgets('Sign out while an import runs shows the message and does not '
+      'sign out (SF8)', (tester) async {
+    var signedOut = false;
+    final importController = _StatefulImportController()
+      ..setImportState(const ImportCommitting());
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appAuthControllerProvider.overrideWith((_) => _RecordingController()),
+          chordProImportControllerProvider.overrideWith(
+            (_) => importController,
+          ),
+          signOutCommandProvider.overrideWithValue(
+            commandWith(pendingCount: 0, onSignOut: () => signedOut = true),
+          ),
+        ],
+        child: const MaterialApp(home: AccountScreen()),
+      ),
+    );
+    // Keep the autoDispose controller (and its seeded state) alive.
+    ProviderScope.containerOf(
+      tester.element(find.byType(AccountScreen)),
+    ).listen(chordProImportControllerProvider, (_, _) {});
+
+    await tester.tap(find.text(AppStrings.signOutAction));
+    await tester.pumpAndSettle();
+
+    expect(signedOut, isFalse);
+    expect(
+      find.descendant(
+        of: find.byType(SnackBar),
+        matching: find.text(
+          'Sign-out is unavailable while an import is running. '
+          'Try again when it finishes.',
+        ),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('Cancel in the sign-out warning does not sign out', (
     tester,
   ) async {
@@ -191,4 +235,20 @@ void main() {
     await tester.pumpAndSettle();
     expect(signedOut, isFalse);
   });
+}
+
+class _FakeChordProImportService implements ChordProImportService {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// An import controller whose state the test sets directly.
+class _StatefulImportController extends ChordProImportController {
+  _StatefulImportController()
+    : super(
+        importService: _FakeChordProImportService(),
+        contextReader: () => null,
+      );
+
+  void setImportState(ChordProImportState next) => state = next;
 }

@@ -170,15 +170,27 @@ void main() {
     );
   });
 
-  test('a throwing confirmation is reported once and is not a '
+  // SF6 (FB6, docs/specs/2026-10-12-sync-and-account-feedback.md): the user
+  // never chose, so this is `failed` (a message), not `cancelled` (silence).
+  // The sign-out still does not happen.
+  test('a throwing confirmation is reported once, gives failed and is not a '
       'confirmation', () async {
     countResult = () async => 1;
-    final outcome = await buildCommand().run(
+    final command = buildCommand();
+    final outcome = await command.run(
       confirmDiscard: (_) async => throw StateError('dialog failed'),
     );
-    expect(outcome, SignOutOutcome.cancelled);
+    expect(outcome, SignOutOutcome.failed);
     expect(reported, hasLength(1));
+    expect(reported.single, isA<StateError>());
     expect(signOutCalls, 0);
+
+    // The lock is released: the next run asks again and can sign out.
+    expect(
+      await command.run(confirmDiscard: (_) async => true),
+      SignOutOutcome.signedOut,
+    );
+    expect(signOutCalls, 1);
   });
 
   test('a sequence that stops because the user changed gives superseded, '
