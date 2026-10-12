@@ -109,8 +109,11 @@ List<FlutterErrorDetails> _recordAccountScreenReports() {
 }
 
 const _deleteAccountFailedText =
-    'Could not confirm the account deletion. Nothing was removed from this '
-    'device. Check your connection and try again.';
+    'Could not confirm the account deletion. Check your connection and try '
+    'again.';
+
+const _deleteAccountSupersededText =
+    'The signed-in account changed, so the account deletion was stopped.';
 
 void main() {
   testWidgets('delete confirmation triggers deleteAccount', (tester) async {
@@ -131,8 +134,8 @@ void main() {
   });
 
   testWidgets(
-    'delete confirmation deletes nothing when the user switched while the '
-    'dialog was open (SO8, B3)',
+    'delete confirmation deletes nothing and says so when the user switched '
+    'while the dialog was open (SO8, B3, DA5)',
     (tester) async {
       final repository = _SwitchableUserRepo();
       addTearDown(repository.sessions.close);
@@ -163,6 +166,14 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(controller.deleteCalls, 0);
+      expect(
+        find.descendant(
+          of: find.byType(SnackBar),
+          matching: find.text(_deleteAccountSupersededText),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byType(CircularProgressIndicator), findsNothing);
     },
   );
 
@@ -213,10 +224,11 @@ void main() {
     expect(controller.deleteCalls, 2);
   });
 
-  // DA2 (FB9, ADR-036): a defect is reported once with a static context and no
-  // user data; an offline user is a condition, not a defect.
+  // DA2 (FB9, ADR-036): a defect is reported once with a static context (the
+  // exception object is whatever the error is); an offline user is a
+  // condition, not a defect.
   testWidgets('a non-connectivity Delete account failure is reported once '
-      'without user data (DA2)', (tester) async {
+      'with a static context (DA2)', (tester) async {
     final reported = _recordAccountScreenReports();
     final error = StateError('delete failed for owner@example.com');
     await pumpAccountScreen(tester, _FailingDeleteController(error));
@@ -246,6 +258,43 @@ void main() {
 
     expect(reported, isEmpty);
     expect(find.text(_deleteAccountFailedText), findsOneWidget);
+  });
+
+  // DA4 (FB9): the user's own choice is not a failure and not a refusal.
+  testWidgets('Cancel in the delete confirmation shows nothing, reports '
+      'nothing and does not delete (DA4)', (tester) async {
+    final reported = _recordAccountScreenReports();
+    final controller = _RecordingController();
+    await pumpAccountScreen(tester, controller);
+
+    await tester.tap(find.text(AppStrings.deleteAccountAction));
+    await tester.pumpAndSettle();
+    expect(find.text(AppStrings.deleteAccountConfirmTitle), findsOneWidget);
+    await tester.tap(find.text(AppStrings.cancelAction));
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.deleteAccountConfirmTitle), findsNothing);
+    expect(controller.deleted, isFalse);
+    expect(find.byType(SnackBar), findsNothing);
+    expect(reported, isEmpty);
+  });
+
+  testWidgets('A barrier dismiss of the delete confirmation shows nothing, '
+      'reports nothing and does not delete (DA4)', (tester) async {
+    final reported = _recordAccountScreenReports();
+    final controller = _RecordingController();
+    await pumpAccountScreen(tester, controller);
+
+    await tester.tap(find.text(AppStrings.deleteAccountAction));
+    await tester.pumpAndSettle();
+    expect(find.text(AppStrings.deleteAccountConfirmTitle), findsOneWidget);
+    await tester.tapAt(const Offset(5, 5));
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.deleteAccountConfirmTitle), findsNothing);
+    expect(controller.deleted, isFalse);
+    expect(find.byType(SnackBar), findsNothing);
+    expect(reported, isEmpty);
   });
 
   SignOutCommand commandWith({
