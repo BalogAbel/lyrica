@@ -439,7 +439,7 @@ class _LastSyncedSummary extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final freshness = ref.watch(syncFreshnessProvider).value;
+    final freshness = ref.watch(syncFreshnessProvider);
     if (freshness == null) {
       return const SizedBox.shrink();
     }

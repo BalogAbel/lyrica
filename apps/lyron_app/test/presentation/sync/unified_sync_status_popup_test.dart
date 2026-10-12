@@ -264,9 +264,7 @@ Future<void> _pumpPopup(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        syncFreshnessProvider.overrideWith(
-          (ref) async => const SyncFreshness.unknown(),
-        ),
+        syncFreshnessProvider.overrideWithValue(const SyncFreshness.unknown()),
         unifiedSyncOverviewProvider.overrideWithValue(overview),
       ],
       child: const MaterialApp(home: Scaffold(body: UnifiedSyncStatusPopup())),
@@ -402,8 +400,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          syncFreshnessProvider.overrideWith(
-            (ref) async => const SyncFreshness.unknown(),
+          syncFreshnessProvider.overrideWithValue(
+            const SyncFreshness.unknown(),
           ),
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
@@ -448,8 +446,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            syncFreshnessProvider.overrideWith(
-              (ref) async => const SyncFreshness.unknown(),
+            syncFreshnessProvider.overrideWithValue(
+              const SyncFreshness.unknown(),
             ),
             unifiedSyncOverviewProvider.overrideWithValue(
               _overview(
@@ -502,8 +500,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          syncFreshnessProvider.overrideWith(
-            (ref) async => const SyncFreshness.unknown(),
+          syncFreshnessProvider.overrideWithValue(
+            const SyncFreshness.unknown(),
           ),
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
@@ -545,8 +543,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            syncFreshnessProvider.overrideWith(
-              (ref) async => const SyncFreshness.unknown(),
+            syncFreshnessProvider.overrideWithValue(
+              const SyncFreshness.unknown(),
             ),
             unifiedSyncOverviewProvider.overrideWithValue(
               _overview(
@@ -586,8 +584,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          syncFreshnessProvider.overrideWith(
-            (ref) async => const SyncFreshness.unknown(),
+          syncFreshnessProvider.overrideWithValue(
+            const SyncFreshness.unknown(),
           ),
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
@@ -625,8 +623,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          syncFreshnessProvider.overrideWith(
-            (ref) async => const SyncFreshness.unknown(),
+          syncFreshnessProvider.overrideWithValue(
+            const SyncFreshness.unknown(),
           ),
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
@@ -677,8 +675,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            syncFreshnessProvider.overrideWith(
-              (ref) async => const SyncFreshness.unknown(),
+            syncFreshnessProvider.overrideWithValue(
+              const SyncFreshness.unknown(),
             ),
             unifiedSyncOverviewProvider.overrideWithValue(
               _overview(
@@ -729,8 +727,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          syncFreshnessProvider.overrideWith(
-            (ref) async => const SyncFreshness.unknown(),
+          syncFreshnessProvider.overrideWithValue(
+            const SyncFreshness.unknown(),
           ),
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
@@ -777,8 +775,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          syncFreshnessProvider.overrideWith(
-            (ref) async => const SyncFreshness.unknown(),
+          syncFreshnessProvider.overrideWithValue(
+            const SyncFreshness.unknown(),
           ),
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
@@ -820,8 +818,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          syncFreshnessProvider.overrideWith(
-            (ref) async => const SyncFreshness.unknown(),
+          syncFreshnessProvider.overrideWithValue(
+            const SyncFreshness.unknown(),
           ),
           unifiedSyncOverviewProvider.overrideWithValue(_overview()),
         ],
@@ -842,8 +840,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          syncFreshnessProvider.overrideWith(
-            (ref) async => const SyncFreshness.unknown(),
+          syncFreshnessProvider.overrideWithValue(
+            const SyncFreshness.unknown(),
           ),
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
@@ -876,8 +874,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          syncFreshnessProvider.overrideWith(
-            (ref) async => const SyncFreshness.unknown(),
+          syncFreshnessProvider.overrideWithValue(
+            const SyncFreshness.unknown(),
           ),
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
@@ -921,8 +919,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            syncFreshnessProvider.overrideWith(
-              (ref) async => const SyncFreshness.unknown(),
+            syncFreshnessProvider.overrideWithValue(
+              const SyncFreshness.unknown(),
             ),
             unifiedSyncOverviewProvider.overrideWithValue(
               _overview(
@@ -965,8 +963,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          syncFreshnessProvider.overrideWith(
-            (ref) async => const SyncFreshness.unknown(),
+          syncFreshnessProvider.overrideWithValue(
+            const SyncFreshness.unknown(),
           ),
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
@@ -1003,8 +1001,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          syncFreshnessProvider.overrideWith(
-            (ref) async => const SyncFreshness.unknown(),
+          syncFreshnessProvider.overrideWithValue(
+            const SyncFreshness.unknown(),
           ),
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
@@ -1040,8 +1038,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          syncFreshnessProvider.overrideWith(
-            (ref) async => const SyncFreshness.unknown(),
+          syncFreshnessProvider.overrideWithValue(
+            const SyncFreshness.unknown(),
           ),
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
@@ -1085,8 +1083,8 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            syncFreshnessProvider.overrideWith(
-              (ref) async => const SyncFreshness.unknown(),
+            syncFreshnessProvider.overrideWithValue(
+              const SyncFreshness.unknown(),
             ),
             unifiedSyncOverviewProvider.overrideWithValue(
               _overview(
@@ -1143,8 +1141,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          syncFreshnessProvider.overrideWith(
-            (ref) async => const SyncFreshness.unknown(),
+          syncFreshnessProvider.overrideWithValue(
+            const SyncFreshness.unknown(),
           ),
           unifiedSyncOverviewProvider.overrideWithValue(
             _overview(
@@ -1191,9 +1189,7 @@ void main() {
   }) {
     return ProviderScope(
       overrides: [
-        syncFreshnessProvider.overrideWith(
-          (ref) async => const SyncFreshness.unknown(),
-        ),
+        syncFreshnessProvider.overrideWithValue(const SyncFreshness.unknown()),
         unifiedSyncOverviewProvider.overrideWithValue(_overview()),
         unifiedManualSyncControllerProvider.overrideWith((_) => controller),
       ],
@@ -1336,8 +1332,8 @@ void main() {
       ProviderScope(
         overrides: [
           unifiedSyncOverviewProvider.overrideWithValue(_overview()),
-          syncFreshnessProvider.overrideWith(
-            (ref) async => SyncFreshness(
+          syncFreshnessProvider.overrideWithValue(
+            SyncFreshness(
               songsRefreshedAt: now.subtract(const Duration(minutes: 5)),
               plansRefreshedAt: null,
             ),
@@ -1373,9 +1369,7 @@ void main() {
         ProviderScope(
           overrides: [
             unifiedSyncOverviewProvider.overrideWithValue(_overview()),
-            syncFreshnessProvider.overrideWith(
-              (ref) => Completer<SyncFreshness>().future,
-            ),
+            syncFreshnessProvider.overrideWithValue(null),
           ],
           child: const MaterialApp(
             home: Scaffold(body: UnifiedSyncStatusPopup()),

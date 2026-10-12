@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/planning/planning_sync_state.dart';
 import 'package:lyron_app/src/application/providers.dart';
@@ -53,7 +56,20 @@ void main() {
     await plans.close();
   });
 
-  ProviderContainer containerFor(ActiveCatalogContext? context) {
+  SyncFreshness? current(ProviderContainer container) =>
+      container.read(syncFreshnessProvider);
+
+  Future<void> settle() async {
+    for (var i = 0; i < 20; i++) {
+      await Future<void>.delayed(Duration.zero);
+    }
+  }
+
+  ProviderContainer containerFor(
+    ActiveCatalogContext? context, {
+    SyncFreshnessReader? reader,
+    StateProvider<ActiveCatalogContext?>? mutable,
+  }) {
     final container = ProviderContainer(
       overrides: [
         catalogSnapshotStateProvider.overrideWithValue(
@@ -62,12 +78,16 @@ void main() {
         planningSyncStateProvider.overrideWithValue(
           const PlanningSyncState.initial(),
         ),
-        activeCatalogContextProvider.overrideWithValue(context),
+        if (mutable != null)
+          activeCatalogContextProvider.overrideWith((ref) => ref.watch(mutable))
+        else
+          activeCatalogContextProvider.overrideWithValue(context),
         syncFreshnessReaderProvider.overrideWithValue(
-          SyncFreshnessReader(
-            songCatalogDatabase: songs,
-            planningLocalDatabase: plans,
-          ),
+          reader ??
+              SyncFreshnessReader(
+                songCatalogDatabase: songs,
+                planningLocalDatabase: plans,
+              ),
         ),
       ],
     );
@@ -81,18 +101,75 @@ void main() {
     final container = containerFor(
       const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
     );
+    await settle();
 
-    final freshness = await container.read(syncFreshnessProvider.future);
+    final freshness = current(container);
 
-    expect(freshness.songsRefreshedAt?.toUtc(), DateTime.utc(2026, 10, 1, 8));
-    expect(freshness.plansRefreshedAt?.toUtc(), DateTime.utc(2026, 10, 2, 9));
+    expect(freshness?.songsRefreshedAt?.toUtc(), DateTime.utc(2026, 10, 1, 8));
+    expect(freshness?.plansRefreshedAt?.toUtc(), DateTime.utc(2026, 10, 2, 9));
   });
 
-  test('yields unknown without an active context (SG7)', () async {
+  test('yields null without an active context (SG7)', () async {
     final container = containerFor(null);
+    await settle();
 
-    final freshness = await container.read(syncFreshnessProvider.future);
-
-    expect(freshness, const SyncFreshness.unknown());
+    expect(current(container), isNull);
   });
+
+  for (final (name, from, to) in [
+    (
+      'org switch',
+      const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
+      const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-2'),
+    ),
+    (
+      'user switch',
+      const ActiveCatalogContext(userId: 'user-1', organizationId: 'org-1'),
+      const ActiveCatalogContext(userId: 'user-2', organizationId: 'org-1'),
+    ),
+  ]) {
+    test('hides the previous context\'s times while the new context\'s read '
+        'is pending ($name, SG7)', () async {
+      final gate = Completer<void>();
+      final reader = _GatedReader(songs, plans, gate.future, to);
+      final mutable = StateProvider<ActiveCatalogContext?>((_) => from);
+      final container = containerFor(null, reader: reader, mutable: mutable);
+      await settle();
+      expect(current(container)?.songsRefreshedAt, isNotNull);
+
+      container.read(mutable.notifier).state = to;
+      await settle();
+
+      expect(current(container), isNull);
+
+      gate.complete();
+      await settle();
+
+      expect(current(container), isNotNull);
+    });
+  }
+}
+
+class _GatedReader extends SyncFreshnessReader {
+  _GatedReader(
+    SongCatalogDatabase songs,
+    PlanningLocalDatabase plans,
+    this._gate,
+    this._gatedContext,
+  ) : super(songCatalogDatabase: songs, planningLocalDatabase: plans);
+
+  final Future<void> _gate;
+  final ActiveCatalogContext _gatedContext;
+
+  @override
+  Future<SyncFreshness> read({
+    required String userId,
+    required String organizationId,
+  }) async {
+    if (userId == _gatedContext.userId &&
+        organizationId == _gatedContext.organizationId) {
+      await _gate;
+    }
+    return super.read(userId: userId, organizationId: organizationId);
+  }
 }
