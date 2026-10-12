@@ -23,7 +23,7 @@
 
 ## Tasks
 
-### T1. Chips and dead strings (FB1–FB5, FB13)
+### Task 1: Chips and dead strings (FB1–FB5, FB13)
 
 Files: `lib/src/shared/app_strings.dart`,
 `lib/src/presentation/sync/unified_sync_status_popup.dart` (no logic change),
@@ -40,7 +40,7 @@ Files: `lib/src/shared/app_strings.dart`,
 - The existing popup tests find chips through the constants and stay valid.
   CP1 uses literals on purpose.
 
-### T2. English dialogs and the language guard (FB14, FB15)
+### Task 2: English dialogs and the language guard (FB14, FB15)
 
 Files: `lib/src/shared/app_strings.dart`,
 `test/presentation/auth/reauth_different_user_dialog_test.dart`,
@@ -58,7 +58,7 @@ tests that open the purge dialog, new
   working directory is `apps/lyron_app`) and fails on
   `[áéíóöőúüűÁÉÍÓÖŐÚÜŰ]`. It does not look at song data.
 
-### T3. Sign-out feedback (FB6–FB8)
+### Task 3: Sign-out feedback (FB6–FB8)
 
 Files: `lib/src/application/auth/sign_out_command.dart`,
 `lib/src/presentation/auth/sign_out_flow.dart`,
@@ -105,7 +105,7 @@ Files: `lib/src/application/auth/sign_out_command.dart`,
   expect `blockedByImport`, and the throwing-confirmation case of
   `sign_out_command_test.dart` to expect `failed`.
 
-### T4. Delete account (FB9, FB10)
+### Task 4: Delete account (FB9, FB10)
 
 Files: `lib/src/presentation/account/account_screen.dart`,
 `lib/src/shared/app_strings.dart`,
@@ -124,7 +124,7 @@ Files: `lib/src/presentation/account/account_screen.dart`,
 - `AppAuthController.deleteAccount` is not changed. DA3 pins what it already
   does.
 
-### T5. Documents (FB12)
+### Task 5: Documents (FB12)
 
 - Deferred:
   - remove `2026-10-12-sync-reason-chip-copy.md`;
