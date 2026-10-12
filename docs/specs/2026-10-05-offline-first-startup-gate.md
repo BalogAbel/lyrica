@@ -426,7 +426,7 @@ entry's requirements:
 - The timestamps are device wall-clock values. They are used for display only
   and never in a comparison or ordering decision (ADR-030).
 
-**PR 2 implementation notes.** Two deviations from the plan:
+**PR 2 implementation notes.** Deviations from the plan:
 
 - *Version-gated persist (SG6).* Besides the conditional store statement, the
   resolver persists a network answer only if it was not invalidated since the
@@ -437,6 +437,18 @@ entry's requirements:
 - *Loading state (SG7).* The popup hides its two "last synced" lines until
   the freshness value is known, instead of showing a placeholder while it
   loads. Read failures are logged and degrade to unknown.
+- *Times belong to one context (SG7, final review).* The read is a provider
+  family keyed by the active catalog context, and the popup shows only the
+  value read for the current key. A context switch (organization or user)
+  therefore hides the lines until the new context's read completes, instead
+  of showing the previous context's times for a frame or more.
+- *Read-only editor with nothing to pop (final review).* A stored set without
+  `editSongs` now answers `false` offline. The editor's leave-on-no-permission
+  branch pops when it can and otherwise goes to the song list, so a direct
+  URL, web refresh or reauth return no longer ends on a blank screen.
+- Residuals are recorded in
+  `docs/deferred/2026-10-12-capability-persist-residuals.md` and
+  `docs/deferred/2026-10-12-sync-reason-chip-copy.md`.
 
 ### SG8 — a test with real gotrue latency (closes G-H)
 
