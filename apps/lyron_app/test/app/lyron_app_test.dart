@@ -656,6 +656,7 @@ class _NoopPlanningRemoteRepository implements PlanningRemoteRefreshRepository {
   @override
   Future<PlanningSyncPayload> fetchPlanningSyncPayload({
     required String organizationId,
+    bool Function()? shouldContinue,
   }) async {
     return const PlanningSyncPayload(plans: [], sessions: [], items: []);
   }

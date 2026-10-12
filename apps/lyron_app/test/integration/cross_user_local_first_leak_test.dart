@@ -1764,6 +1764,7 @@ class _OfflinePlanningRemoteRefreshRepository
   @override
   Future<PlanningSyncPayload> fetchPlanningSyncPayload({
     required String organizationId,
+    bool Function()? shouldContinue,
   }) async {
     throw const SocketException('network is unreachable');
   }

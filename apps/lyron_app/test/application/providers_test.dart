@@ -1472,6 +1472,7 @@ class _FailingPlanningRemoteRefreshRepository
   @override
   Future<PlanningSyncPayload> fetchPlanningSyncPayload({
     required String organizationId,
+    bool Function()? shouldContinue,
   }) async {
     throw Exception('offline');
   }
@@ -2185,6 +2186,7 @@ class _StaticPlanningRemoteRefreshRepository
   @override
   Future<PlanningSyncPayload> fetchPlanningSyncPayload({
     required String organizationId,
+    bool Function()? shouldContinue,
   }) async {
     return PlanningSyncPayload(
       plans: [

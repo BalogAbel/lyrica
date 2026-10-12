@@ -283,6 +283,7 @@ class _ThrowingPlanningRemoteRepository
   @override
   Future<PlanningSyncPayload> fetchPlanningSyncPayload({
     required String organizationId,
+    bool Function()? shouldContinue,
   }) async {
     throw _error;
   }

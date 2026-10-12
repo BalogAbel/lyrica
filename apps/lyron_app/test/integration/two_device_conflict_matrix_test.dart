@@ -23,6 +23,7 @@ import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../support/backend_planning_reads.dart';
 import '../support/drift_relaunch.dart';
 import '../support/drift_test_setup.dart';
 
@@ -188,9 +189,11 @@ void main() {
           );
 
           // Deterministic convergence: the backend holds device A's value.
-          final backendDetail = await SupabasePlanningRepository(
+          final backendDetail = await readBackendPlanDetail(
             deviceA.client,
-          ).getPlanDetail(_planId);
+            organizationId: _visibleOrganizationId,
+            planId: _planId,
+          );
           final backendSession = backendDetail.sessions.firstWhere(
             (candidate) => candidate.id == session.id,
           );
@@ -276,9 +279,11 @@ void main() {
             reason: 'device B reorders from a stale plan base_version',
           );
 
-          final backendDetail = await SupabasePlanningRepository(
+          final backendDetail = await readBackendPlanDetail(
             deviceA.client,
-          ).getPlanDetail(_planId);
+            organizationId: _visibleOrganizationId,
+            planId: _planId,
+          );
           expect(
             backendDetail.sessions
                 .map((session) => session.id)
@@ -380,9 +385,11 @@ void main() {
         await deviceB.sync();
 
         // Convergence: the backend no longer has the session.
-        final backendDetail = await SupabasePlanningRepository(
+        final backendDetail = await readBackendPlanDetail(
           deviceA.client,
-        ).getPlanDetail(_planId);
+          organizationId: _visibleOrganizationId,
+          planId: _planId,
+        );
         expect(
           backendDetail.sessions.any(
             (session) => session.id == scratchSession.id,
@@ -523,9 +530,11 @@ void main() {
 
           // Backend convergence: exactly one session item for this song in
           // this session (device A's).
-          final backendDetail = await SupabasePlanningRepository(
+          final backendDetail = await readBackendPlanDetail(
             deviceA.client,
-          ).getPlanDetail(_planId);
+            organizationId: _visibleOrganizationId,
+            planId: _planId,
+          );
           final backendSession = backendDetail.sessions.firstWhere(
             (session) => session.id == _runThroughSessionId,
           );
@@ -623,9 +632,11 @@ void main() {
         // LF-5: the untouched fields from device A's partial edit must
         // survive on the backend - the name changed, description and
         // scheduledFor did not.
-        final backendDetail = await SupabasePlanningRepository(
+        final backendDetail = await readBackendPlanDetail(
           deviceA.client,
-        ).getPlanDetail(_planId);
+          organizationId: _visibleOrganizationId,
+          planId: _planId,
+        );
         expect(backendDetail.plan.name, partialName);
         expect(
           backendDetail.plan.description,
@@ -748,8 +759,11 @@ class _Device {
   /// every session and item the device might mutate must also be projected
   /// locally - seeding the plan row alone is not enough.
   Future<PlanDetail> seedPlan(String planId) async {
-    final seedRepository = SupabasePlanningRepository(client);
-    final detail = await seedRepository.getPlanDetail(planId);
+    final detail = await readBackendPlanDetail(
+      client,
+      organizationId: context.organizationId,
+      planId: planId,
+    );
     final refreshedAt = DateTime.now().toUtc();
     await localStore.upsertSyncedPlan(
       userId: context.userId,

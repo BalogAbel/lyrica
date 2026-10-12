@@ -1117,6 +1117,7 @@ class _FakePlanningRemoteRefreshRepository
   @override
   Future<PlanningSyncPayload> fetchPlanningSyncPayload({
     required String organizationId,
+    bool Function()? shouldContinue,
   }) async {
     fetchCallCount += 1;
     fetchCallsByOrganizationId.add(organizationId);
