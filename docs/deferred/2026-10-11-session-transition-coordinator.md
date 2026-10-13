@@ -78,3 +78,5 @@ Re-evaluate when either of these happens:
 Before adding another local guard at that point, write the coordinator spec.
 
 Roadmap (2026-10-12): stays trigger-gated (S9). Closing R8 and R15 in S6a did not trigger it: they were feedback fixes, not transition guards. The S3 brainstorm re-evaluates it before S3 adds another local guard around a purge.
+
+Roadmap (2026-10-13): S3 does not trigger it. Since its scope change S3 adds no background writer and no purge: its key edits are ordinary planning mutations. The question moves to S4, whose per-user personal layer is the next "new background writer" (roadmap, "Open design points for S4").

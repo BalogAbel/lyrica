@@ -71,3 +71,7 @@ stay on the stack under another user.
 A change to `app_router.dart`, the session-transition coordinator work, or a
 field report of a dialog vanishing or a control going dead after a sign-in
 elsewhere.
+
+Roadmap (2026-10-13): S3 does not trigger it (its reader actions await no
+dialog). The open reauth-host risk is listed among the roadmap's "Open design
+points for S4".

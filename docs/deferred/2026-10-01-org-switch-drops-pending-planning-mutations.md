@@ -74,6 +74,9 @@ the next slice that re-enters planning sync.
     drops, as the different-user re-auth flow does (ADR-029).
 - **Align the song side** with whichever rule is chosen, or document why the
   two domains differ.
-- **Make the S3 personal layer follow the same decision.** Per the roadmap, the
-  personal-layer outbox is not deleted on an organization switch.
+- **Make the personal layer follow the same decision.** Per the roadmap, the
+  personal-layer outbox is not deleted on an organization switch. Since
+  2026-10-13 that layer is S4's; S3's `sessionItemKeyEdit` rows are planning
+  mutations and follow whatever rule S5b chooses for planning, with no
+  separate handling.
 - **Update or remove this entry** in the same change.

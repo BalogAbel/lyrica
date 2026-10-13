@@ -42,7 +42,13 @@
 > (`c561d20`, 2026-10-12;
 > `docs/specs/2026-10-12-chordpro-base-directives.md`). S6a merged as #93
 > (`c713872`, 2026-10-13;
-> `docs/specs/2026-10-12-sync-and-account-feedback.md`); S3 in progress. The open
+> `docs/specs/2026-10-12-sync-and-account-feedback.md`); S3 in progress.
+> **2026-10-13: the S3 brainstorm changed S3's scope.** S3 no longer builds a
+> per-user personal layer: it adds a shared plan-level transpose and capo on
+> the session item and a temporary reader layer
+> (`docs/specs/2026-10-13-personal-song-settings.md`, ADR-042; see "S3 Scope
+> Change (2026-10-13)"). S4 builds the per-user personal layer itself. New
+> order: S3, then S5b, then S4. The open
 > deferred entries were triaged on
 > 2026-10-12 (see "Deferred Triage (2026-10-12)"): S6 is split into S6a and
 > S6b, and S6a runs right after S2. The
@@ -62,7 +68,10 @@ On 2026-10-01 the user asked for three things:
    users.
 2. **Saved transpose and capo.** Per user, at plan level, and optionally at
    song level. The user expects this to share the abstraction that
-   annotations need.
+   annotations need. **Revised by the user on 2026-10-13 (S3 brainstorm):** a
+   shared plan-level value that everyone reading the plan sees, the song's
+   existing shared base, and a temporary reader-only value. Per-user values
+   stay a future extension of the same resolution chain.
 3. **The work recorded in `docs/deferred/`.**
 
 This document fixes the order of that work, the dependencies between the
@@ -186,9 +195,9 @@ Size legend:
 | S0 | `fix/offline-first-startup-gate` | **Merged (PRs #85, #90).** Field-reported bug, 2 PRs. (1) The membership gate decides from the last known identity; `verifiedEmpty` closes it only after the D5 purge; first run shows a loading state; auth-stream errors are handled; an integration test uses the real gotrue client. (2) Persist the last known capabilities (S6 option (a), pulled forward) and show a visible "last synced" indicator | `2026-09-30-capability-gating-offline-cold-start.md` (option (a) only; entry removed in S6a) | M | medium |
 | S5a | `fix/paged-remote-pulls` | **Merged (PR #91, `0390d79`).** A shared keyset paging helper (`order(id).gt(id, last).limit(n)`, ends only on an empty page, strictly increasing keys checked), not `.range()` plus `count=exact`: offset pages can skip a row that a count check does not catch. The catalog reads summaries and sources in one organization-scoped stream (no per-song requests); planning reads plans, sessions and session items as three organization-wide streams (embedded items were truncated too). ADR-041; spec `docs/specs/2026-10-12-paged-remote-pulls.md` | `2026-09-30-planning-pull-unpaged-reads.md` (resolved, removed) | S–M | low–medium |
 | S2 | `fix/chordpro-base-directives` | **Merged (PR #92, `c561d20`).** One base-region predicate shared by the parser, the editor read and the editor write: base `{transpose}`, `{capo}` and `{key}` are read before the first lyric or chord line (or the first tab content line). Comments and section markers no longer close it. The editor uses the parser-derived base values, and its write never touches in-song directives. Spec: `docs/specs/2026-10-12-chordpro-base-directives.md` | `2026-04-22-song-reader-chordpro-modulation.md`, item 1 | S | low |
-| S3 | `feat/personal-song-settings` | Personal song layer foundation, plus per-user transpose and capo at song and plan scope, in 3 PRs: (1) backend tables, RPCs, RLS and contract tests; (2) local Drift store, outbox and pull-cursor sync, integrated with the purge lifecycle, storage budget and sync overview; (3) reader resolution and UX. PR 2 also closes the membership-purge import gap (it amends ADR-035 anyway; use `isRunningFor(userId)`). The S3 brainstorm decides how the new pull and outbox writer behave around a purge (no resurrection after a purge) and re-evaluates the session-transition coordinator at that point, before adding another local guard | `2026-10-11-membership-purge-import-gap.md` (PR 2) | L | medium |
-| S4 | `feat/song-annotations` | Annotations on the personal layer. Starts with a prototype in `docs/prototypes/`, then 2–3 PRs: (1) anchor model, overlay renderer and typed notes; (2) gesture marks (circle, underline, highlight) snapped to content; (3) free ink anchored to words, if the spec keeps it. Native (tablet and phone) first; web is best-effort | — (new) | XL | high |
-| S5b | `fix/planning-mutation-gaps` | Stranded create tombstones, session-rename retry rebase, content-version advance on context switch. Verify and decide the organization-switch finding. Added 2026-10-12: stop a mutation sync run when the context changes, in both the planning and the song controller (gate-cross-user-leaks O2); an ownership guard on the D5 purge resets (O3); childless plans after a mid-pull revocation, fixed with a membership re-check after the child streams (paged-pull-residuals R2) | `2026-09-30-stranded-create-tombstones.md`, `2026-09-30-session-rename-retry-never-rebases.md`, `2026-09-30-content-version-advance-on-context-switch.md`, `2026-10-01-org-switch-drops-pending-planning-mutations.md`, `2026-10-05-gate-cross-user-leaks.md` (O2, O3), `2026-10-12-paged-pull-residuals.md` (R2) | M–L | high |
+| S3 | `feat/personal-settings-backend`, then one branch per PR | **Scope changed 2026-10-13.** Song key layers: a temporary reader layer (never stored) over a shared plan-level transpose and capo on the session item, over the song's ChordPro base (edited only in the song editor). 3 PRs: (1) `session_items.transpose`/`capo`, the `set_session_item_key` RPC and real-role contract tests; (2) planning client: projection columns, pull mapping, the `sessionItemKeyEdit` mutation with Keep mine, a sync popup detail label; (3) reader: layered resolution, end of the session carry-over, Save to plan / Reset / Clear plan value, plan-detail key. No new sync domain, table or `PurgeTarget`. Spec `docs/specs/2026-10-13-personal-song-settings.md`, ADR-042 | — (the membership-purge import gap moved to S5b) | M–L | medium |
+| S4 | `feat/song-annotations` | Annotations on a per-user personal layer, which S4 now builds itself (see "S4" under "Recommended Defaults"). Starts with a prototype in `docs/prototypes/`, then 2–3 PRs: (1) the personal layer (server-synced, single owner) with the anchor model, overlay renderer and typed notes; (2) gesture marks (circle, underline, highlight) snapped to content; (3) free ink anchored to words, if the spec keeps it. Native (tablet and phone) first; web is best-effort | — (new) | XL | high |
+| S5b | `fix/planning-mutation-gaps` | Stranded create tombstones, session-rename retry rebase, content-version advance on context switch. Verify and decide the organization-switch finding. Added 2026-10-12: stop a mutation sync run when the context changes, in both the planning and the song controller (gate-cross-user-leaks O2); an ownership guard on the D5 purge resets (O3); childless plans after a mid-pull revocation, fixed with a membership re-check after the child streams (paged-pull-residuals R2). Added 2026-10-13: the membership-purge import gap (from S3; it amends ADR-035, use `isRunningFor(userId)`). Every fix also covers S3's `sessionItemKeyEdit` | `2026-09-30-stranded-create-tombstones.md`, `2026-09-30-session-rename-retry-never-rebases.md`, `2026-09-30-content-version-advance-on-context-switch.md`, `2026-10-01-org-switch-drops-pending-planning-mutations.md`, `2026-10-05-gate-cross-user-leaks.md` (O2, O3), `2026-10-12-paged-pull-residuals.md` (R2), `2026-10-11-membership-purge-import-gap.md` | M–L | high |
 | S7 | `feat/plan-duplicate`, then `feat/session-item-move` | Each is one server RPC; v1 is online-only, recorded in an ADR | `2026-09-29-plan-duplicate.md`, `2026-09-29-session-item-move.md` | 2×M (offline-capable: 2×L) | medium |
 | S6a | `fix/sync-and-account-feedback` | **Implemented (PR pending).** Copy and feedback only. The sync popup's reason chips are phrases; one generic remote-missing phrase covers a delete the backend rejects (`plan_not_found` means both "removed" and "no longer allowed"), and `authorizationDenied` says access may have ended. A refused, failed or superseded sign-out shows one snackbar (new outcome `blockedByImport`; a throwing confirmation is `failed`), and a failed Delete account is caught and shown. A sign-out confirmation dialog lost to a router rebuild ends `failed` instead of holding the command lock (FB16; the rebuild itself is deferred). Nine dead strings removed; the two deletion-confirmation dialogs are English, with a guard test on `AppStrings`. Spec: `docs/specs/2026-10-12-sync-and-account-feedback.md` | resolved and removed: `2026-09-30-capability-gating-offline-cold-start.md`, `2026-10-12-sync-reason-chip-copy.md`; updated: `2026-10-05-membership-revoked-notice.md` (option b done), `2026-10-09-sign-out-guard-residuals.md` (R8, R15 closed); added: `2026-10-12-sync-popup-narrow-layout.md`, `2026-10-12-delete-account-session-loss-purge.md`, `2026-10-13-router-rebuild-disposes-open-dialogs.md` | S–M | low |
 | S6b | `fix/capability-and-telemetry` | Fix the org-id telemetry leak and add the `sessionExpired` test. Centralize PII scrubbing in `beforeSend`, `beforeSendTransaction` and `beforeBreadcrumb`. Capability persistence residuals F3, F4 and the test-strength gaps. A throwing observability adapter leaves a refresh "refreshing" (paged-pull-residuals R3) | `2026-08-28-observability-remaining-use-cases.md`, `2026-10-12-capability-persist-residuals.md`, `2026-10-12-paged-pull-residuals.md` (R3) | M | low–medium |
@@ -217,13 +226,19 @@ Size legend:
   - Small, but visible. Songs that put a `{comment}` before their base
     directives start showing the transposed key, as ChordPro semantics
     require.
-- **S3:**
-  - The transpose UI is small. A new, third sync domain is the real work:
-    backend, Drift store, outbox, pull, lifecycle and purge, storage budget,
-    sync overview.
-  - The data has a single owner, so last-write-wins is enough and no
-    conflict UI is needed. That keeps this domain much simpler than planning.
+- **S3 (since 2026-10-13):**
+  - One new planning mutation kind in the existing outbox, with its own OCC
+    (the session item's `version`) so that key edits never conflict with each
+    other or with the session's structural writes.
+  - Keep mine must rebase from the session item, not repeat the S5b rename
+    defect.
+  - `SongReaderState` loses the offsets that carried over between songs; the
+    editor preview imports it too.
 - **S4:**
+  - The per-user personal layer, moved here from S3: a new, third sync
+    domain (backend, Drift store, outbox, pull, lifecycle and purge, storage
+    budget, sync overview). The data has a single owner, so last-write-wins is
+    enough and no conflict UI is needed.
   - Word-box geometry from the `Wrap`-based line layout, in one and two
     columns.
   - Gesture arbitration between scrolling, pinch-zoom, double-tap fit, tap to
@@ -254,34 +269,42 @@ Size legend:
 
 **Hard (merge before the dependent slice starts its code):**
 
-- **S1 → S3.** Without revoked default privileges, the new personal-layer
-  tables get DML grants for `authenticated`.
-- **S2 → S3.** Saved transpose and capo need one consistent base.
+- **S1 → S3.** The new RPC is written under the hardened grant model
+  (merged).
+- **S1 → S4.** Without revoked default privileges, the new personal-layer
+  tables get DML grants for `authenticated` (merged).
+- **S2 → S3.** Plan-level transpose and capo resolve over one consistent base.
 - **S2 → S8.** Modulation builds on the same parser semantics.
-- **S3 → S4.** Annotations live on the personal layer.
 - **S5b → S7.** Duplicate and move re-enter the same mutation machinery. The
   `docs/deferred/README.md` planning rule makes the open gaps there priority
   work first.
+- **S3 → S5b.** Not a code dependency: S3 re-enters the planning mutation
+  state machine, so the planning rule makes S5b the very next slice. Every S5b
+  fix also covers `sessionItemKeyEdit`.
+
+The former **S3 → S4** dependency is gone (2026-10-13): S3 no longer builds a
+personal layer, so S4 builds it.
 
 **Soft (preferred order, not blocking):**
 
-- **S5a → S3.** S3's pull reuses the paging helper.
+- **S5a → S4.** The personal-layer pull reuses the paging helper (ADR-041).
 - **S1 → S7.** The new RPCs are written under the hardened grant model.
-- **S3 → S7.** Duplicating a plan can copy the caller's own plan-scoped
-  personal layer.
+- **S3 → S7.** Duplicating a plan copies the session items' plan keys, and a
+  session-item move keeps its key.
 
 **Hotspots (never run in parallel):**
 
-- **S3 ↔ S0 (PR 2):** `LocalDataLifecycle.clearIdentity` and the
+- **S4 ↔ S0 (PR 2):** `LocalDataLifecycle.clearIdentity` and the
   `LastKnownIdentity` database. S0 adds no new `PurgeTarget`: its capability
   store is cleared together with the identity.
 - **S3/S4 ↔ S8:** `SongReaderProjection`.
 - **S5b ↔ S7:** `drift_planning_mutation_store.dart` and
   `planning_mutation_sync_controller.dart`.
-- **S6a ↔ S3 (PR 2):** the unified sync popup. S6a goes first; S3 PR 2
-  extends the popup S6a reworded.
-- **S5b ↔ S3 (PR 2):** the D5 purge coordinator (O3) and the mutation sync
-  controllers (O2).
+- **S5b ↔ S3 (PR 2):** the same two files; S3 PR 2 adds the
+  `sessionItemKeyEdit` kind to them. S5b also touches the D5 purge (O3) and
+  the mutation sync controllers (O2).
+- **S6a ↔ S4:** the unified sync popup. S6a went first; the personal layer
+  extends the popup S6a reworded. (S3 PR 2 adds only a detail label.)
 
 **Deliberate decoupling:** annotations are overlays that take no layout space.
 S4 therefore stays independent of the fit estimator and of the fit-margin
@@ -300,15 +323,19 @@ For a single executor:
 5. **S6a:** sync and account feedback. It fixes two user-reachable gaps (an
    unhandled failed Delete account, R15, and code-shaped sync reason chips),
    and S3 PR 2 extends the same sync popup.
-6. **S3:** personal song settings, in 3 PRs.
-7. **S4:** annotations, as a prototype followed by 2–3 PRs.
-8. **S5b:** planning mutation gaps, plus O2, O3 and paged-pull R2.
+6. **S3:** song key layers (temporary and shared plan-level transpose and
+   capo), in 3 PRs.
+7. **S5b:** planning mutation gaps, plus O2, O3, paged-pull R2 and the
+   membership-purge import gap. Right after S3, because S3 re-enters the
+   planning mutation state machine (2026-10-13).
+8. **S4:** the per-user personal layer and annotations, as a prototype
+   followed by 2–3 PRs.
 9. **S7:** plan duplicate, then session-item move.
 10. **S6b:** capability residuals and telemetry (S6's old position).
 11. **S8:** ChordPro modulation.
 12. **S9 remainder:** re-check each trigger before deciding.
 
-Short form: S1, S0, S5a, S2, S6a, S3, S4, S5b, S7, S6b, S8, S9.
+Short form: S1, S0, S5a, S2, S6a, S3, S5b, S4, S7, S6b, S8, S9.
 
 **User actions:** the S1 hosted actions and the LF-T2 dashboard check are done
 (2026-10-01; see "User Actions Outside the Repository").
@@ -321,10 +348,9 @@ Short form: S1, S0, S5a, S2, S6a, S3, S4, S5b, S7, S6b, S8, S9.
     S7 → S6b.
 - **Constraints:**
   - S3's backend migration waits for S1 to merge.
-  - S0's PR 2 never runs at the same time as S3's PR 2.
-  - S6a merges before S3's PR 2 starts (the sync popup hotspot).
-  - S5b never runs at the same time as S3's PR 2 (the purge and mutation
-    sync hotspot).
+  - S5b starts only after S3 PR 2 merges (the mutation store and sync
+    controller hotspot), and S4 waits for S5b in the single-executor order.
+  - S0's PR 2 never runs at the same time as S4's personal-layer PR.
   - The hotspots above stay serialized.
 
 ## Recommended Defaults
@@ -369,10 +395,43 @@ or overrides it with a stated reason.
 - Both features are server RPCs, online-only in v1, recorded in an ADR. While
   pending local mutations touch the affected plan or sessions, the action is
   disabled.
+- Duplicating a plan copies each session item's plan key (`transpose`,
+  `capo`), and a session-item move keeps the item's key (S3, 2026-10-13).
 - Duplicating a plan also copies the caller's own plan-scoped personal layer
-  (settings and annotations). It never copies another user's.
+  (annotations, once S4 exists). It never copies another user's.
 
-### S3 (preliminary; the S3 spec finalizes these)
+### S3 (finalized 2026-10-13)
+
+The preliminary defaults written here on 2026-10-01 were replaced by the S3
+brainstorm. Spec: `docs/specs/2026-10-13-personal-song-settings.md` (PS1–PS24),
+ADR-042. In short:
+
+- **Three layers, per field:** temporary (reader only, never stored, cleared
+  on every song change), then the plan's value on the session item (shared;
+  only when the song is opened from that plan), then the song's ChordPro base
+  (shared; edited only in the song editor). Values are absolute, relative to
+  the written chords. Both plan fields are nullable.
+- **The reader's ± is always temporary.** Inside a plan, a member with
+  `canEditSessions` gets **Save to plan**, **Reset** and **Clear plan value**;
+  everyone else gets temporary changes only.
+- **Item scope:** the same song in two sessions has two values; removing a
+  song and adding it again loses its key; a reorder keeps it.
+- **Writes:** `set_session_item_key`, with keep / set / clear per field and
+  OCC on `session_items.version`. A resend whose values already match is a
+  no-op success (the LF-T5b lesson, for this RPC). Plans' `content_version` is
+  bumped; the session `version` is not.
+- **Sync:** the existing planning outbox, pull, purge, pending count and
+  organization-switch behavior; one new mutation kind with Keep mine.
+- **The session-wide transpose and capo carry-over ends** (amends the
+  2026-04-01 spec). View mode, instrument and zoom keep their current behavior.
+- **Extension points, not deferred work:** a per-user song value and a
+  per-user plan value would be further layers in the same ordered resolution
+  chain (ADR-042). Nothing is built for them now.
+
+### S4 (open questions for its brainstorming session)
+
+S4 now builds the per-user personal layer that S3 was going to build. Its
+starting defaults are the old S3 preliminary ones (2026-10-01), unchanged:
 
 - **Storage:** server-synced personal layer, single owner, last-write-wins.
 - **Ordering:** a server-assigned sequence orders writes and serves as the
@@ -384,19 +443,6 @@ or overrides it with a stated reason.
   also require that the caller can still read the song.
 - **Who can use it:** read-only members too; personal data needs no editing
   capability.
-- **Plan-scope key:** `(plan_id, song_id)`, not the session item. It
-  survives a session-item move and a delete followed by re-adding the song.
-  Server-side cascades follow plan and song deletion.
-- **What is stored:** the effective transpose, relative to the written
-  chords, and the effective capo.
-- **Resolution order:** plan scope, then song scope, then the ChordPro base.
-- **Saving:** changes save automatically to the current scope (plan scope
-  inside a plan, song scope in the library). There are "use as my default for
-  this song" and "reset to my song default" actions.
-- **Runtime state:**
-  - The session-wide transpose and capo carry-over ends, which amends the
-    2026-04-01 spec.
-  - View mode, instrument and zoom keep their current behavior.
 - **Organization switch:** the outbox is not deleted (see finding 4). Only an
   authoritative revocation or an explicit purge reason drops it.
 - **Purge contract:**
@@ -406,7 +452,35 @@ or overrides it with a stated reason.
 - **Telemetry:** spans follow the ADR-036 pattern. No personal content goes
   to telemetry.
 
-### S4 (open questions for its brainstorming session)
+**Open design points for S4 (from the 2026-10-13 S3 prompt).** Verified
+read-only on `c713872` for S3, which no longer needs them:
+
+- **Explicit grants (ADR-039).** New personal-layer tables get no grants:
+  the migration grants `SELECT` explicitly, every write goes through a
+  `security definer` RPC, the contract tests impersonate the real role, and
+  the hosted deploy is manual (SQL editor) and precedes any client that needs
+  it.
+- **Deletes the incremental pull never sees.** A server cascade (plan or song
+  deletion) removes rows physically, and losing access (RLS) hides them the
+  same way, so a cursor pull never learns of them. Decide between tombstones
+  in the same sequence stream, client-side garbage collection against the
+  local catalog and planning projection, or a periodic full reconcile.
+- **Pending-work accounting.** Unsynced personal changes must be counted in
+  `pendingLocalWorkCounterProvider` (the sign-out warning, the different-user
+  reauth wipe, the membership-revocation purge), with its own `PurgeTarget`
+  and an ADR-035 amendment.
+- **Writers versus purge.** A pull page or an outbox acknowledgement that
+  lands after a purge must not resurrect the purged data (the S0
+  capability-store lesson). The personal-layer writer is "a new background
+  writer", the trigger of
+  `docs/deferred/2026-10-11-session-transition-coordinator.md`: decide between
+  a local guard and writing the coordinator spec first, and re-check the open
+  reauth-host risk of `docs/deferred/2026-10-13-router-rebuild-disposes-open-dialogs.md`.
+- **Organization scope.** Carry `organization_id` on each row, pull per
+  active `(user, org)` and purge per `(user, org)` like the other targets; an
+  organization switch never drops the outbox.
+
+**Annotation questions:**
 
 - **Input modes:**
   - typed notes;
@@ -432,13 +506,13 @@ or overrides it with a stated reason.
 | LF-T2, refresh-token TTL | Depends only on hosted Supabase Auth settings; verified 2026-10-01: single session off, time-box and inactivity timeout both "never" (not changeable on the Free plan) | **Closed.** Reopen only if a paid plan enables any of these settings |
 | `sentry_flutter` 9.x | Not resolvable (8.14.2) | Stays deferred |
 | Centralized scrub hooks | Met once S6b starts (next observability slice) | Moves into S6b (was S6) |
-| Remaining instrumentation | "Non-trigger" rule still applies | Only new S3 and S4 sync code gets spans, per ADR-036; nothing else is back-filled |
+| Remaining instrumentation | "Non-trigger" rule still applies | Only new S4 sync code gets spans, per ADR-036 (S3 adds no sync path of its own since 2026-10-13); nothing else is back-filled |
 | Web `traceparent` gate | Still tied to the CORS gate | Stays deferred |
 | Web offline e2e | Not met: web stays best-effort (user, 2026-10-01) | Stays deferred; S4 is native-first |
 | Reader fit margin | No trigger | Stays deferred; S4's overlay-only rule keeps it decoupled |
 | LF-T5, OCC divergence | No evidence, and nothing measures it | Stays deferred. Cheap enabler: a breadcrumb or metric when the mutation warn threshold fires (S5b or S6b) |
-| LF-T5b, abandoned committed write | No evidence | Stays deferred; S3 is idempotent by design and adds no new exposure |
-| LF-T6, server clock anchor | No trusted server time in planning | Stays deferred; S3 orders by server sequence |
+| LF-T5b, abandoned committed write | No evidence | Stays deferred. Corrected 2026-10-13: S3's key edit is an OCC write with this shape; its RPC answers a resend whose values already match with a no-op success, so it adds no new exposure. S4's personal layer is idempotent by design |
+| LF-T6, server clock anchor | No trusted server time in planning | Stays deferred. Corrected 2026-10-13: S3 uses planning OCC and no device clock; S4's personal layer orders by server sequence |
 
 ## Deferred Triage (2026-10-12)
 
@@ -469,8 +543,9 @@ S5a left open. Each affected deferred document carries a one-line
     sign-out) and R15 (a failed Delete account is unhandled).
   - **Update (S6a implemented):** all four are resolved as above. S6a added
     two trigger-gated entries (S9):
-    `2026-10-12-sync-popup-narrow-layout.md` (S3 PR 2 extends the popup and
-    picks it up) and `2026-10-12-delete-account-session-loss-purge.md`.
+    `2026-10-12-sync-popup-narrow-layout.md` (S3 PR 2 was to extend the popup
+    and pick it up; since 2026-10-13 that is S4's personal layer) and
+    `2026-10-12-delete-account-session-loss-purge.md`.
 - **S6b** `fix/capability-and-telemetry`:
   - the org-id telemetry leak, the `sessionExpired` test and the centralized
     scrub hooks (`2026-08-28-observability-remaining-use-cases.md`);
@@ -481,13 +556,27 @@ S5a left open. Each affected deferred document carries a one-line
 **Order:** S6a runs right after S2 and before S3. It fixes two user-reachable
 gaps (R15 and the code-shaped chips), and S3 PR 2 extends the same sync popup.
 S6b keeps S6's old position. New order: S1, S0, S5a, S2, S6a, S3, S4, S5b,
-S7, S6b, S8, S9.
+S7, S6b, S8, S9. (Superseded 2026-10-13: S5b moves before S4; see "Order".)
 
 **S3 PR 2 gains** `2026-10-11-membership-purge-import-gap.md`: it amends
 ADR-035 anyway; use `isRunningFor(userId)`. The S3 brainstorm must also
 decide how S3's pull and outbox writer behave around a purge (no
 resurrection after a purge), and re-evaluate the session-transition
 coordinator at that point, before adding another local guard.
+
+**Update (2026-10-13, S3 brainstorm).** S3 no longer adds a pull, an outbox
+writer, a purge target or an ADR-035 amendment. Consequences:
+
+- The membership-purge import gap moves to **S5b** (O3 already touches the D5
+  purge).
+- The session-transition coordinator is not triggered by S3 (no new
+  background writer, no new purge). The question moves to S4's personal
+  layer (see "Open design points for S4").
+- `2026-10-13-router-rebuild-disposes-open-dialogs.md` is not triggered: S3
+  awaits no dialog.
+- `2026-10-12-sync-popup-narrow-layout.md` is not triggered: S3 PR 2 adds a
+  detail label only, not a new popup section. It stays S9 until the personal
+  layer (S4) extends the popup.
 
 **R8 and R15 are feedback fixes, not transition guards.** Closing them in
 S6a did not trigger the session-transition coordinator

@@ -32,3 +32,5 @@ when this entry is picked up, unless a production reader needs it by then.
 The next change to the membership purge or to ADR-035.
 
 Roadmap (2026-10-12): scheduled in S3 PR 2 (it amends ADR-035 anyway; use `isRunningFor(userId)`).
+
+Roadmap (2026-10-13): moved to **S5b**. S3's scope changed and it no longer amends ADR-035; S5b's O3 already touches the D5 purge.
