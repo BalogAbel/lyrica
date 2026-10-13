@@ -231,6 +231,12 @@ item_l1 = "e5000000-0000-0000-0000-0000000000b1"
 unknown_item_id = "e5000000-0000-0000-0000-0000000000ff"
 read_only_user_id = "e5000000-0000-0000-0000-0000000000ee"
 foreign_org_id = "e5000000-0000-0000-0000-0000000000f0"
+group_1 = "e5000000-0000-0000-0000-0000000000c1"
+group_2 = "e5000000-0000-0000-0000-0000000000c2"
+session_g = "e5000000-0000-0000-0000-00000000000c"
+item_g1 = "e5000000-0000-0000-0000-0000000000c3"
+group_1_editor_id = "e5000000-0000-0000-0000-0000000000e1"
+group_2_editor_id = "e5000000-0000-0000-0000-0000000000e2"
 
 org = sql_quote(organization_id)
 key_signature = (
@@ -344,14 +350,23 @@ def key_of(state: dict) -> tuple:
     return state["version"], state["transpose"], state["capo"]
 
 
+def plan_xmin(plan_id: str) -> str:
+    return run_psql(
+        f"select xmin::text from public.plans where id = {sql_quote(plan_id)}::uuid;"
+    )
+
+
 def world() -> tuple:
     """Everything a rejected or no-op key edit must leave untouched. The
-    items' xmin proves that the rows were not rewritten at all."""
+    items' and the plan row's xmin prove that the rows were not rewritten at
+    all (a no-op that merely touched the plan row would change plan_xmin)."""
     return (
         item_state(item_k1),
         item_state(item_k2),
         session_version(session_k),
         plan_content_version(plan_k),
+        plan_version(plan_k),
+        plan_xmin(plan_k),
     )
 
 
@@ -616,6 +631,54 @@ run_psql(
     )
 )
 
+# Group-scoped fixtures for K9: a session of group_1 inside plan_k holding one
+# song item, and one group_member editor (canEditSessions) per group.
+call(
+    "create_session",
+    f"""
+    p_organization_id => {org},
+    p_plan_id => {sql_quote(plan_k)}::uuid,
+    p_session_id => {sql_quote(session_g)}::uuid,
+    p_slug => 'key-g',
+    p_name => 'key-g'
+    """,
+)
+run_psql(
+    dedent(
+        f"""
+        insert into public.groups (id, organization_id, name)
+        values
+          ({sql_quote(group_1)}::uuid, {org}::uuid, 'Key Group 1'),
+          ({sql_quote(group_2)}::uuid, {org}::uuid, 'Key Group 2');
+
+        update public.sessions
+        set group_id = {sql_quote(group_1)}::uuid
+        where id = {sql_quote(session_g)}::uuid;
+
+        insert into auth.users (id, email)
+        values
+          ({sql_quote(group_1_editor_id)}, 'key-group1-editor@lyron.local'),
+          ({sql_quote(group_2_editor_id)}, 'key-group2-editor@lyron.local')
+        on conflict (id) do nothing;
+
+        insert into public.memberships (
+          user_id, organization_id, group_id, role_code, scope_type, status
+        )
+        values
+          (
+            {sql_quote(group_1_editor_id)}::uuid, {org}::uuid,
+            {sql_quote(group_1)}::uuid, 'group_member', 'group', 'active'
+          ),
+          (
+            {sql_quote(group_2_editor_id)}::uuid, {org}::uuid,
+            {sql_quote(group_2)}::uuid, 'group_member', 'group', 'active'
+          );
+        """
+    )
+)
+add_song_item(session_g, item_g1, seed_song_id)
+assert key_of(item_state(item_g1)) == (1, None, None)
+
 # --- K11 (part 1): a created item starts without a key, at version 1 ------
 
 for created_item in (item_k1, item_k2, item_l1):
@@ -701,6 +764,53 @@ assert call_error(
     "set_session_item_key",
     key_args(item_k1, 1, "set", 2, organization=foreign_org_id),
 ) == ("P0002", "session_not_found")
+assert world() == before
+
+# K9 group scope: has_capability is asked with the session's own group_id, so
+# a group editor reaches only the sessions of their group.
+g_before = (world(), item_state(item_g1), session_version(session_g))
+assert call_error(
+    "set_session_item_key",
+    key_args(item_g1, 1, "set", 2, session_id=session_g),
+    user_id=group_2_editor_id,
+) == ("P0002", "session_not_found")
+assert call_error(
+    "set_session_item_key",
+    key_args(item_k1, 1, "set", 2),
+    user_id=group_1_editor_id,
+) == ("P0002", "session_not_found")
+assert (world(), item_state(item_g1), session_version(session_g)) == g_before
+ok = call(
+    "set_session_item_key",
+    key_args(item_g1, 1, "set", 2, session_id=session_g),
+    user_id=group_1_editor_id,
+)
+assert (ok["id"], ok["version"], ok["transpose"], ok["capo"]) == (
+    item_g1,
+    2,
+    2,
+    None,
+), ok
+assert key_of(item_state(item_g1)) == (2, 2, None)
+assert session_version(session_g) == g_before[2]
+# The accepted group edit bumped the plan's content_version; re-snapshot.
+before = world()
+
+# --- PS12 order: validate, then base, then authorize, then look up ---------
+
+assert call_error(
+    "set_session_item_key", key_args(item_k1, None, "move")
+) == ("22023", "invalid_session_item_key"), "validation precedes the base check"
+assert call_error(
+    "set_session_item_key",
+    key_args(item_k1, None, "set", 2),
+    user_id=blocked_user_id,
+) == ("P0001", "session_item_version_conflict"), "base check precedes authorization"
+assert call_error(
+    "set_session_item_key",
+    key_args(unknown_item_id, 1, "set", 2),
+    user_id=read_only_user_id,
+) == ("P0002", "session_not_found"), "authorization precedes item lookup"
 assert world() == before
 
 # --- K10: only a song item of this session --------------------------------
@@ -789,6 +899,22 @@ assert capture_error(
     "session_item_version_conflict",
     "expected base_version 7 but found current version 8",
 )
+assert world() == before
+
+# K6b: a stale base conflicts even when one of the two fields already holds
+# the requested value; only a full no-op (K5) skips the base check.
+for partial in (
+    key_args(item_k1, 7, "set", 11, "set", 3),
+    key_args(item_k1, 7, "set", 3, "set", 11),
+):
+    assert capture_error(
+        f"perform public.set_session_item_key({partial});",
+        user_id=demo_user_id,
+    ) == (
+        "P0001",
+        "session_item_version_conflict",
+        "expected base_version 7 but found current version 8",
+    )
 assert world() == before
 
 # --- K14: two items of one session never conflict -------------------------
