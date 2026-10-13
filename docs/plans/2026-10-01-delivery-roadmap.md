@@ -40,9 +40,9 @@
 > (PR 1 and PR 2). S5a merged as #91 (`0390d79`, 2026-10-12; ADR-041,
 > `docs/specs/2026-10-12-paged-remote-pulls.md`). S2 merged as #92
 > (`c561d20`, 2026-10-12;
-> `docs/specs/2026-10-12-chordpro-base-directives.md`); S6a implemented on
-> `fix/sync-and-account-feedback`, PR pending merge
-> (`docs/specs/2026-10-12-sync-and-account-feedback.md`); next: S3. The open
+> `docs/specs/2026-10-12-chordpro-base-directives.md`). S6a merged as #93
+> (`c713872`, 2026-10-13;
+> `docs/specs/2026-10-12-sync-and-account-feedback.md`); S3 in progress. The open
 > deferred entries were triaged on
 > 2026-10-12 (see "Deferred Triage (2026-10-12)"): S6 is split into S6a and
 > S6b, and S6a runs right after S2. The
