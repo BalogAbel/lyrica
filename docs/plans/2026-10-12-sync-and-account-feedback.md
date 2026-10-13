@@ -3,7 +3,7 @@
 > Status: implemented (2026-10-12) on `fix/sync-and-account-feedback`, PR
 > pending merge.
 
-- Spec: `docs/specs/2026-10-12-sync-and-account-feedback.md` (FB1–FB15,
+- Spec: `docs/specs/2026-10-12-sync-and-account-feedback.md` (FB1–FB16,
   CP/SF/DA/L acceptance criteria)
 - Branch: `fix/sync-and-account-feedback` (from `main` at `c561d20`)
 - Execution: subagent-driven. Implementer Sonnet 5.5 per task, task review
@@ -178,7 +178,39 @@ deferred with a document.
 
 ## Final review outcome
 
-Pending: the adversarial whole-diff review runs after this task.
+Adversarial Opus 5.5 whole-diff review of `c561d20..86dc79e`, claim: "a
+refused or failed sign-out or Delete account can still end with no visible
+feedback, a user's own cancel shows an error, a message states something
+false about what happened to the user's data, or the change alters sign-out,
+purge or delete behavior beyond feedback."
+
+- **Blocking (B1, one counterexample to the first part).** The router is
+  rebuilt on every auth state change (`app_router.dart` watches the
+  controller) and disposes an open sign-out confirmation unanswered. The
+  future never completed, `SignOutCommand` kept its lock, and every later
+  sign-out was `alreadyRunning`, silent. Pre-existing, reproduced with the
+  real router (a user switch, or a null session, while the dialog is open).
+  Fixed in the one allowed round (FB16, SF9): the flow detects a dialog lost
+  unanswered and ends `failed` with a message, the lock is released. The
+  router is not changed; the rebuild is a deferred entry.
+- **Reverted (N1).** The mounted guard on the Delete-account spinner (Task 4
+  polish) changed Delete behavior against the guarantee in a path the app
+  cannot reach; it was reverted with its two tests.
+- **Corrected docs (N2, N3, N4, N6, N7).** The lost-response retry wording,
+  the `superseded` examples, the reachability of the Delete `superseded`
+  message (defense in depth behind the router rebuild), the router-rebuild
+  notes on R9 and R18, and the Delete-account fix sketch's generation check.
+- **Parts 2–4 of the claim: no counterexample.** A user's own Cancel shows
+  nothing; no shipped string was false (the Delete-account message was fixed
+  earlier, by the Task 4 review: a session lost during the call is purged by
+  the pre-existing mapping, so the message makes no local-data claim);
+  `AppAuthController`, the router, the purges and the D5 gate are untouched,
+  and `SignOutCommand` changed only by FB6.
+- **Fix-round re-review:** accepted. Two observations went into the router
+  deferred entry (a same-turn pop and teardown; the reauth host's locks).
+- **Non-blocking, deferred:** "Check your connection" also shows for a
+  non-connectivity RPC rejection (N5, not false); two quick refused taps
+  queue two identical snackbars (N8).
 
 ## Manual device check (after the PR)
 

@@ -29,11 +29,25 @@ Effects:
 - Any code that awaits a dialog across an auth change waits forever. S6a
   closed the one that held the sign-out lock (FB16). Other awaits of dialogs
   (the ChordPro duplicate dialog, the reauth prompt host, the delete-account
-  confirmation) hang the same way, harmlessly today because they hold no lock.
+  confirmation) hang the same way. Not verified harmless: the reauth prompt
+  host's awaiting callers hold outer locks (`SongCatalogController`'s refresh
+  future, the identity-persistence chain; see `reauth_prompt_host.dart`), its
+  `_dialogOpen` flag would stay set, and a later `_closeOpenDialog()` pops
+  whatever is on top, possibly a sign-out dialog (which then ends as a silent
+  `cancelled`). The slice that fixes the router re-verifies each of them.
 - R9 and R18 of the sign-out residuals assume a modal dialog survives a user
   switch. Under this behavior the dialog is disposed unanswered instead.
 - The navigation stack is reset on every auth change, which may be intended
   or accidental; nothing in the repository records a decision.
+
+## Known limit of the FB16 handling
+
+A dialog that is popped with an answer and torn down in the same synchronous
+turn (no microtask between the pop and the disposal) is reported lost, and the
+user would see "Sign-out did not complete". No reachable path was found: taps
+and the back button are platform events, and the reauth host's pop comes from
+asynchronous flows. Hardening, if one is found: defer the check in the
+watcher's `dispose` by one microtask.
 
 ## Fix sketch
 
