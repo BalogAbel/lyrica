@@ -18,7 +18,11 @@ const _testContext = ActiveCatalogContext(
 );
 
 void main() {
-  Future<Future<bool>> open(WidgetTester tester, int? pendingCount) async {
+  Future<Future<bool>> open(
+    WidgetTester tester,
+    int? pendingCount, {
+    VoidCallback? onLostUnanswered,
+  }) async {
     late Future<bool> result;
     await tester.pumpWidget(
       MaterialApp(
@@ -28,6 +32,7 @@ void main() {
               result = showUnsyncedSignOutDialog(
                 context,
                 pendingCount: pendingCount,
+                onLostUnanswered: onLostUnanswered,
               );
             },
             child: const Text('open'),
@@ -74,6 +79,75 @@ void main() {
     await tester.tapAt(const Offset(5, 5));
     await tester.pumpAndSettle();
     expect(await dismissed, isFalse);
+  });
+
+  // FB16 (docs/specs/2026-10-12-sync-and-account-feedback.md): a navigator torn
+  // down under the dialog (the router rebuilds on an auth change) never
+  // completes the dialog's future. The dialog answers false itself and says it
+  // was lost; a dialog the user answered must never be reported lost.
+  group('a dialog lost unanswered (FB16)', () {
+    testWidgets('a navigator torn down under it answers false and reports the '
+        'loss once', (tester) async {
+      var lost = 0;
+      final result = await open(tester, 2, onLostUnanswered: () => lost += 1);
+      bool? answer;
+      unawaited(result.then((value) => answer = value));
+      expect(find.text(AppStrings.unsyncedSignOutTitle), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+
+      expect(answer, isFalse);
+      expect(lost, 1);
+    });
+
+    final answers = <String, (Future<void> Function(WidgetTester), bool)>{
+      'Cancel': (
+        (tester) => tester.tap(find.text(AppStrings.songCancelAction)),
+        false,
+      ),
+      'Discard and sign out': (
+        (tester) =>
+            tester.tap(find.text(AppStrings.unsyncedSignOutConfirmAction)),
+        true,
+      ),
+      'a barrier dismiss': (
+        (tester) => tester.tapAt(const Offset(5, 5)),
+        false,
+      ),
+    };
+    for (final entry in answers.entries) {
+      final (answer, expected) = entry.value;
+
+      testWidgets('${entry.key} is never reported lost, settled or torn down '
+          'mid-transition', (tester) async {
+        var lost = 0;
+        final settled = await open(
+          tester,
+          2,
+          onLostUnanswered: () => lost += 1,
+        );
+        await answer(tester);
+        await tester.pumpAndSettle();
+        expect(await settled, expected);
+        expect(lost, 0);
+
+        // The transition has not finished when the tree goes away: the
+        // route's future completed at pop time, before its entries are
+        // disposed.
+        final midTransition = await open(
+          tester,
+          2,
+          onLostUnanswered: () => lost += 1,
+        );
+        await answer(tester);
+        await tester.pump();
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+        expect(await midTransition, expected);
+        expect(lost, 0);
+      });
+    }
   });
 
   // The flow under a real MaterialApp: its root ScaffoldMessenger belongs to

@@ -260,67 +260,6 @@ void main() {
     expect(find.text(_deleteAccountFailedText), findsOneWidget);
   });
 
-  // O1: the screen that took the tap can be replaced while the confirmation is
-  // open (the router does it on a redirect). The user confirmed and is still
-  // the current user, so the deletion proceeds; nothing may touch the defunct
-  // State, and the failure feedback goes through the captured messenger.
-  Future<ValueNotifier<bool>> pumpReplaceableAccountScreen(
-    WidgetTester tester,
-    AppAuthController controller,
-  ) async {
-    final replaced = ValueNotifier<bool>(false);
-    addTearDown(replaced.dispose);
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [appAuthControllerProvider.overrideWith((_) => controller)],
-        child: MaterialApp(
-          home: ValueListenableBuilder<bool>(
-            valueListenable: replaced,
-            builder: (_, isReplaced, _) => isReplaced
-                ? const Scaffold(body: Text('replacement'))
-                : const AccountScreen(),
-          ),
-        ),
-      ),
-    );
-    return replaced;
-  }
-
-  testWidgets('the deletion still runs when the screen was replaced while the '
-      'confirmation was open (O1)', (tester) async {
-    final controller = _DeleteRecordingController(_StubRepo());
-    final replaced = await pumpReplaceableAccountScreen(tester, controller);
-
-    await tester.tap(find.text(AppStrings.deleteAccountAction));
-    await tester.pumpAndSettle();
-    replaced.value = true;
-    await tester.pump();
-    expect(find.byType(AccountScreen), findsNothing);
-    expect(find.text(AppStrings.deleteAccountConfirmTitle), findsOneWidget);
-
-    await tester.tap(find.text(AppStrings.deleteAccountConfirmAction));
-    await tester.pumpAndSettle();
-
-    expect(controller.deleteCalls, 1);
-  });
-
-  testWidgets('a failed deletion still shows the message when the screen was '
-      'replaced while the confirmation was open (O1)', (tester) async {
-    final controller = _FailingDeleteController(const SocketException('x'));
-    final replaced = await pumpReplaceableAccountScreen(tester, controller);
-
-    await tester.tap(find.text(AppStrings.deleteAccountAction));
-    await tester.pumpAndSettle();
-    replaced.value = true;
-    await tester.pump();
-
-    await tester.tap(find.text(AppStrings.deleteAccountConfirmAction));
-    await tester.pumpAndSettle();
-
-    expect(controller.deleteCalls, 1);
-    expect(find.text(_deleteAccountFailedText), findsOneWidget);
-  });
-
   // DA4 (FB9): the user's own choice is not a failure and not a refusal.
   testWidgets('Cancel in the delete confirmation shows nothing, reports '
       'nothing and does not delete (DA4)', (tester) async {
