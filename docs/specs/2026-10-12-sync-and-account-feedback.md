@@ -147,9 +147,9 @@ and shows one snackbar for the outcomes below. The callers do not change.
 |---|---|---|
 | `signedOut` | none | The screen changes. |
 | `cancelled` | none | The user's own choice: the Cancel button or a barrier dismiss. Also the unmounted context: the screen that took the tap is gone, and whatever replaced it is the feedback. |
-| `alreadyRunning` | none | A double tap. The first tap's own feedback (the dialog or the navigation) is on its way. |
+| `alreadyRunning` | none | A double tap. The first tap's own feedback (its dialog, its message when the dialog is lost (FB16), or the navigation) is on its way. |
 | `blockedByImport` | message | Was `cancelled`, indistinguishable from the user's own Cancel. |
-| `failed` | message | The sequence or the confirmation failed; reported once. |
+| `failed` | message | The sequence or the confirmation failed; reported once. Also a confirmation dialog that was lost unanswered (FB16). |
 | `superseded` | message | Another account signed in (or the current user was lost) while the sign-out ran, and it stopped. The screen does not necessarily change: the user stays on the same list with other data, and the sign-out they asked for did not happen. |
 
 The `superseded` message states only what the command knows: the signed-in
@@ -256,6 +256,27 @@ A test reads `lib/src/shared/app_strings.dart` and fails on any of
 `[áéíóöőúüűÁÉÍÓÖŐÚÜŰ]`. It covers `AppStrings` only, not song data. Existing
 tests that matched the Hungarian text are rewritten.
 
+### FB16. A confirmation dialog lost unanswered ends `failed`
+
+Found by the final review. `app_router.dart` watches
+`appAuthControllerProvider`, so every auth state change builds a new router
+and disposes the navigator with every open dialog; a disposed dialog route
+never completes its future. Before S6a this left `SignOutCommand` waiting
+forever with its lock held: every later sign-out returned `alreadyRunning`,
+which is silent, until the process restarted. Reproduced with the real router
+(a user switch, or a null session, while the discard dialog is open).
+
+`showUnsyncedSignOutDialog` now detects a dialog that is disposed without an
+answer and answers `false`. The flow records that, and maps the resulting
+`cancelled` to `failed`: the lock is released, the user sees
+`signOutFailedMessage`, and the next Sign out tap opens the dialog again. A
+dialog the user answered (Cancel, Discard and sign out, a barrier dismiss) is
+not affected: its future completes before the route is disposed.
+
+The root cause, the router rebuild, is not touched here. It changes the
+navigation of every auth transition and needs its own slice
+(`docs/deferred/2026-10-13-router-rebuild-disposes-open-dialogs.md`).
+
 ## Copy table
 
 ### Sync popup reason chips (`_ReasonChip`; song rows and plan rows)
@@ -339,6 +360,11 @@ tests that matched the Hungarian text are rewritten.
 - SF7. Song list: the menu is open, the import starts, Sign out is chosen:
   the message appears (it returned silently before).
 - SF8. Account screen: Sign out while an import runs shows the message.
+- SF9. Under the real router, a user switch (and a null session) while the
+  discard dialog is open disposes the dialog: the snackbar
+  `signOutFailedMessage` shows, the command lock is released, and the next
+  Sign out tap opens the dialog again. A dialog the user answered is not
+  reported as lost.
 
 **Delete account**
 
@@ -396,10 +422,20 @@ tests that matched the Hungarian text are rewritten.
   local data. Recorded in
   `docs/deferred/2026-10-12-delete-account-session-loss-purge.md`.
 - A lost Delete-account response after the server committed: the user sees
-  the "could not confirm" message; a retry then fails to authenticate and the
-  session ends through the normal expiry path. The wording makes no false
-  claim.
-- A `superseded` message can also show when the current user was lost
-  (signed out in another tab). It states only that the sign-out was stopped.
+  the "could not confirm" message. A retry runs `delete_account` as the
+  deleted user while the access token is still valid (it deletes nothing and
+  succeeds, ending signed out); after the token expires the refresh fails and
+  the retry fails with the same message. The wording makes no false claim.
+- A `superseded` message shows when the account changed while the sign-out
+  ran: another account signed in, or the current user was lost (no identity
+  on file, or the account was deleted in the same tab meanwhile). A sign-out
+  in another tab usually moves this tab to `sessionExpired` for the same
+  user, which is not `superseded`. The message states only that this
+  sign-out was stopped.
+- In the app, a user switch rebuilds the router and disposes an open delete or
+  sign-out confirmation dialog before it is answered (FB16). The SO8
+  `deleteAccountSupersededMessage` and the post-dialog SO3 `superseded` are
+  therefore defense in depth there; DA5 and the SO3 tests exercise them
+  without a router.
 - A sign-out whose context unmounted before the dialog could open ends
   `cancelled`, silently (FB7).

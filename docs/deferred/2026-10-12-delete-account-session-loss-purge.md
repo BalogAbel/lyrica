@@ -52,8 +52,11 @@ not happen.
 Do not let the call's flag turn a session loss into `signedOut`: a null session
 that arrives while `deleteAccount` is in flight maps to `sessionExpired` (the
 D2 rule), and `signedOut` is applied only after the RPC returned
-successfully. The existing generation check after the call (SO8) already
-applies `signedOut` only when no newer auth event arrived.
+successfully. Careful: mapping the null session to `sessionExpired` advances
+`_authGeneration`, so the generation check at the end of `deleteAccount` (SO8)
+would then skip `signedOut` after a successful RPC. The fix must still apply
+`signedOut` there when the only intervening event was the same user's own
+session loss: a user check, not only a generation check.
 
 ## Requirements for the slice that picks this up
 

@@ -123,6 +123,12 @@ would surface as an unawaited `TypeError` and leave the run in
 `ImportAwaitingDuplicateResolution`, which is not a running phase.
 **Trigger:** the next change to `ReauthPromptHost`.
 
+**Update (2026-10-13):** the router is rebuilt on every auth state change and
+disposes the navigator with the open dialogs, so a dialog is disposed
+unanswered rather than popped by the host
+(`docs/deferred/2026-10-13-router-rebuild-disposes-open-dialogs.md`). Re-check
+this entry against that behavior.
+
 ## R10 - import rows of a signed-out user (narrowed 2026-10-11)
 
 A commit that starts after the sign-out released the catalog context is
@@ -193,6 +199,12 @@ one. It never pops the top route. That is a redesign of the host, not a small
 fix. **Trigger:** a redesign of the duplicate dialog host, or the
 session-transition coordinator
 (`docs/deferred/2026-10-11-session-transition-coordinator.md`).
+
+**Update (2026-10-13):** the router rebuild on an auth state change disposes
+the navigator, so the dialog does not outlive the user switch in the app: it
+is disposed unanswered
+(`docs/deferred/2026-10-13-router-rebuild-disposes-open-dialogs.md`). Re-check
+this entry against that behavior.
 
 ## R19 - a same-user context gap refuses an import with the account-changed message
 
