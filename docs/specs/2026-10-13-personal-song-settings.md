@@ -212,8 +212,9 @@ returns table (
    yet. This keeps ADR-038's lock order (plan, then session, then item), so
    the RPC serializes with every child write and cascade delete of the plan.
    A plan that is gone raises `plan_not_found` (`P0002`).
-5. **Re-read the item** in `p_session_id` after the lock (`for update`).
-   Missing: `session_item_not_found` (`P0002`).
+5. **Re-read the item** in `p_session_id` after the lock (`for update`),
+   song items only (`item_type = 'song'`). Missing, or an attachment or note
+   item: `session_item_not_found` (`P0002`).
 6. **No-op.** If every field whose mode is `set` or `clear` already holds the
    requested value (`set`: equal; `clear`: null), return the current row:
    the current item `version`, `transpose`, `capo` and the plan's current
@@ -424,7 +425,7 @@ read-only check in PR 1's plan.
 - Migration: PS10 columns and checks, PS11/PS12 RPC, grants.
 - Contract suite `scripts/tests/session-item-key-contract-test.sh`, wired into
   `scripts/backend-write-contracts.sh`, written before the migration. It
-  covers K1–K14 below.
+  covers K1–K15 below.
 - ADR-038 amendment (PS13), `docs/domain/domain-model.md`.
 - No client change. The app ignores the new columns until PR 2.
 
@@ -452,8 +453,8 @@ Contract tests (all calls as `authenticated` with the caller's claims):
   `invalid_session_item_key`, nothing changed.
 - **K9** Authorization: a read-only member, a non-member and a foreign
   organization id get `session_not_found`; nothing changed.
-- **K10** An unknown item id, and an item of another session:
-  `session_item_not_found`.
+- **K10** An unknown item id, an item of another session, and an attachment
+  item: `session_item_not_found`.
 - **K11** Existing RPCs never write the new columns: a created item has
   `null`/`null` and version 1; a reorder leaves keys and item versions
   unchanged; a rename leaves them unchanged.
@@ -461,13 +462,16 @@ Contract tests (all calls as `authenticated` with the caller's claims):
   before a key edit gets `plan_version_conflict`; a `delete_session` with the
   session version from before a key edit succeeds (PS13).
 - **K13** Lock order: a key edit that waits behind an open transaction
-  holding the plan lock (a `delete_session_item` of the same item) sees the
-  committed result and raises `session_item_not_found`; a key edit waiting
-  behind another key edit of the same item with the same base gets
-  `session_item_version_conflict`, or succeeds as a no-op when the values
-  match.
+  holding the plan lock sees the committed result: behind a
+  `delete_session_item` or a `delete_session` of its item,
+  `session_item_not_found`; behind another key edit of the same item with the
+  same base and a different value, `session_item_version_conflict`. (A
+  matching-value resend is K5.) Key edits of two different items of one plan
+  serialize on the plan row: the second waits for the first.
 - **K14** Two key edits on two items of the same session, both at their own
   base, both succeed; the session version is unchanged.
+- **K15** Read boundary: a member and a read-only member read `version`,
+  `transpose` and `capo` through the table API; a non-member reads no row.
 
 ### PR 2 — planning client
 
