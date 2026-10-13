@@ -1,4 +1,23 @@
-enum SignOutOutcome { signedOut, cancelled, superseded, alreadyRunning, failed }
+enum SignOutOutcome {
+  signedOut,
+
+  /// The user declined the warning (Cancel or a barrier dismiss), or the
+  /// context that would show it was gone. A choice, not a failure.
+  cancelled,
+  superseded,
+  alreadyRunning,
+
+  /// The sequence, or the confirmation, failed. Reported once; the sign-out
+  /// did not happen and can be tried again.
+  failed,
+
+  /// A ChordPro import is running (SO7,
+  /// docs/specs/2026-10-07-sign-out-pending-work-guard.md). Produced only by
+  /// the presentation flow (`signOutWithPendingWorkGuard`), which refuses
+  /// before the command runs; [SignOutCommand] never returns it. A value of
+  /// its own so the refusal is not mistaken for the user's Cancel (FB6).
+  blockedByImport,
+}
 
 /// Shows the warning for [pendingCount] (null: unknown) and returns whether
 /// the user confirmed the loss. Must answer false when it cannot ask.
@@ -27,7 +46,8 @@ typedef SignOutErrorReporter =
 /// (ADR-029 honest null, ADR-035 D5.4). A confirmed sign-out still deletes
 /// (the 2026-08-19 product decision). An error while asking or from the
 /// sign-out sequence never escapes [run]: it is reported once through the
-/// injected reporter. (The user reader is a plain state getter.)
+/// injected reporter and the outcome is `failed`. (The user reader is a plain
+/// state getter.)
 ///
 /// Holds no `Ref`: the provider in auth_providers.dart injects the reader,
 /// the counter, the sign-out sequence and the reporter.
@@ -62,7 +82,11 @@ class SignOutCommand {
         return SignOutOutcome.superseded;
       }
       if (pendingCount != 0) {
-        if (!await _confirm(confirmDiscard, pendingCount)) {
+        final confirmed = await _confirm(confirmDiscard, pendingCount);
+        if (confirmed == null) {
+          return SignOutOutcome.failed;
+        }
+        if (!confirmed) {
           return SignOutOutcome.cancelled;
         }
         if (_currentUserIdReader() != userId) {
@@ -99,8 +123,9 @@ class SignOutCommand {
     }
   }
 
-  /// An error while asking is reported and is not a confirmation.
-  Future<bool> _confirm(
+  /// Null when asking threw: reported once, and not a confirmation. The user
+  /// never chose, so [run] ends `failed`, not `cancelled` (FB6).
+  Future<bool?> _confirm(
     SignOutConfirmation confirmDiscard,
     int? pendingCount,
   ) async {
@@ -108,7 +133,7 @@ class SignOutCommand {
       return await confirmDiscard(pendingCount);
     } catch (error, stackTrace) {
       _reportError(error, stackTrace);
-      return false;
+      return null;
     }
   }
 }

@@ -1,6 +1,6 @@
 # Domain Vocabulary
 
-Canonical term definitions for sync state, freshness, and mutation lifecycle. Use these terms consistently in specs, UI copy, models, and tests.
+Canonical term definitions for sync state, freshness, and mutation lifecycle. Use these terms consistently in specs, models, and tests. The names are internal vocabulary: the UI shows readable phrases for these states and reasons, not the names themselves (see "Reason Phrases" in [sync-ux-contract.md](../product/sync-ux-contract.md)).
 
 ## Auth and Invite Terms
 

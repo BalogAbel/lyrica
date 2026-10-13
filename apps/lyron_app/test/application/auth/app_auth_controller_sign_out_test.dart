@@ -114,6 +114,20 @@ class _GatedDeleteRepository extends _RevocationRepository {
   }
 }
 
+/// deleteAccount fails: the RPC was rejected, or the connection dropped.
+class _FailingDeleteRepository extends _RevocationRepository {
+  _FailingDeleteRepository(this.error);
+
+  final Object error;
+  int deleteAccountCalls = 0;
+
+  @override
+  Future<void> deleteAccount() async {
+    deleteAccountCalls += 1;
+    throw error;
+  }
+}
+
 void main() {
   late _RevocationRepository repo;
   late AppAuthController controller;
@@ -250,6 +264,61 @@ void main() {
       await pumpEventQueue();
       expect(controller.state.status, AppAuthStatus.signedIn);
       expect(controller.state.currentUserId, 'u2');
+    });
+  });
+
+  // FB10 / DA3 (docs/specs/2026-10-12-sync-and-account-feedback.md): a failing
+  // repository call by itself leaves the user signedIn, emits no signedOut (the
+  // edge every purge listens to) and resets _isSigningOut. It says nothing
+  // about a session that is lost while the call runs: that is mapped to
+  // signedOut because the flag is held for the whole call (a documented
+  // residual).
+  group('deleteAccount failing', () {
+    late _FailingDeleteRepository failing;
+    late List<AppAuthStatus> statuses;
+    late Object error;
+
+    setUp(() async {
+      error = StateError('rpc rejected');
+      failing = _FailingDeleteRepository(error);
+      await start(
+        failing,
+        identityStore: _FakeLastKnownIdentityStore(
+          const LastKnownIdentity(
+            userId: 'u1',
+            email: 'u1@example.com',
+            organizationId: null,
+          ),
+        ),
+      );
+      statuses = [];
+      controller.addListener(() => statuses.add(controller.state.status));
+    });
+
+    test('rethrows and leaves the same user signed in without a signedOut '
+        'edge', () async {
+      await expectLater(controller.deleteAccount(), throwsA(same(error)));
+      await pumpEventQueue();
+
+      expect(failing.deleteAccountCalls, 1);
+      expect(controller.state.status, AppAuthStatus.signedIn);
+      expect(controller.state.currentUserId, 'u1');
+      expect(statuses, isNot(contains(AppAuthStatus.signedOut)));
+      expect(reported, isEmpty);
+    });
+
+    test('resets the signing-out mode: a later null session is '
+        'sessionExpired, not signedOut', () async {
+      await expectLater(controller.deleteAccount(), throwsA(same(error)));
+
+      // With u1's identity on file a lost session is sessionExpired (D2); a
+      // stuck signing-out flag would map the null session to signedOut.
+      failing.emit(null);
+      await pumpEventQueue();
+
+      expect(controller.state.status, AppAuthStatus.sessionExpired);
+      expect(controller.state.currentUserId, 'u1');
+      expect(statuses, isNot(contains(AppAuthStatus.signedOut)));
     });
   });
 

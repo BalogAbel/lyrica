@@ -38,9 +38,12 @@
 > ownership fix, then S0 PR 2. The import-run ownership fix merged as #89
 > (`02a9aa2`). S0 PR 2 merged as #90 (`4dbd9de`, 2026-10-12); S0 complete
 > (PR 1 and PR 2). S5a merged as #91 (`0390d79`, 2026-10-12; ADR-041,
-> `docs/specs/2026-10-12-paged-remote-pulls.md`). S2 is implemented on
-> `fix/chordpro-base-directives` (PR pending merge;
-> `docs/specs/2026-10-12-chordpro-base-directives.md`); next: S6a. The open deferred entries were triaged on
+> `docs/specs/2026-10-12-paged-remote-pulls.md`). S2 merged as #92
+> (`c561d20`, 2026-10-12;
+> `docs/specs/2026-10-12-chordpro-base-directives.md`); S6a implemented on
+> `fix/sync-and-account-feedback`, PR pending merge
+> (`docs/specs/2026-10-12-sync-and-account-feedback.md`); next: S3. The open
+> deferred entries were triaged on
 > 2026-10-12 (see "Deferred Triage (2026-10-12)"): S6 is split into S6a and
 > S6b, and S6a runs right after S2. The
 > session-transition coordinator it surfaced stays deferred
@@ -180,14 +183,14 @@ Size legend:
 | ID | Branch | Scope | Deferred sources | Size | Risk |
 |---|---|---|---|---|---|
 | S1 | `fix/direct-dml-write-rpc-bypass` | **Merged (PR #84).** Revoke every table privilege except `SELECT` from `anon`/`authenticated` on all ten `public` tables. Drop the six `for all` policies (each is covered by a select policy, so dropping replaces the planned narrowing). Revoke `postgres`'s default privileges in `public` from `anon`, `authenticated` and `service_role`. Contract suites impersonate the real role; fixtures moved to `postgres`. ADR-039, plus correction notes in `architecture.md`, ADR-026, ADR-027 and ADR-038 | `2026-09-30-direct-dml-bypasses-write-rpcs.md` (resolved, removed) | M | medium |
-| S0 | `fix/offline-first-startup-gate` | **Merged (PRs #85, #90).** Field-reported bug, 2 PRs. (1) The membership gate decides from the last known identity; `verifiedEmpty` closes it only after the D5 purge; first run shows a loading state; auth-stream errors are handled; an integration test uses the real gotrue client. (2) Persist the last known capabilities (S6 option (a), pulled forward) and show a visible "last synced" indicator | `2026-09-30-capability-gating-offline-cold-start.md` (option (a) only) | M | medium |
+| S0 | `fix/offline-first-startup-gate` | **Merged (PRs #85, #90).** Field-reported bug, 2 PRs. (1) The membership gate decides from the last known identity; `verifiedEmpty` closes it only after the D5 purge; first run shows a loading state; auth-stream errors are handled; an integration test uses the real gotrue client. (2) Persist the last known capabilities (S6 option (a), pulled forward) and show a visible "last synced" indicator | `2026-09-30-capability-gating-offline-cold-start.md` (option (a) only; entry removed in S6a) | M | medium |
 | S5a | `fix/paged-remote-pulls` | **Merged (PR #91, `0390d79`).** A shared keyset paging helper (`order(id).gt(id, last).limit(n)`, ends only on an empty page, strictly increasing keys checked), not `.range()` plus `count=exact`: offset pages can skip a row that a count check does not catch. The catalog reads summaries and sources in one organization-scoped stream (no per-song requests); planning reads plans, sessions and session items as three organization-wide streams (embedded items were truncated too). ADR-041; spec `docs/specs/2026-10-12-paged-remote-pulls.md` | `2026-09-30-planning-pull-unpaged-reads.md` (resolved, removed) | S–M | low–medium |
-| S2 | `fix/chordpro-base-directives` | **Implemented (PR pending merge).** One base-region predicate shared by the parser, the editor read and the editor write: base `{transpose}`, `{capo}` and `{key}` are read before the first lyric or chord line (or the first tab content line). Comments and section markers no longer close it. The editor uses the parser-derived base values, and its write never touches in-song directives. Spec: `docs/specs/2026-10-12-chordpro-base-directives.md` | `2026-04-22-song-reader-chordpro-modulation.md`, item 1 | S | low |
+| S2 | `fix/chordpro-base-directives` | **Merged (PR #92, `c561d20`).** One base-region predicate shared by the parser, the editor read and the editor write: base `{transpose}`, `{capo}` and `{key}` are read before the first lyric or chord line (or the first tab content line). Comments and section markers no longer close it. The editor uses the parser-derived base values, and its write never touches in-song directives. Spec: `docs/specs/2026-10-12-chordpro-base-directives.md` | `2026-04-22-song-reader-chordpro-modulation.md`, item 1 | S | low |
 | S3 | `feat/personal-song-settings` | Personal song layer foundation, plus per-user transpose and capo at song and plan scope, in 3 PRs: (1) backend tables, RPCs, RLS and contract tests; (2) local Drift store, outbox and pull-cursor sync, integrated with the purge lifecycle, storage budget and sync overview; (3) reader resolution and UX. PR 2 also closes the membership-purge import gap (it amends ADR-035 anyway; use `isRunningFor(userId)`). The S3 brainstorm decides how the new pull and outbox writer behave around a purge (no resurrection after a purge) and re-evaluates the session-transition coordinator at that point, before adding another local guard | `2026-10-11-membership-purge-import-gap.md` (PR 2) | L | medium |
 | S4 | `feat/song-annotations` | Annotations on the personal layer. Starts with a prototype in `docs/prototypes/`, then 2–3 PRs: (1) anchor model, overlay renderer and typed notes; (2) gesture marks (circle, underline, highlight) snapped to content; (3) free ink anchored to words, if the spec keeps it. Native (tablet and phone) first; web is best-effort | — (new) | XL | high |
 | S5b | `fix/planning-mutation-gaps` | Stranded create tombstones, session-rename retry rebase, content-version advance on context switch. Verify and decide the organization-switch finding. Added 2026-10-12: stop a mutation sync run when the context changes, in both the planning and the song controller (gate-cross-user-leaks O2); an ownership guard on the D5 purge resets (O3); childless plans after a mid-pull revocation, fixed with a membership re-check after the child streams (paged-pull-residuals R2) | `2026-09-30-stranded-create-tombstones.md`, `2026-09-30-session-rename-retry-never-rebases.md`, `2026-09-30-content-version-advance-on-context-switch.md`, `2026-10-01-org-switch-drops-pending-planning-mutations.md`, `2026-10-05-gate-cross-user-leaks.md` (O2, O3), `2026-10-12-paged-pull-residuals.md` (R2) | M–L | high |
 | S7 | `feat/plan-duplicate`, then `feat/session-item-move` | Each is one server RPC; v1 is online-only, recorded in an ADR | `2026-09-29-plan-duplicate.md`, `2026-09-29-session-item-move.md` | 2×M (offline-capable: 2×L) | medium |
-| S6a | `fix/sync-and-account-feedback` | Copy and feedback only. Generic copy for a delete the backend rejects (the old S6 option b; option (a) moved to S0); human-readable sync reason chips; membership-revoked notice option (b), the `authorizationDenied` row copy; feedback for a refused sign-out (R8); handle a failed Delete account (R15) | `2026-09-30-capability-gating-offline-cold-start.md` (option b), `2026-10-12-sync-reason-chip-copy.md`, `2026-10-05-membership-revoked-notice.md` (option b), `2026-10-09-sign-out-guard-residuals.md` (R8, R15) | S–M | low |
+| S6a | `fix/sync-and-account-feedback` | **Implemented (PR pending).** Copy and feedback only. The sync popup's reason chips are phrases; one generic remote-missing phrase covers a delete the backend rejects (`plan_not_found` means both "removed" and "no longer allowed"), and `authorizationDenied` says access may have ended. A refused, failed or superseded sign-out shows one snackbar (new outcome `blockedByImport`; a throwing confirmation is `failed`), and a failed Delete account is caught and shown. A sign-out confirmation dialog lost to a router rebuild ends `failed` instead of holding the command lock (FB16; the rebuild itself is deferred). Nine dead strings removed; the two deletion-confirmation dialogs are English, with a guard test on `AppStrings`. Spec: `docs/specs/2026-10-12-sync-and-account-feedback.md` | resolved and removed: `2026-09-30-capability-gating-offline-cold-start.md`, `2026-10-12-sync-reason-chip-copy.md`; updated: `2026-10-05-membership-revoked-notice.md` (option b done), `2026-10-09-sign-out-guard-residuals.md` (R8, R15 closed); added: `2026-10-12-sync-popup-narrow-layout.md`, `2026-10-12-delete-account-session-loss-purge.md`, `2026-10-13-router-rebuild-disposes-open-dialogs.md` | S–M | low |
 | S6b | `fix/capability-and-telemetry` | Fix the org-id telemetry leak and add the `sessionExpired` test. Centralize PII scrubbing in `beforeSend`, `beforeSendTransaction` and `beforeBreadcrumb`. Capability persistence residuals F3, F4 and the test-strength gaps. A throwing observability adapter leaves a refresh "refreshing" (paged-pull-residuals R3) | `2026-08-28-observability-remaining-use-cases.md`, `2026-10-12-capability-persist-residuals.md`, `2026-10-12-paged-pull-residuals.md` (R3) | M | low–medium |
 | S8 | `feat/chordpro-modulation` | In-song `{transpose}` modulation | `2026-04-22-song-reader-chordpro-modulation.md`, item 2 | M | medium |
 | S9 | — | The trigger-gated items, re-evaluated below | see "S9 Re-Evaluation" | varies | — |
@@ -459,11 +462,15 @@ S5a left open. Each affected deferred document carries a one-line
 
 - **S6a** `fix/sync-and-account-feedback` (S–M, copy and feedback only):
   - the rejected-delete copy (the old S6 option b,
-    `2026-09-30-capability-gating-offline-cold-start.md`);
-  - `2026-10-12-sync-reason-chip-copy.md`;
+    `2026-09-30-capability-gating-offline-cold-start.md`, removed in S6a);
+  - `2026-10-12-sync-reason-chip-copy.md` (removed in S6a);
   - `2026-10-05-membership-revoked-notice.md` option (b);
   - `2026-10-09-sign-out-guard-residuals.md` R8 (no feedback for a refused
     sign-out) and R15 (a failed Delete account is unhandled).
+  - **Update (S6a implemented):** all four are resolved as above. S6a added
+    two trigger-gated entries (S9):
+    `2026-10-12-sync-popup-narrow-layout.md` (S3 PR 2 extends the popup and
+    picks it up) and `2026-10-12-delete-account-session-loss-purge.md`.
 - **S6b** `fix/capability-and-telemetry`:
   - the org-id telemetry leak, the `sessionExpired` test and the centralized
     scrub hooks (`2026-08-28-observability-remaining-use-cases.md`);
@@ -482,8 +489,8 @@ decide how S3's pull and outbox writer behave around a purge (no
 resurrection after a purge), and re-evaluate the session-transition
 coordinator at that point, before adding another local guard.
 
-**R8 and R15 are feedback fixes, not transition guards.** Picking them up in
-S6a does not trigger the session-transition coordinator
+**R8 and R15 are feedback fixes, not transition guards.** Closing them in
+S6a did not trigger the session-transition coordinator
 (`2026-10-11-session-transition-coordinator.md` records this).
 
 **Stay trigger-gated (S9):**

@@ -1,4 +1,4 @@
-# Sign-Out Guard Residuals (R1–R15, R18–R20)
+# Sign-Out Guard Residuals (R1–R7, R9–R14, R18–R20)
 
 **Slice:** `fix/sign-out-pending-work-guard`
 (`docs/specs/2026-10-07-sign-out-pending-work-guard.md`). Found by the
@@ -11,8 +11,14 @@ per-task reviews and the adversarial whole-diff review (2026-10-09).
 (`docs/specs/2026-10-11-import-run-ownership.md`, `fix/import-run-ownership`);
 R10 is narrowed there. R18's second shape (the dialog opening after the switch) was
 closed in the same PR by the IR2 comparison before the run parks; the
-already open dialog stays. The numbering is kept: R16 and R17 no longer appear,
-and R18–R20 were found by that fix and its adversarial review.
+already open dialog stays. R8 and R15 were closed by S6a
+(`docs/specs/2026-10-12-sync-and-account-feedback.md`,
+`fix/sync-and-account-feedback`: a snackbar for a refused, failed or superseded
+sign-out, and a handled failed Delete account). The numbering is kept: R8, R15,
+R16 and R17 no longer appear, and R18–R20 were found by the import-run fix and
+its adversarial review. S6a's own residuals are separate entries:
+`docs/deferred/2026-10-12-sync-popup-narrow-layout.md` and
+`docs/deferred/2026-10-12-delete-account-session-loss-purge.md`.
 
 **Status:** none of these is reachable through an ordinary user action, and
 none was judged to delete unsynced work without a confirmation or to touch
@@ -104,13 +110,6 @@ and holds its lock; later taps return `alreadyRunning` silently. A database
 that does not open breaks the whole app, so this is not a separate dead end
 today. **Fix sketch:** a bounded count that becomes `null` (asks) on timeout.
 
-## R8 - no feedback for refused sign-outs
-
-`superseded`, `failed`, `alreadyRunning`, and a sign-out refused during an
-import (`cancelled`, SO7) show nothing; on the Account screen the tap does
-nothing visible. **Fix sketch:** a snackbar per outcome. **Trigger:** the next
-UX pass on the account screen.
-
 ## R9 - the reauth host pops a stacked sign-out dialog
 
 If the sign-out warning is open when a different-user reauth prompt arrives,
@@ -123,6 +122,12 @@ written or stuck; a result of another type delivered by a race of two pops
 would surface as an unawaited `TypeError` and leave the run in
 `ImportAwaitingDuplicateResolution`, which is not a running phase.
 **Trigger:** the next change to `ReauthPromptHost`.
+
+**Update (2026-10-13):** the router is rebuilt on every auth state change and
+disposes the navigator with the open dialogs, so a dialog is disposed
+unanswered rather than popped by the host
+(`docs/deferred/2026-10-13-router-rebuild-disposes-open-dialogs.md`). Re-check
+this entry against that behavior.
 
 ## R10 - import rows of a signed-out user (narrowed 2026-10-11)
 
@@ -169,12 +174,6 @@ that window, the `delete_account` RPC would run as B. Needs a session switch
 inside a token refresh. **Fix sketch:** `delete_account(p_user_id)` that
 checks `auth.uid() = p_user_id` server-side (backend change).
 
-## R15 - a failed Delete account is unhandled
-
-`AccountScreen`'s delete `onTap` has `try/finally` without `catch`; an offline
-or RPC failure escapes as an unhandled error (the W3 analogue). Nothing is
-purged. **Fix sketch:** catch, report once, show a message.
-
 ## R18 - the open duplicate dialog outlives the user switch
 
 The duplicate dialog is a modal route owned by the navigator, not by the
@@ -201,6 +200,12 @@ fix. **Trigger:** a redesign of the duplicate dialog host, or the
 session-transition coordinator
 (`docs/deferred/2026-10-11-session-transition-coordinator.md`).
 
+**Update (2026-10-13):** the router rebuild on an auth state change disposes
+the navigator, so the dialog does not outlive the user switch in the app: it
+is disposed unanswered
+(`docs/deferred/2026-10-13-router-rebuild-disposes-open-dialogs.md`). Re-check
+this entry against that behavior.
+
 ## R19 - a same-user context gap refuses an import with the account-changed message
 
 IR2 compares the live catalog context with the run's. After a cancelled
@@ -225,4 +230,4 @@ the next change to the import controller's state machine.
 No fixed slice. Pick each up with its own trigger above, or earlier if
 reported from the field.
 
-Roadmap (2026-10-12): scheduled in S6a (R8, R15, as feedback fixes); R1–R7, R9–R14 and R18–R20 stay trigger-gated (S9).
+Roadmap (2026-10-12): R8 and R15 closed by S6a (feedback fixes); R1–R7, R9–R14 and R18–R20 stay trigger-gated (S9).

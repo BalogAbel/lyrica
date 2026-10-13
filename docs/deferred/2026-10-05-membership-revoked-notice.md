@@ -1,4 +1,4 @@
-# No Signal While a Membership Revocation Is Pending
+# No Notice While a Membership Revocation Is Pending
 
 **Slice:** fix/offline-first-startup-gate (decided on 2026-10-05 as part of
 product decision 1 in `docs/specs/2026-10-05-offline-first-startup-gate.md`)
@@ -17,7 +17,7 @@ product decision 1 in `docs/specs/2026-10-05-offline-first-startup-gate.md`)
 Under SG2 of the offline-first startup gate spec, a member with a known
 organization keeps the home route after a fresh `verifiedEmpty`, until the
 ADR-035 D5 purge has actually run. That is intended. One case is left with
-no signal at all:
+no notice outside the sync popup:
 
 - the member has pending local work;
 - the second confirmation arrives;
@@ -25,8 +25,13 @@ no signal at all:
 
 The marker stays set, the data stays visible, and every write the member
 makes is rejected by RLS. The only trace is each rejected row showing
-`authorizationDenied` in the sync popup. Nothing says that access to the
-organization itself may be gone.
+`authorizationDenied` in the sync popup.
+
+Since S6a (option (b) below) that row says "Access may have ended — retrying
+will not help", and a rejected delete says "Not found on the server, or access
+may have ended". What is still missing is a notice outside the popup: on the
+song list and the plan list nothing says that access to the organization
+itself may be gone.
 
 ## Why it was deferred
 
@@ -52,10 +57,11 @@ a bug-fix slice.
 
 ### (b) Reword the `authorizationDenied` row copy only
 
-- Name the likely cause on the rejected mutation rows instead of adding a
-  new surface.
-- Can be combined with S6 option (b) (the rejected-delete copy), which
-  already reworks the same popup copy.
+**Done in S6a** (`docs/specs/2026-10-12-sync-and-account-feedback.md`, FB3,
+`fix/sync-and-account-feedback`). The chip names the likely cause ("Access may
+have ended — retrying will not help") and keeps "retrying will not help" of
+ADR-035 D5.6; the remote-missing chip says access may have ended. No new
+surface.
 
 ### (c) Nothing
 
@@ -63,11 +69,10 @@ a bug-fix slice.
 
 ## Trigger
 
-Pick this up when one of these happens:
-
-- a field report of a member editing after revocation without understanding
-  why the changes never sync;
-- the next slice that reworks the sync popup copy (S6 option (b)).
+Option (a) only. Option (b) shipped in S6a; the sync-popup copy slice was this
+section's second trigger. Pick (a) up when a field report shows a member
+editing after revocation without understanding why the changes never sync,
+even with the S6a row copy.
 
 ## Requirements for the slice that picks this up
 
@@ -76,4 +81,4 @@ Pick this up when one of these happens:
 - Red tests first. The notice shows only in the declined-purge state, and
   clears on a fresh `selected` resolution and on purge.
 
-Roadmap (2026-10-12): scheduled in S6a (option b); option (a) stays trigger-gated (S9).
+Roadmap (2026-10-12): option (b) shipped in S6a; option (a) stays trigger-gated (S9).

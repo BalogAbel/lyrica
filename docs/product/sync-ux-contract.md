@@ -56,7 +56,7 @@ Status mapping:
 
 - **Green `Synced`**: no durable local `Created`, `Edited`, `Removed`, or `Reordered` intent exists, and no conflict state exists.
 - **Yellow `Unsynced`**: one or more `Created`, `Edited`, `Removed`, or `Reordered` states exist. Retryable network, timeout, or temporary backend failures remain yellow because the local intent is still retryable.
-- **Red `Conflict`**: one or more `CreatedConflict`, `EditedConflict`, `RemovedConflict`, or `ReorderConflict` states exist, or the backing sync metadata represents `authorization_denied`, `dependency_blocked`, `remote_missing`, or another non-retryable rejection.
+- **Red `Conflict`**: one or more `CreatedConflict`, `EditedConflict`, `RemovedConflict`, or `ReorderConflict` states exist, or the backing sync metadata represents one of the domain reasons `authorization_denied`, `dependency_blocked`, `remote_missing`, or another non-retryable rejection. These are the internal domain names ([domain-vocabulary.md](../domain/domain-vocabulary.md)); the popup shows a readable phrase for each (see Reason Phrases).
 
 Connectivity and freshness are secondary status dimensions. Offline cached data may still show green if there is no known local divergence or unresolved sync issue. Offline or stale status is surfaced through the control tooltip and the status popup rather than changing the primary green/yellow/red sync color.
 
@@ -111,9 +111,28 @@ completed” or “some changes could not be discarded” message. Generic failu
 copy is reserved for unexpected failures after admission, not the typed
 `syncInProgress` result (the typed sync in progress outcome).
 
-The popup does not hide domain-specific recovery. The red header label may use `Conflict` as the compact top-level status, but popup rows must show the specific blocking reason where known: `conflict`, `authorization_denied`, `dependency_blocked`, `remote_missing`, or another non-retryable rejection. These reasons must not collapse into a generic conflict message in the detailed view.
+The popup does not hide domain-specific recovery. The red header label may use `Conflict` as the compact top-level status, but popup rows must show the specific blocking reason where known: `conflict`, `authorization_denied`, `dependency_blocked`, `remote_missing`, or another non-retryable rejection. These reasons must not collapse into a generic conflict message in the detailed view: each domain reason has its own phrase, and the popup never shows the domain name itself (`pending_local`, `remote_missing` and so on stay internal vocabulary).
 
 Retry may appear for retryable unsynced rows as well as recovery rows where retry is meaningful. Non-retryable conflict rows should prefer explicit recovery actions such as discard, explicit overwrite, explicit remove, or explicit reorder overwrite.
+
+### Reason Phrases
+
+Each row carries one reason chip. Song rows and plan rows use the same phrases. The source of truth is the `unifiedSyncReason*` constants in `apps/lyron_app/lib/src/shared/app_strings.dart`; this table mirrors them and is updated with them:
+
+| Domain reason | Chip |
+|---|---|
+| `pending_local` | `Waiting to sync` |
+| `sync_failed` | `Sync failed` |
+| `conflict` | `Conflicts with the server version` |
+| `authorization_denied` | `Access may have ended — retrying will not help` |
+| `dependency_blocked` | `Blocked by a related item` |
+| `remote_missing` | `Not found on the server, or access may have ended` |
+| unknown | `Unexpected sync error` |
+
+Two rules behind the wording:
+
+- `remote_missing` covers two causes in one phrase. The backend answers `plan_not_found` both for a plan removed on the server and for a plan the member can no longer change, so the client cannot tell them apart and does not guess. A delete the backend rejects for a missing capability shows this phrase.
+- `Sync failed` makes no promise to retry. The automatic triggers do nothing while the session is expired, and a row blocked by a dependency keeps failing until the related data changes. A plan row's retry action and **Sync now** carry the retry.
 
 ## Inline Status Responsibility
 

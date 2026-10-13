@@ -15,26 +15,29 @@ class AppStrings {
       'You are offline. Sign in again to sync your changes.';
   static const reauthSignInAction = 'Sign in';
   static const continueOfflineAction = 'Continue offline';
-  static const reauthDifferentUserTitle = 'Másik fiók jelentkezett be.';
+  static const reauthDifferentUserTitle = 'A different account signed in.';
   static String reauthDifferentUserPendingMessage({
     required String email,
     required int count,
-  }) =>
-      'Másik fiók jelentkezett be. $email-nek $count mentetlen változtatása van. A folytatás törli ezeket.';
+  }) => count == 1
+      ? 'A different account signed in. $email has 1 unsynced change. Continuing deletes it.'
+      : 'A different account signed in. $email has $count unsynced changes. Continuing deletes them.';
   static String reauthDifferentUserUnknownPendingMessage({
     required String email,
   }) =>
-      'Másik fiók jelentkezett be. $email-nek mentetlen változtatásai vannak ezen az eszközön, de a pontos számuk nem állapítható meg. A folytatás törli ezeket.';
-  static const reauthConfirmWipeAction = 'Folytatás';
-  static const reauthCancelAction = 'Mégse';
+      'A different account signed in. $email has unsynced changes on this device, but their exact number could not be determined. Continuing deletes them.';
+  static const reauthConfirmWipeAction = 'Continue';
+  static const reauthCancelAction = 'Cancel';
   static const membershipRevocationPurgeTitle =
-      'A szervezeti tagságod megszűnt.';
+      'Your organization membership has ended.';
   static String membershipRevocationPurgePendingMessage({required int count}) =>
-      'A szervezeti tagságod megszűnt ezen az eszközön. A folytatás véglegesen törli az összes helyben tárolt dalt és tervet, beleértve $count mentetlen változtatást is.';
+      count == 1
+      ? 'Your organization membership has ended on this device. Continuing permanently deletes all locally stored songs and plans, including 1 unsynced change.'
+      : 'Your organization membership has ended on this device. Continuing permanently deletes all locally stored songs and plans, including $count unsynced changes.';
   static const membershipRevocationPurgeUnknownPendingMessage =
-      'A szervezeti tagságod megszűnt ezen az eszközön. A folytatás véglegesen törli az összes helyben tárolt dalt és tervet. A mentetlen változtatások pontos száma nem állapítható meg, de a folytatás ezeket is törli.';
-  static const membershipRevocationPurgeConfirmAction = 'Törlés';
-  static const membershipRevocationPurgeCancelAction = 'Mégse';
+      'Your organization membership has ended on this device. Continuing permanently deletes all locally stored songs and plans. The exact number of unsynced changes could not be determined, but continuing deletes them too.';
+  static const membershipRevocationPurgeConfirmAction = 'Delete';
+  static const membershipRevocationPurgeCancelAction = 'Cancel';
   static const retryAction = 'Try again';
   static const signOutAction = 'Sign out';
   static const songCatalogRefreshAction = 'Refresh catalog';
@@ -59,6 +62,11 @@ class AppStrings {
   static const unsyncedSignOutUnknownPendingMessage =
       'Unsynced changes could not be counted. Signing out will permanently discard any changes that have not synced.';
   static const unsyncedSignOutConfirmAction = 'Discard and sign out';
+  static const signOutBlockedByImportMessage =
+      'Sign-out is unavailable while an import is running. Try again when it finishes.';
+  static const signOutFailedMessage = 'Sign-out did not complete. Try again.';
+  static const signOutSupersededMessage =
+      'The signed-in account changed, so this sign-out was stopped.';
   static const songDeleteBlockedMessage =
       'This song cannot be deleted because a session still references it.';
   static const songConflictTitle = 'Song conflict';
@@ -167,14 +175,6 @@ class AppStrings {
       'Unable to load plans. Please try again.';
   static const planListEmptyMessage = 'No plans available.';
   static const planListUnscheduledLabel = 'Unscheduled';
-  static const planMutationPendingMessage =
-      'Planning changes are pending sync.';
-  static const planConflictMessage =
-      'Planning changes conflict with a newer server version.';
-  static const planAuthorizationRevokedMessage =
-      'Planning sync is blocked because edit access was revoked.';
-  static const planRemoteMissingMessage =
-      'Planning sync could not find the target item on the server.';
   static const planDetailTitle = 'Plan detail';
   static const planEditAction = 'Edit plan';
   static const planMoreActions = 'More plan actions';
@@ -257,23 +257,31 @@ class AppStrings {
   static const unifiedSyncSongStateCreatedConflict = 'Created (conflict)';
   static const unifiedSyncSongStateEditedConflict = 'Edited (conflict)';
   static const unifiedSyncSongStateRemovedConflict = 'Removed (conflict)';
-  static const unifiedSyncReasonPendingLocal = 'pending_local';
-  static const unifiedSyncReasonSyncFailed = 'sync_failed';
-  static const unifiedSyncReasonConflict = 'conflict';
-  // spec D5.6 / ADR-035: unlike its sibling reason labels above (short,
-  // code-shaped chip text), this one must let the user tell "you no longer
-  // have permission and retrying will not help" apart from an ordinary
-  // retryable failure -- so it is a short phrase rather than a code.
+  // The reason chips of the sync popup (song rows and plan rows). Each is a
+  // short phrase for one domain reason; the reason names (pending_local and so
+  // on) stay in logic and tests, not on screen.
+  static const unifiedSyncReasonPendingLocal = 'Waiting to sync';
+  // Makes no promise about retrying: not every path that maps here retries on
+  // its own (the automatic triggers do nothing under sessionExpired, and a
+  // dependency-blocked song row keeps failing until the referenced data
+  // changes). The plan rows' Try again button and "Sync now" carry the retry.
+  static const unifiedSyncReasonSyncFailed = 'Sync failed';
+  static const unifiedSyncReasonConflict = 'Conflicts with the server version';
+  // spec D5.6 / ADR-035: this one must let the user tell "access may have
+  // ended and retrying will not help" apart from an ordinary retryable
+  // failure, so it names the likely cause and keeps "retrying will not help".
   static const unifiedSyncReasonAuthorizationDenied =
-      'Not permitted — retrying will not help';
-  static const unifiedSyncReasonDependencyBlocked = 'dependency_blocked';
-  static const unifiedSyncReasonRemoteMissing = 'remote_missing';
-  static const unifiedSyncReasonUnknown = 'unknown';
-  static const unifiedSyncFreshnessFresh = 'fresh';
+      'Access may have ended — retrying will not help';
+  static const unifiedSyncReasonDependencyBlocked = 'Blocked by a related item';
+  // One honest phrase for both causes of this reason: the backend answers
+  // `plan_not_found` for a plan removed on the server and for a plan the
+  // member can no longer edit, so the client cannot tell them apart.
+  static const unifiedSyncReasonRemoteMissing =
+      'Not found on the server, or access may have ended';
+  static const unifiedSyncReasonUnknown = 'Unexpected sync error';
   static const unifiedSyncFreshnessStale = 'Not up to date';
   static const unifiedSyncFreshnessOfflineCached =
       'Offline, showing saved data';
-  static const unifiedSyncFreshnessUnknown = 'freshness unknown';
   static const unifiedSyncLastSyncedSongsLabel = 'Songs last synced';
   static const unifiedSyncLastSyncedPlansLabel = 'Plans last synced';
   static const unifiedSyncLastSyncedNever = 'never';
@@ -283,9 +291,6 @@ class AppStrings {
   static String unifiedSyncLastSyncedHoursAgo(int hours) => '$hours h ago';
   static String unifiedSyncLastSyncedDaysAgo(int days) =>
       days == 1 ? '1 day ago' : '$days days ago';
-  static const unifiedSyncConnectivityOnline = 'online';
-  static const unifiedSyncConnectivityOffline = 'offline';
-  static const unifiedSyncConnectivityUnknown = 'connectivity unknown';
   static const unifiedSyncActivitySyncing = 'syncing';
   static const unifiedSyncDiscardAllAction = 'Discard all';
   static const unifiedSyncDiscardAllTitle = 'Discard all local changes?';
@@ -358,6 +363,10 @@ class AppStrings {
   static const deleteAccountConfirmMessage =
       'Your account, memberships, and any pending offline changes will be removed permanently.';
   static const deleteAccountConfirmAction = 'Delete permanently';
+  static const deleteAccountFailedMessage =
+      'Could not confirm the account deletion. Check your connection and try again.';
+  static const deleteAccountSupersededMessage =
+      'The signed-in account changed, so the account deletion was stopped.';
   static const cancelAction = 'Cancel';
   static const magicLinkSendFailureMessage =
       'Could not send magic link. Please try again.';

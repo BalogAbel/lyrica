@@ -296,6 +296,47 @@ void main() {
       );
     });
 
+    // S6a FB1: the backend answers `plan_not_found` for a plan removed on the
+    // server AND for a plan the member can no longer edit, so the client
+    // cannot tell the two apart. Both are the one remoteMissing reason (its
+    // chip says so), and neither is re-resolved against the capabilities.
+    // Pinned so the copy is not "fixed" by splitting the reason.
+    test('a rejected plan delete and a remote_missing error code are one '
+        'remoteMissing reason with conflict severity', () {
+      final rejectedDelete = _compute(
+        plans: [
+          _plan(
+            aggregateId: 'p1',
+            kind: PlanningMutationKind.planDelete,
+            status: PlanningMutationSyncStatus.failedRemoteDelete,
+            name: 'Sunday Service',
+          ),
+        ],
+      );
+      final missingEdit = _compute(
+        plans: [
+          _plan(
+            aggregateId: 'p2',
+            kind: PlanningMutationKind.planEdit,
+            status: PlanningMutationSyncStatus.pending,
+            errorCode: PlanningMutationSyncErrorCode.remoteMissing,
+            name: 'Youth Night',
+          ),
+        ],
+      );
+
+      for (final overview in [rejectedDelete, missingEdit]) {
+        expect(
+          overview.planRows.single.reasonCode,
+          UnifiedSyncReasonCode.remoteMissing,
+        );
+        expect(
+          overview.planRows.single.severity,
+          UnifiedSyncRowSeverity.conflict,
+        );
+      }
+    });
+
     // spec D5.6 / ADR-035: a permanently unauthorized song row (surfaced by
     // SongMutationSyncController writing `SongSyncStatus.conflict` for an
     // authorizationDenied failure, see song_mutation_sync_controller.dart)

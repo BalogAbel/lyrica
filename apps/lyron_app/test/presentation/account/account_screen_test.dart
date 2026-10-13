@@ -1,5 +1,6 @@
 // ignore_for_file: subtype_of_sealed_class
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,9 +9,11 @@ import 'package:lyron_app/src/application/auth/app_auth_controller.dart';
 import 'package:lyron_app/src/application/auth/auth_repository.dart';
 import 'package:lyron_app/src/application/auth/sign_out_command.dart';
 import 'package:lyron_app/src/application/providers.dart';
+import 'package:lyron_app/src/application/song_library/chordpro_import_service.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/auth/sign_in_method.dart';
 import 'package:lyron_app/src/presentation/account/account_screen.dart';
+import 'package:lyron_app/src/presentation/song_library/chordpro_import_controller.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 class _StubRepo implements AuthRepository {
@@ -73,6 +76,45 @@ class _DeleteRecordingController extends AppAuthController {
   }
 }
 
+// FB9 (docs/specs/2026-10-12-sync-and-account-feedback.md): the Delete-account
+// RPC failed, offline or rejected.
+class _FailingDeleteController extends AppAuthController {
+  _FailingDeleteController(this.error) : super(_StubRepo());
+  final Object error;
+  int deleteCalls = 0;
+
+  @override
+  Future<void> deleteAccount() async {
+    deleteCalls += 1;
+    throw error;
+  }
+}
+
+/// Records what the Account screen reports through `FlutterError.onError` for
+/// the rest of the test. Everything else, including the test framework's own
+/// report of an unhandled asynchronous error, is forwarded to the original
+/// handler, so a regression fails the test instead of being swallowed.
+List<FlutterErrorDetails> _recordAccountScreenReports() {
+  final reported = <FlutterErrorDetails>[];
+  final original = FlutterError.onError;
+  FlutterError.onError = (details) {
+    if (details.library == 'AccountScreen') {
+      reported.add(details);
+    } else {
+      original?.call(details);
+    }
+  };
+  addTearDown(() => FlutterError.onError = original);
+  return reported;
+}
+
+const _deleteAccountFailedText =
+    'Could not confirm the account deletion. Check your connection and try '
+    'again.';
+
+const _deleteAccountSupersededText =
+    'The signed-in account changed, so the account deletion was stopped.';
+
 void main() {
   testWidgets('delete confirmation triggers deleteAccount', (tester) async {
     final controller = _RecordingController();
@@ -92,8 +134,8 @@ void main() {
   });
 
   testWidgets(
-    'delete confirmation deletes nothing when the user switched while the '
-    'dialog was open (SO8, B3)',
+    'delete confirmation deletes nothing and says so when the user switched '
+    'while the dialog was open (SO8, B3, DA5)',
     (tester) async {
       final repository = _SwitchableUserRepo();
       addTearDown(repository.sessions.close);
@@ -124,8 +166,136 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(controller.deleteCalls, 0);
+      expect(
+        find.descendant(
+          of: find.byType(SnackBar),
+          matching: find.text(_deleteAccountSupersededText),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byType(CircularProgressIndicator), findsNothing);
     },
   );
+
+  Future<void> pumpAccountScreen(
+    WidgetTester tester,
+    AppAuthController controller,
+  ) => tester.pumpWidget(
+    ProviderScope(
+      overrides: [appAuthControllerProvider.overrideWith((_) => controller)],
+      child: const MaterialApp(home: AccountScreen()),
+    ),
+  );
+
+  Future<void> confirmDelete(WidgetTester tester) async {
+    await tester.tap(find.text(AppStrings.deleteAccountAction));
+    await tester.pump();
+    await tester.tap(find.text(AppStrings.deleteAccountConfirmAction));
+    await tester.pumpAndSettle();
+  }
+
+  // DA1 (FB9): an escaped error was an unhandled asynchronous error, which
+  // fails this test through the test zone; the screen now catches it.
+  testWidgets('a failed Delete account shows the message, leaves no spinner '
+      'and the tile works again (DA1)', (tester) async {
+    _recordAccountScreenReports();
+    final controller = _FailingDeleteController(StateError('rpc rejected'));
+    await pumpAccountScreen(tester, controller);
+
+    await confirmDelete(tester);
+
+    expect(controller.deleteCalls, 1);
+    expect(
+      find.descendant(
+        of: find.byType(SnackBar),
+        matching: find.text(_deleteAccountFailedText),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    final tile = tester.widget<ListTile>(
+      find.widgetWithText(ListTile, AppStrings.deleteAccountAction),
+    );
+    expect(tile.onTap, isNotNull);
+
+    // The tile can be used again: a second confirmation reaches the
+    // controller.
+    await confirmDelete(tester);
+    expect(controller.deleteCalls, 2);
+  });
+
+  // DA2 (FB9, ADR-036): a defect is reported once with a static context (the
+  // exception object is whatever the error is); an offline user is a
+  // condition, not a defect.
+  testWidgets('a non-connectivity Delete account failure is reported once '
+      'with a static context (DA2)', (tester) async {
+    final reported = _recordAccountScreenReports();
+    final error = StateError('delete failed for owner@example.com');
+    await pumpAccountScreen(tester, _FailingDeleteController(error));
+
+    await confirmDelete(tester);
+
+    expect(reported, hasLength(1));
+    expect(reported.single.exception, same(error));
+    expect(reported.single.library, 'AccountScreen');
+    expect(reported.single.informationCollector, isNull);
+    expect(
+      reported.single.context.toString(),
+      isNot(contains('owner@example.com')),
+    );
+    expect(find.text(_deleteAccountFailedText), findsOneWidget);
+  });
+
+  testWidgets('a connectivity Delete account failure is not reported but '
+      'still shows the message (DA2)', (tester) async {
+    final reported = _recordAccountScreenReports();
+    await pumpAccountScreen(
+      tester,
+      _FailingDeleteController(const SocketException('offline')),
+    );
+
+    await confirmDelete(tester);
+
+    expect(reported, isEmpty);
+    expect(find.text(_deleteAccountFailedText), findsOneWidget);
+  });
+
+  // DA4 (FB9): the user's own choice is not a failure and not a refusal.
+  testWidgets('Cancel in the delete confirmation shows nothing, reports '
+      'nothing and does not delete (DA4)', (tester) async {
+    final reported = _recordAccountScreenReports();
+    final controller = _RecordingController();
+    await pumpAccountScreen(tester, controller);
+
+    await tester.tap(find.text(AppStrings.deleteAccountAction));
+    await tester.pumpAndSettle();
+    expect(find.text(AppStrings.deleteAccountConfirmTitle), findsOneWidget);
+    await tester.tap(find.text(AppStrings.cancelAction));
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.deleteAccountConfirmTitle), findsNothing);
+    expect(controller.deleted, isFalse);
+    expect(find.byType(SnackBar), findsNothing);
+    expect(reported, isEmpty);
+  });
+
+  testWidgets('A barrier dismiss of the delete confirmation shows nothing, '
+      'reports nothing and does not delete (DA4)', (tester) async {
+    final reported = _recordAccountScreenReports();
+    final controller = _RecordingController();
+    await pumpAccountScreen(tester, controller);
+
+    await tester.tap(find.text(AppStrings.deleteAccountAction));
+    await tester.pumpAndSettle();
+    expect(find.text(AppStrings.deleteAccountConfirmTitle), findsOneWidget);
+    await tester.tapAt(const Offset(5, 5));
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.deleteAccountConfirmTitle), findsNothing);
+    expect(controller.deleted, isFalse);
+    expect(find.byType(SnackBar), findsNothing);
+    expect(reported, isEmpty);
+  });
 
   SignOutCommand commandWith({
     required int pendingCount,
@@ -169,6 +339,48 @@ void main() {
     expect(signedOut, isTrue);
   });
 
+  // SF8 (SO7, FB7): the Account tile inherits the refusal through the shared
+  // flow and now says why.
+  testWidgets('Sign out while an import runs shows the message and does not '
+      'sign out (SF8)', (tester) async {
+    var signedOut = false;
+    final importController = _StatefulImportController()
+      ..setImportState(const ImportCommitting());
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appAuthControllerProvider.overrideWith((_) => _RecordingController()),
+          chordProImportControllerProvider.overrideWith(
+            (_) => importController,
+          ),
+          signOutCommandProvider.overrideWithValue(
+            commandWith(pendingCount: 0, onSignOut: () => signedOut = true),
+          ),
+        ],
+        child: const MaterialApp(home: AccountScreen()),
+      ),
+    );
+    // Keep the autoDispose controller (and its seeded state) alive.
+    ProviderScope.containerOf(
+      tester.element(find.byType(AccountScreen)),
+    ).listen(chordProImportControllerProvider, (_, _) {});
+
+    await tester.tap(find.text(AppStrings.signOutAction));
+    await tester.pumpAndSettle();
+
+    expect(signedOut, isFalse);
+    expect(
+      find.descendant(
+        of: find.byType(SnackBar),
+        matching: find.text(
+          'Sign-out is unavailable while an import is running. '
+          'Try again when it finishes.',
+        ),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('Cancel in the sign-out warning does not sign out', (
     tester,
   ) async {
@@ -191,4 +403,20 @@ void main() {
     await tester.pumpAndSettle();
     expect(signedOut, isFalse);
   });
+}
+
+class _FakeChordProImportService implements ChordProImportService {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// An import controller whose state the test sets directly.
+class _StatefulImportController extends ChordProImportController {
+  _StatefulImportController()
+    : super(
+        importService: _FakeChordProImportService(),
+        contextReader: () => null,
+      );
+
+  void setImportState(ChordProImportState next) => state = next;
 }
