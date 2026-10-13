@@ -1,7 +1,8 @@
 # Spec: Song Key Layers (S3)
 
-> Status: Accepted (2026-10-13, design gate approved). Not implemented yet;
-> delivered in three PRs (see "PR Boundaries"). Amends
+> Status: Accepted (2026-10-13, design gate approved). PR 1 (backend)
+> implemented on `feat/personal-settings-backend`; PR 2 and PR 3 not yet
+> (see "PR Boundaries"). Amends
 > `docs/specs/2026-04-01-session-scoped-plan-reader-navigation.md`
 > ("Reader-Local State Preservation"). The file keeps the slice's original
 > name, "personal song settings"; the brainstorm replaced the per-user

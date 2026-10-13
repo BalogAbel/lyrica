@@ -236,6 +236,8 @@ Key fields:
 - `title_override`
 - `position`
 - `notes`
+- `transpose` (song items: the plan's shared transpose, −11..+11, or null)
+- `capo` (song items: the plan's shared capo, 0..11, or null)
 - `version`
 - `base_version`
 - `sync_status`
@@ -249,6 +251,8 @@ Invariants:
 - `item_type = 'note'` forbids both `song_id` and `attachment_id`.
 - Referenced songs and attachments must remain in the same organization as the owning session.
 - A session may contain a given song at most once.
+- `transpose` is null or between −11 and +11; `capo` is null or between 0 and 11.
+- Only `set_session_item_key` writes `transpose` and `capo`, and only on song items; `version` counts those key edits, while structural item writes version the owning session.
 
 Read-model note:
 
@@ -257,6 +261,7 @@ Read-model note:
 - Session items are removed by cascade when their session or plan is deleted. The referenced song or attachment is never deleted.
 - Session-item add is currently limited to visible songs from the active organization's locally available song catalog and appends deterministically after the current locally visible last item for the session.
 - Session-item add, delete, and reorder capture the owning session's synchronized `base_version`, keep backend authorization and duplicate-song enforcement on the write RPC boundary, and reconcile accepted canonical order back into the read projection when the immediate refresh fails.
+- A song item's `transpose` and `capo` are the plan layer of the song key (ADR-042): everyone who opens the song from this plan sees them, and a null field falls through to the song's ChordPro base. They are absolute values, relative to the written chords. The client reads them from S3 PR 2 on.
 
 ### attachments
 
