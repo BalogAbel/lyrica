@@ -1,6 +1,9 @@
 # Session-Scoped Plan Reader Navigation Spec
 
 > Status: Implemented; partially superseded by `docs/specs/2026-04-03-slug-based-routing-for-songs-plans-sessions.md`
+> Amended 2026-10-13 by `docs/specs/2026-10-13-personal-song-settings.md`
+> (PS5, ADR-042): the transpose (and capo) no longer carry over between songs.
+> Takes effect with S3 PR 3; until then the code still carries them over.
 
 ## Goal
 
@@ -27,7 +30,7 @@ This slice closes that gap without expanding into broader reader navigation mode
 - Keep previous and next navigation strictly within the current session.
 - Preserve the current reader-local state across previous and next navigation within the same in-app reading session:
   - chords and lyrics vs lyrics only
-  - transpose offset
+  - transpose offset (ended 2026-10-13, see "Reader-Local State Preservation")
   - shared font scale
 - Make the plan-origin reader route reload-safe in the browser so refreshing the page restores the same song in the same session-scoped reader context.
 - Return from a plan-origin reader back to the same plan detail route.
@@ -203,10 +206,18 @@ The controls remain visible at the session edges for clarity, but they do not wr
 When the user moves between songs using session-scoped previous and next during the same in-app reading session:
 
 - the current reader view mode is preserved
-- the current transpose offset is preserved
+- ~~the current transpose offset is preserved~~ (ended 2026-10-13, see below)
 - the current shared font scale is preserved
 
 This runtime preservation does not imply persistent preferences or browser-reload restoration.
+
+**Amendment (2026-10-13, S3, ADR-042).** Transpose and capo no longer carry
+over. A `±` change in the reader is a temporary value that is cleared on every
+song change, previous and next included; each song opens with its plan value
+(the session item's shared transpose and capo, when set) or its song base.
+View mode, instrument display mode, the shared font scale and the other reader
+state keep the preservation above. Spec:
+`docs/specs/2026-10-13-personal-song-settings.md` (PS1, PS5).
 
 ## Data Resolution And Failure Rules
 
