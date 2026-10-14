@@ -50,7 +50,14 @@ Map<String, dynamic> _item(
   String sessionId, {
   int position = 10,
   Object? song = const {'id': 'song-1', 'slug': 'song-1', 'title': 'Song'},
-}) => {'id': id, 'session_id': sessionId, 'position': position, 'song': song};
+  Map<String, dynamic> extra = const {},
+}) => {
+  'id': id,
+  'session_id': sessionId,
+  'position': position,
+  'song': song,
+  ...extra,
+};
 
 class _Call {
   _Call(this.stream, this.organizationId, this.after, this.limit);
@@ -98,6 +105,34 @@ SupabasePlanningRepository _repository({
 
 void main() {
   group('fetchPlanningSyncPayload ordering and mapping', () {
+    test('maps session item version, transpose and capo (S3 PR 2)', () async {
+      final planId = _id(1);
+      final sessionId = _id(2);
+      final repository = _repository(
+        plans: [_plan(planId)],
+        sessions: [_session(sessionId, planId)],
+        items: [
+          _item(
+            _id(3),
+            sessionId,
+            extra: {'version': 2, 'transpose': -3, 'capo': null},
+          ),
+          _item(_id(4), sessionId, position: 20),
+        ],
+      );
+
+      final payload = await repository.fetchPlanningSyncPayload(
+        organizationId: _org,
+      );
+
+      expect(payload.items[0].version, 2);
+      expect(payload.items[0].transpose, -3);
+      expect(payload.items[0].capo, isNull);
+      expect(payload.items[1].version, 1);
+      expect(payload.items[1].transpose, isNull);
+      expect(payload.items[1].capo, isNull);
+    });
+
     test(
       'plans are ordered by schedule, then updated_at desc, then id',
       () async {
@@ -510,7 +545,7 @@ void main() {
       }
       expect(
         requests[2].queryParameters['select'],
-        'id,session_id,position,song:songs(id,slug,title)',
+        'id,session_id,position,version,transpose,capo,song:songs(id,slug,title)',
       );
     });
 

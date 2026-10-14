@@ -432,6 +432,15 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
   );
 
   @override
+  Future<void> recordSessionItemKeyEdit({
+    required PlanningMutationContext context,
+    required PlanningSessionItemKeyEditMutationDraft draft,
+  }) => _guardedWrite(
+    context,
+    () => _delegate.recordSessionItemKeyEdit(context: context, draft: draft),
+  );
+
+  @override
   Future<List<PlanningMutationRecord>> readPendingMutations({
     required String userId,
     required String organizationId,

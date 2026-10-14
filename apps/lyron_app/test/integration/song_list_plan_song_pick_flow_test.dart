@@ -420,6 +420,12 @@ class _NoopPlanningMutationStore implements PlanningMutationStore {
   }) async {}
 
   @override
+  Future<void> recordSessionItemKeyEdit({
+    required PlanningMutationContext context,
+    required PlanningSessionItemKeyEditMutationDraft draft,
+  }) async {}
+
+  @override
   Future<void> recordSessionReorder({
     required PlanningMutationContext context,
     required PlanningSessionReorderMutationDraft draft,

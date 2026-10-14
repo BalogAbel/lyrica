@@ -74,7 +74,7 @@ The popup shows:
 
 Song rows list the song title and item state: `Created`, `Edited`, `Removed`, `CreatedConflict`, `EditedConflict`, or `RemovedConflict`.
 
-Planning rows are grouped by plan. Session, session item, and reorder mutations do not appear as top-level popup rows because users experience them as part of plan editing. A plan row may expose a short nested detail list: `plan edited`, `session added`, `session removed`, `session order changed`, `song added`, `song removed`, or `song order changed`.
+Planning rows are grouped by plan. Session, session item, and reorder mutations do not appear as top-level popup rows because users experience them as part of plan editing. A plan row may expose a short nested detail list: `plan edited`, `session added`, `session removed`, `session order changed`, `song added`, `song removed`, `song order changed`, or `song key changed`.
 
 Planning popup grouping uses the best available identity in this order:
 

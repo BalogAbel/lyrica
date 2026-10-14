@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_reconciler.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/planning/session_item_key_edit.dart';
+import 'package:lyron_app/src/domain/planning/session_item_summary.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 
@@ -437,6 +439,135 @@ void main() {
         final session = detail!.sessions.firstWhere((s) => s.id == 'session-1');
         expect(session.items.length, 1);
         expect(session.items.first.id, 'item-2');
+      });
+    });
+
+    group('reconcile sessionItemKeyEdit (S3 PR 2, PS15)', () {
+      PlanningMutationRecord keyRecord({
+        int? baseVersion = 2,
+        SessionItemKeyEdit? keyEdit,
+        int? keyBaseTranspose,
+        int? keyBaseCapo,
+      }) => PlanningMutationRecord(
+        aggregateId: 'item-1',
+        organizationId: organizationId,
+        planId: 'plan-1',
+        sessionId: 'session-1',
+        kind: PlanningMutationKind.sessionItemKeyEdit,
+        syncStatus: PlanningMutationSyncStatus.pending,
+        orderKey: 1,
+        updatedAt: DateTime.utc(2026, 4, 11, 11),
+        // A response-shaped record carries the RETURNED item version in
+        // baseVersion and the server key in keyEdit (all set/clear). A
+        // crash-resumed `accepted` marker is the unsent shape instead.
+        baseVersion: baseVersion,
+        keyBaseTranspose: keyBaseTranspose,
+        keyBaseCapo: keyBaseCapo,
+        keyEdit:
+            keyEdit ??
+            SessionItemKeyEdit(
+              transposeMode: SessionItemKeyFieldMode.set,
+              transpose: -3,
+              capoMode: SessionItemKeyFieldMode.clear,
+            ),
+      );
+
+      Future<SessionItemSummary> projectedItem() async {
+        final detail = await localStore.readPlanDetail(
+          userId: userId,
+          organizationId: organizationId,
+          planId: 'plan-1',
+        );
+        return detail!.sessions
+            .firstWhere((session) => session.id == 'session-1')
+            .items
+            .firstWhere((item) => item.id == 'item-1');
+      }
+
+      test('a failed post-sync refresh still gives the projected item the '
+          'returned version and the server key', () async {
+        await reconciler.reconcile(testContext, keyRecord());
+
+        final item = await projectedItem();
+        expect(item.version, 2);
+        expect(item.planTranspose, -3);
+        expect(item.planCapo, isNull);
+      });
+
+      test(
+        'a set capo and a cleared transpose are written as returned',
+        () async {
+          await reconciler.reconcile(
+            testContext,
+            keyRecord(
+              baseVersion: 5,
+              keyEdit: SessionItemKeyEdit(
+                transposeMode: SessionItemKeyFieldMode.clear,
+                capoMode: SessionItemKeyFieldMode.set,
+                capo: 4,
+              ),
+            ),
+          );
+
+          final item = await projectedItem();
+          expect(item.version, 5);
+          expect(item.planTranspose, isNull);
+          expect(item.planCapo, 4);
+        },
+      );
+
+      test(
+        'a crash-resumed marker (unsent shape, a kept field) takes the '
+        'edit applied over its base values, never a nulled kept field',
+        () async {
+          await reconciler.reconcile(
+            testContext,
+            keyRecord(
+              baseVersion: 4,
+              keyBaseTranspose: 1,
+              keyBaseCapo: 2,
+              keyEdit: SessionItemKeyEdit(
+                transposeMode: SessionItemKeyFieldMode.set,
+                transpose: 3,
+                capoMode: SessionItemKeyFieldMode.keep,
+              ),
+            ),
+          );
+
+          final item = await projectedItem();
+          expect(item.version, 4);
+          expect(item.planTranspose, 3);
+          expect(item.planCapo, 2, reason: 'kept: the base value, not null');
+        },
+      );
+
+      test('a crash-resumed marker with a kept transpose and a cleared capo '
+          'keeps the base transpose and clears the capo', () async {
+        await reconciler.reconcile(
+          testContext,
+          keyRecord(
+            baseVersion: 6,
+            keyBaseTranspose: 5,
+            keyBaseCapo: 2,
+            keyEdit: SessionItemKeyEdit(
+              transposeMode: SessionItemKeyFieldMode.keep,
+              capoMode: SessionItemKeyFieldMode.clear,
+            ),
+          ),
+        );
+
+        final item = await projectedItem();
+        expect(item.version, 6);
+        expect(item.planTranspose, 5);
+        expect(item.planCapo, isNull);
+      });
+
+      test('a record without its returned version is a corrupt mutation '
+          '(LF-8)', () async {
+        await expectLater(
+          reconciler.reconcile(testContext, keyRecord(baseVersion: null)),
+          throwsA(isA<ReconcileFieldError>()),
+        );
       });
     });
 

@@ -134,11 +134,12 @@ they say nothing about what the browser has actually allocated.
 
 `BudgetedPlanningMutationStore implements PlanningMutationStore` wraps
 `DriftPlanningMutationStore` and is the single enforcement point. It guards
-exactly the nine `record*` methods — `recordPlanCreate`, `recordPlanEdit`,
+exactly the ten `record*` methods — `recordPlanCreate`, `recordPlanEdit`,
 `recordSessionCreate`, `recordSessionRename`, `recordSessionDelete`,
 `recordSessionReorder`, `recordSessionItemCreateSong`,
-`recordSessionItemDelete`, `recordSessionItemReorder` — because those are
-the only calls that can introduce or grow a pending aggregate.
+`recordSessionItemDelete`, `recordSessionItemReorder`,
+`recordSessionItemKeyEdit` (S3 PR 2; the key edit of spec PS14) — because
+those are the only calls that can introduce or grow a pending aggregate.
 
 `saveSyncAttemptResult`, `retryMutation` and `clearMutation` are **never
 admitted against the mutation budget**. This is deliberate, not an
@@ -160,7 +161,7 @@ writes are not one undifferentiated group; they split three ways:
 
 | write | budget admission (D1/D10) | write queue (D9) | storage recovery (D8) |
 |---|---|---|---|
-| the nine `record*` methods | yes, unless the write provably collapses a pending create (D10) | yes | yes |
+| the ten `record*` methods | yes, unless the write provably collapses a pending create (D10) | yes | yes |
 | `saveSyncAttemptResult` | never | yes | yes |
 | `retryMutation` | never | yes | no |
 | `clearMutation` | never | yes | no |

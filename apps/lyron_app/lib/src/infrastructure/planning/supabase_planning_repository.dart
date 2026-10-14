@@ -31,7 +31,8 @@ class SupabasePlanningRepository implements PlanningRemoteRefreshRepository {
          fetchSessionItemPage: _keysetFetcher(
            client,
            table: 'session_items',
-           columns: 'id, session_id, position, song:songs(id, slug, title)',
+           columns:
+               'id, session_id, position, version, transpose, capo, song:songs(id, slug, title)',
          ),
        );
 
@@ -252,6 +253,9 @@ class SupabasePlanningRepository implements PlanningRemoteRefreshRepository {
       position: row['position'] as int,
       songId: song['id'] as String,
       songTitle: song['title'] as String,
+      version: (row['version'] as num?)?.toInt() ?? 1,
+      transpose: (row['transpose'] as num?)?.toInt(),
+      capo: (row['capo'] as num?)?.toInt(),
     );
   }
 

@@ -1704,6 +1704,38 @@ class $CachedPlanningSessionItemsTable extends CachedPlanningSessionItems
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _versionMeta = const VerificationMeta(
+    'version',
+  );
+  @override
+  late final GeneratedColumn<int> version = GeneratedColumn<int>(
+    'version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  static const VerificationMeta _transposeMeta = const VerificationMeta(
+    'transpose',
+  );
+  @override
+  late final GeneratedColumn<int> transpose = GeneratedColumn<int>(
+    'transpose',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _capoMeta = const VerificationMeta('capo');
+  @override
+  late final GeneratedColumn<int> capo = GeneratedColumn<int>(
+    'capo',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     userId,
@@ -1715,6 +1747,9 @@ class $CachedPlanningSessionItemsTable extends CachedPlanningSessionItems
     position,
     songId,
     songTitle,
+    version,
+    transpose,
+    capo,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1809,6 +1844,24 @@ class $CachedPlanningSessionItemsTable extends CachedPlanningSessionItems
     } else if (isInserting) {
       context.missing(_songTitleMeta);
     }
+    if (data.containsKey('version')) {
+      context.handle(
+        _versionMeta,
+        version.isAcceptableOrUnknown(data['version']!, _versionMeta),
+      );
+    }
+    if (data.containsKey('transpose')) {
+      context.handle(
+        _transposeMeta,
+        transpose.isAcceptableOrUnknown(data['transpose']!, _transposeMeta),
+      );
+    }
+    if (data.containsKey('capo')) {
+      context.handle(
+        _capoMeta,
+        capo.isAcceptableOrUnknown(data['capo']!, _capoMeta),
+      );
+    }
     return context;
   }
 
@@ -1861,6 +1914,18 @@ class $CachedPlanningSessionItemsTable extends CachedPlanningSessionItems
         DriftSqlType.string,
         data['${effectivePrefix}song_title'],
       )!,
+      version: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}version'],
+      )!,
+      transpose: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}transpose'],
+      ),
+      capo: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}capo'],
+      ),
     );
   }
 
@@ -1881,6 +1946,9 @@ class CachedPlanningSessionItem extends DataClass
   final int position;
   final String songId;
   final String songTitle;
+  final int version;
+  final int? transpose;
+  final int? capo;
   const CachedPlanningSessionItem({
     required this.userId,
     required this.organizationId,
@@ -1891,6 +1959,9 @@ class CachedPlanningSessionItem extends DataClass
     required this.position,
     required this.songId,
     required this.songTitle,
+    required this.version,
+    this.transpose,
+    this.capo,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1904,6 +1975,13 @@ class CachedPlanningSessionItem extends DataClass
     map['position'] = Variable<int>(position);
     map['song_id'] = Variable<String>(songId);
     map['song_title'] = Variable<String>(songTitle);
+    map['version'] = Variable<int>(version);
+    if (!nullToAbsent || transpose != null) {
+      map['transpose'] = Variable<int>(transpose);
+    }
+    if (!nullToAbsent || capo != null) {
+      map['capo'] = Variable<int>(capo);
+    }
     return map;
   }
 
@@ -1918,6 +1996,11 @@ class CachedPlanningSessionItem extends DataClass
       position: Value(position),
       songId: Value(songId),
       songTitle: Value(songTitle),
+      version: Value(version),
+      transpose: transpose == null && nullToAbsent
+          ? const Value.absent()
+          : Value(transpose),
+      capo: capo == null && nullToAbsent ? const Value.absent() : Value(capo),
     );
   }
 
@@ -1936,6 +2019,9 @@ class CachedPlanningSessionItem extends DataClass
       position: serializer.fromJson<int>(json['position']),
       songId: serializer.fromJson<String>(json['songId']),
       songTitle: serializer.fromJson<String>(json['songTitle']),
+      version: serializer.fromJson<int>(json['version']),
+      transpose: serializer.fromJson<int?>(json['transpose']),
+      capo: serializer.fromJson<int?>(json['capo']),
     );
   }
   @override
@@ -1951,6 +2037,9 @@ class CachedPlanningSessionItem extends DataClass
       'position': serializer.toJson<int>(position),
       'songId': serializer.toJson<String>(songId),
       'songTitle': serializer.toJson<String>(songTitle),
+      'version': serializer.toJson<int>(version),
+      'transpose': serializer.toJson<int?>(transpose),
+      'capo': serializer.toJson<int?>(capo),
     };
   }
 
@@ -1964,6 +2053,9 @@ class CachedPlanningSessionItem extends DataClass
     int? position,
     String? songId,
     String? songTitle,
+    int? version,
+    Value<int?> transpose = const Value.absent(),
+    Value<int?> capo = const Value.absent(),
   }) => CachedPlanningSessionItem(
     userId: userId ?? this.userId,
     organizationId: organizationId ?? this.organizationId,
@@ -1974,6 +2066,9 @@ class CachedPlanningSessionItem extends DataClass
     position: position ?? this.position,
     songId: songId ?? this.songId,
     songTitle: songTitle ?? this.songTitle,
+    version: version ?? this.version,
+    transpose: transpose.present ? transpose.value : this.transpose,
+    capo: capo.present ? capo.value : this.capo,
   );
   CachedPlanningSessionItem copyWithCompanion(
     CachedPlanningSessionItemsCompanion data,
@@ -1994,6 +2089,9 @@ class CachedPlanningSessionItem extends DataClass
       position: data.position.present ? data.position.value : this.position,
       songId: data.songId.present ? data.songId.value : this.songId,
       songTitle: data.songTitle.present ? data.songTitle.value : this.songTitle,
+      version: data.version.present ? data.version.value : this.version,
+      transpose: data.transpose.present ? data.transpose.value : this.transpose,
+      capo: data.capo.present ? data.capo.value : this.capo,
     );
   }
 
@@ -2008,7 +2106,10 @@ class CachedPlanningSessionItem extends DataClass
           ..write('sessionId: $sessionId, ')
           ..write('position: $position, ')
           ..write('songId: $songId, ')
-          ..write('songTitle: $songTitle')
+          ..write('songTitle: $songTitle, ')
+          ..write('version: $version, ')
+          ..write('transpose: $transpose, ')
+          ..write('capo: $capo')
           ..write(')'))
         .toString();
   }
@@ -2024,6 +2125,9 @@ class CachedPlanningSessionItem extends DataClass
     position,
     songId,
     songTitle,
+    version,
+    transpose,
+    capo,
   );
   @override
   bool operator ==(Object other) =>
@@ -2037,7 +2141,10 @@ class CachedPlanningSessionItem extends DataClass
           other.sessionId == this.sessionId &&
           other.position == this.position &&
           other.songId == this.songId &&
-          other.songTitle == this.songTitle);
+          other.songTitle == this.songTitle &&
+          other.version == this.version &&
+          other.transpose == this.transpose &&
+          other.capo == this.capo);
 }
 
 class CachedPlanningSessionItemsCompanion
@@ -2051,6 +2158,9 @@ class CachedPlanningSessionItemsCompanion
   final Value<int> position;
   final Value<String> songId;
   final Value<String> songTitle;
+  final Value<int> version;
+  final Value<int?> transpose;
+  final Value<int?> capo;
   final Value<int> rowid;
   const CachedPlanningSessionItemsCompanion({
     this.userId = const Value.absent(),
@@ -2062,6 +2172,9 @@ class CachedPlanningSessionItemsCompanion
     this.position = const Value.absent(),
     this.songId = const Value.absent(),
     this.songTitle = const Value.absent(),
+    this.version = const Value.absent(),
+    this.transpose = const Value.absent(),
+    this.capo = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   CachedPlanningSessionItemsCompanion.insert({
@@ -2074,6 +2187,9 @@ class CachedPlanningSessionItemsCompanion
     required int position,
     required String songId,
     required String songTitle,
+    this.version = const Value.absent(),
+    this.transpose = const Value.absent(),
+    this.capo = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : userId = Value(userId),
        organizationId = Value(organizationId),
@@ -2094,6 +2210,9 @@ class CachedPlanningSessionItemsCompanion
     Expression<int>? position,
     Expression<String>? songId,
     Expression<String>? songTitle,
+    Expression<int>? version,
+    Expression<int>? transpose,
+    Expression<int>? capo,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -2106,6 +2225,9 @@ class CachedPlanningSessionItemsCompanion
       if (position != null) 'position': position,
       if (songId != null) 'song_id': songId,
       if (songTitle != null) 'song_title': songTitle,
+      if (version != null) 'version': version,
+      if (transpose != null) 'transpose': transpose,
+      if (capo != null) 'capo': capo,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -2120,6 +2242,9 @@ class CachedPlanningSessionItemsCompanion
     Value<int>? position,
     Value<String>? songId,
     Value<String>? songTitle,
+    Value<int>? version,
+    Value<int?>? transpose,
+    Value<int?>? capo,
     Value<int>? rowid,
   }) {
     return CachedPlanningSessionItemsCompanion(
@@ -2132,6 +2257,9 @@ class CachedPlanningSessionItemsCompanion
       position: position ?? this.position,
       songId: songId ?? this.songId,
       songTitle: songTitle ?? this.songTitle,
+      version: version ?? this.version,
+      transpose: transpose ?? this.transpose,
+      capo: capo ?? this.capo,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -2166,6 +2294,15 @@ class CachedPlanningSessionItemsCompanion
     if (songTitle.present) {
       map['song_title'] = Variable<String>(songTitle.value);
     }
+    if (version.present) {
+      map['version'] = Variable<int>(version.value);
+    }
+    if (transpose.present) {
+      map['transpose'] = Variable<int>(transpose.value);
+    }
+    if (capo.present) {
+      map['capo'] = Variable<int>(capo.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -2184,6 +2321,9 @@ class CachedPlanningSessionItemsCompanion
           ..write('position: $position, ')
           ..write('songId: $songId, ')
           ..write('songTitle: $songTitle, ')
+          ..write('version: $version, ')
+          ..write('transpose: $transpose, ')
+          ..write('capo: $capo, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2374,6 +2514,72 @@ class $CachedPlanningMutationsTable extends CachedPlanningMutations
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _keyTransposeModeMeta = const VerificationMeta(
+    'keyTransposeMode',
+  );
+  @override
+  late final GeneratedColumn<String> keyTransposeMode = GeneratedColumn<String>(
+    'key_transpose_mode',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _keyTransposeMeta = const VerificationMeta(
+    'keyTranspose',
+  );
+  @override
+  late final GeneratedColumn<int> keyTranspose = GeneratedColumn<int>(
+    'key_transpose',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _keyCapoModeMeta = const VerificationMeta(
+    'keyCapoMode',
+  );
+  @override
+  late final GeneratedColumn<String> keyCapoMode = GeneratedColumn<String>(
+    'key_capo_mode',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _keyCapoMeta = const VerificationMeta(
+    'keyCapo',
+  );
+  @override
+  late final GeneratedColumn<int> keyCapo = GeneratedColumn<int>(
+    'key_capo',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _keyBaseTransposeMeta = const VerificationMeta(
+    'keyBaseTranspose',
+  );
+  @override
+  late final GeneratedColumn<int> keyBaseTranspose = GeneratedColumn<int>(
+    'key_base_transpose',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _keyBaseCapoMeta = const VerificationMeta(
+    'keyBaseCapo',
+  );
+  @override
+  late final GeneratedColumn<int> keyBaseCapo = GeneratedColumn<int>(
+    'key_base_capo',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _baseContentVersionMeta =
       const VerificationMeta('baseContentVersion');
   @override
@@ -2470,6 +2676,12 @@ class $CachedPlanningMutationsTable extends CachedPlanningMutations
     songTitle,
     orderedSiblingIds,
     baseVersion,
+    keyTransposeMode,
+    keyTranspose,
+    keyCapoMode,
+    keyCapo,
+    keyBaseTranspose,
+    keyBaseCapo,
     baseContentVersion,
     originSnapshotJson,
     errorCode,
@@ -2628,6 +2840,57 @@ class $CachedPlanningMutationsTable extends CachedPlanningMutations
         ),
       );
     }
+    if (data.containsKey('key_transpose_mode')) {
+      context.handle(
+        _keyTransposeModeMeta,
+        keyTransposeMode.isAcceptableOrUnknown(
+          data['key_transpose_mode']!,
+          _keyTransposeModeMeta,
+        ),
+      );
+    }
+    if (data.containsKey('key_transpose')) {
+      context.handle(
+        _keyTransposeMeta,
+        keyTranspose.isAcceptableOrUnknown(
+          data['key_transpose']!,
+          _keyTransposeMeta,
+        ),
+      );
+    }
+    if (data.containsKey('key_capo_mode')) {
+      context.handle(
+        _keyCapoModeMeta,
+        keyCapoMode.isAcceptableOrUnknown(
+          data['key_capo_mode']!,
+          _keyCapoModeMeta,
+        ),
+      );
+    }
+    if (data.containsKey('key_capo')) {
+      context.handle(
+        _keyCapoMeta,
+        keyCapo.isAcceptableOrUnknown(data['key_capo']!, _keyCapoMeta),
+      );
+    }
+    if (data.containsKey('key_base_transpose')) {
+      context.handle(
+        _keyBaseTransposeMeta,
+        keyBaseTranspose.isAcceptableOrUnknown(
+          data['key_base_transpose']!,
+          _keyBaseTransposeMeta,
+        ),
+      );
+    }
+    if (data.containsKey('key_base_capo')) {
+      context.handle(
+        _keyBaseCapoMeta,
+        keyBaseCapo.isAcceptableOrUnknown(
+          data['key_base_capo']!,
+          _keyBaseCapoMeta,
+        ),
+      );
+    }
     if (data.containsKey('base_content_version')) {
       context.handle(
         _baseContentVersionMeta,
@@ -2768,6 +3031,30 @@ class $CachedPlanningMutationsTable extends CachedPlanningMutations
         DriftSqlType.int,
         data['${effectivePrefix}base_version'],
       ),
+      keyTransposeMode: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}key_transpose_mode'],
+      ),
+      keyTranspose: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}key_transpose'],
+      ),
+      keyCapoMode: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}key_capo_mode'],
+      ),
+      keyCapo: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}key_capo'],
+      ),
+      keyBaseTranspose: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}key_base_transpose'],
+      ),
+      keyBaseCapo: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}key_base_capo'],
+      ),
       baseContentVersion: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}base_content_version'],
@@ -2825,6 +3112,14 @@ class CachedPlanningMutation extends DataClass
   final String? orderedSiblingIds;
   final int? baseVersion;
 
+  /// Session item key edit payload (S3 PR 2); null for every other kind.
+  final String? keyTransposeMode;
+  final int? keyTranspose;
+  final String? keyCapoMode;
+  final int? keyCapo;
+  final int? keyBaseTranspose;
+  final int? keyBaseCapo;
+
   /// The plan content version a `planDelete` was based on (spec D4/D5).
   /// A `planCreate` row carries 1, a new plan's content version, which a
   /// delete of its accepted-but-uncleared create inherits (spec D5(c)).
@@ -2866,6 +3161,12 @@ class CachedPlanningMutation extends DataClass
     this.songTitle,
     this.orderedSiblingIds,
     this.baseVersion,
+    this.keyTransposeMode,
+    this.keyTranspose,
+    this.keyCapoMode,
+    this.keyCapo,
+    this.keyBaseTranspose,
+    this.keyBaseCapo,
     this.baseContentVersion,
     this.originSnapshotJson,
     this.errorCode,
@@ -2915,6 +3216,24 @@ class CachedPlanningMutation extends DataClass
     }
     if (!nullToAbsent || baseVersion != null) {
       map['base_version'] = Variable<int>(baseVersion);
+    }
+    if (!nullToAbsent || keyTransposeMode != null) {
+      map['key_transpose_mode'] = Variable<String>(keyTransposeMode);
+    }
+    if (!nullToAbsent || keyTranspose != null) {
+      map['key_transpose'] = Variable<int>(keyTranspose);
+    }
+    if (!nullToAbsent || keyCapoMode != null) {
+      map['key_capo_mode'] = Variable<String>(keyCapoMode);
+    }
+    if (!nullToAbsent || keyCapo != null) {
+      map['key_capo'] = Variable<int>(keyCapo);
+    }
+    if (!nullToAbsent || keyBaseTranspose != null) {
+      map['key_base_transpose'] = Variable<int>(keyBaseTranspose);
+    }
+    if (!nullToAbsent || keyBaseCapo != null) {
+      map['key_base_capo'] = Variable<int>(keyBaseCapo);
     }
     if (!nullToAbsent || baseContentVersion != null) {
       map['base_content_version'] = Variable<int>(baseContentVersion);
@@ -2971,6 +3290,24 @@ class CachedPlanningMutation extends DataClass
       baseVersion: baseVersion == null && nullToAbsent
           ? const Value.absent()
           : Value(baseVersion),
+      keyTransposeMode: keyTransposeMode == null && nullToAbsent
+          ? const Value.absent()
+          : Value(keyTransposeMode),
+      keyTranspose: keyTranspose == null && nullToAbsent
+          ? const Value.absent()
+          : Value(keyTranspose),
+      keyCapoMode: keyCapoMode == null && nullToAbsent
+          ? const Value.absent()
+          : Value(keyCapoMode),
+      keyCapo: keyCapo == null && nullToAbsent
+          ? const Value.absent()
+          : Value(keyCapo),
+      keyBaseTranspose: keyBaseTranspose == null && nullToAbsent
+          ? const Value.absent()
+          : Value(keyBaseTranspose),
+      keyBaseCapo: keyBaseCapo == null && nullToAbsent
+          ? const Value.absent()
+          : Value(keyBaseCapo),
       baseContentVersion: baseContentVersion == null && nullToAbsent
           ? const Value.absent()
           : Value(baseContentVersion),
@@ -3014,6 +3351,12 @@ class CachedPlanningMutation extends DataClass
         json['orderedSiblingIds'],
       ),
       baseVersion: serializer.fromJson<int?>(json['baseVersion']),
+      keyTransposeMode: serializer.fromJson<String?>(json['keyTransposeMode']),
+      keyTranspose: serializer.fromJson<int?>(json['keyTranspose']),
+      keyCapoMode: serializer.fromJson<String?>(json['keyCapoMode']),
+      keyCapo: serializer.fromJson<int?>(json['keyCapo']),
+      keyBaseTranspose: serializer.fromJson<int?>(json['keyBaseTranspose']),
+      keyBaseCapo: serializer.fromJson<int?>(json['keyBaseCapo']),
       baseContentVersion: serializer.fromJson<int?>(json['baseContentVersion']),
       originSnapshotJson: serializer.fromJson<String?>(
         json['originSnapshotJson'],
@@ -3046,6 +3389,12 @@ class CachedPlanningMutation extends DataClass
       'songTitle': serializer.toJson<String?>(songTitle),
       'orderedSiblingIds': serializer.toJson<String?>(orderedSiblingIds),
       'baseVersion': serializer.toJson<int?>(baseVersion),
+      'keyTransposeMode': serializer.toJson<String?>(keyTransposeMode),
+      'keyTranspose': serializer.toJson<int?>(keyTranspose),
+      'keyCapoMode': serializer.toJson<String?>(keyCapoMode),
+      'keyCapo': serializer.toJson<int?>(keyCapo),
+      'keyBaseTranspose': serializer.toJson<int?>(keyBaseTranspose),
+      'keyBaseCapo': serializer.toJson<int?>(keyBaseCapo),
       'baseContentVersion': serializer.toJson<int?>(baseContentVersion),
       'originSnapshotJson': serializer.toJson<String?>(originSnapshotJson),
       'errorCode': serializer.toJson<String?>(errorCode),
@@ -3074,6 +3423,12 @@ class CachedPlanningMutation extends DataClass
     Value<String?> songTitle = const Value.absent(),
     Value<String?> orderedSiblingIds = const Value.absent(),
     Value<int?> baseVersion = const Value.absent(),
+    Value<String?> keyTransposeMode = const Value.absent(),
+    Value<int?> keyTranspose = const Value.absent(),
+    Value<String?> keyCapoMode = const Value.absent(),
+    Value<int?> keyCapo = const Value.absent(),
+    Value<int?> keyBaseTranspose = const Value.absent(),
+    Value<int?> keyBaseCapo = const Value.absent(),
     Value<int?> baseContentVersion = const Value.absent(),
     Value<String?> originSnapshotJson = const Value.absent(),
     Value<String?> errorCode = const Value.absent(),
@@ -3101,6 +3456,16 @@ class CachedPlanningMutation extends DataClass
         ? orderedSiblingIds.value
         : this.orderedSiblingIds,
     baseVersion: baseVersion.present ? baseVersion.value : this.baseVersion,
+    keyTransposeMode: keyTransposeMode.present
+        ? keyTransposeMode.value
+        : this.keyTransposeMode,
+    keyTranspose: keyTranspose.present ? keyTranspose.value : this.keyTranspose,
+    keyCapoMode: keyCapoMode.present ? keyCapoMode.value : this.keyCapoMode,
+    keyCapo: keyCapo.present ? keyCapo.value : this.keyCapo,
+    keyBaseTranspose: keyBaseTranspose.present
+        ? keyBaseTranspose.value
+        : this.keyBaseTranspose,
+    keyBaseCapo: keyBaseCapo.present ? keyBaseCapo.value : this.keyBaseCapo,
     baseContentVersion: baseContentVersion.present
         ? baseContentVersion.value
         : this.baseContentVersion,
@@ -3152,6 +3517,22 @@ class CachedPlanningMutation extends DataClass
       baseVersion: data.baseVersion.present
           ? data.baseVersion.value
           : this.baseVersion,
+      keyTransposeMode: data.keyTransposeMode.present
+          ? data.keyTransposeMode.value
+          : this.keyTransposeMode,
+      keyTranspose: data.keyTranspose.present
+          ? data.keyTranspose.value
+          : this.keyTranspose,
+      keyCapoMode: data.keyCapoMode.present
+          ? data.keyCapoMode.value
+          : this.keyCapoMode,
+      keyCapo: data.keyCapo.present ? data.keyCapo.value : this.keyCapo,
+      keyBaseTranspose: data.keyBaseTranspose.present
+          ? data.keyBaseTranspose.value
+          : this.keyBaseTranspose,
+      keyBaseCapo: data.keyBaseCapo.present
+          ? data.keyBaseCapo.value
+          : this.keyBaseCapo,
       baseContentVersion: data.baseContentVersion.present
           ? data.baseContentVersion.value
           : this.baseContentVersion,
@@ -3190,6 +3571,12 @@ class CachedPlanningMutation extends DataClass
           ..write('songTitle: $songTitle, ')
           ..write('orderedSiblingIds: $orderedSiblingIds, ')
           ..write('baseVersion: $baseVersion, ')
+          ..write('keyTransposeMode: $keyTransposeMode, ')
+          ..write('keyTranspose: $keyTranspose, ')
+          ..write('keyCapoMode: $keyCapoMode, ')
+          ..write('keyCapo: $keyCapo, ')
+          ..write('keyBaseTranspose: $keyBaseTranspose, ')
+          ..write('keyBaseCapo: $keyBaseCapo, ')
           ..write('baseContentVersion: $baseContentVersion, ')
           ..write('originSnapshotJson: $originSnapshotJson, ')
           ..write('errorCode: $errorCode, ')
@@ -3220,6 +3607,12 @@ class CachedPlanningMutation extends DataClass
     songTitle,
     orderedSiblingIds,
     baseVersion,
+    keyTransposeMode,
+    keyTranspose,
+    keyCapoMode,
+    keyCapo,
+    keyBaseTranspose,
+    keyBaseCapo,
     baseContentVersion,
     originSnapshotJson,
     errorCode,
@@ -3249,6 +3642,12 @@ class CachedPlanningMutation extends DataClass
           other.songTitle == this.songTitle &&
           other.orderedSiblingIds == this.orderedSiblingIds &&
           other.baseVersion == this.baseVersion &&
+          other.keyTransposeMode == this.keyTransposeMode &&
+          other.keyTranspose == this.keyTranspose &&
+          other.keyCapoMode == this.keyCapoMode &&
+          other.keyCapo == this.keyCapo &&
+          other.keyBaseTranspose == this.keyBaseTranspose &&
+          other.keyBaseCapo == this.keyBaseCapo &&
           other.baseContentVersion == this.baseContentVersion &&
           other.originSnapshotJson == this.originSnapshotJson &&
           other.errorCode == this.errorCode &&
@@ -3277,6 +3676,12 @@ class CachedPlanningMutationsCompanion
   final Value<String?> songTitle;
   final Value<String?> orderedSiblingIds;
   final Value<int?> baseVersion;
+  final Value<String?> keyTransposeMode;
+  final Value<int?> keyTranspose;
+  final Value<String?> keyCapoMode;
+  final Value<int?> keyCapo;
+  final Value<int?> keyBaseTranspose;
+  final Value<int?> keyBaseCapo;
   final Value<int?> baseContentVersion;
   final Value<String?> originSnapshotJson;
   final Value<String?> errorCode;
@@ -3303,6 +3708,12 @@ class CachedPlanningMutationsCompanion
     this.songTitle = const Value.absent(),
     this.orderedSiblingIds = const Value.absent(),
     this.baseVersion = const Value.absent(),
+    this.keyTransposeMode = const Value.absent(),
+    this.keyTranspose = const Value.absent(),
+    this.keyCapoMode = const Value.absent(),
+    this.keyCapo = const Value.absent(),
+    this.keyBaseTranspose = const Value.absent(),
+    this.keyBaseCapo = const Value.absent(),
     this.baseContentVersion = const Value.absent(),
     this.originSnapshotJson = const Value.absent(),
     this.errorCode = const Value.absent(),
@@ -3330,6 +3741,12 @@ class CachedPlanningMutationsCompanion
     this.songTitle = const Value.absent(),
     this.orderedSiblingIds = const Value.absent(),
     this.baseVersion = const Value.absent(),
+    this.keyTransposeMode = const Value.absent(),
+    this.keyTranspose = const Value.absent(),
+    this.keyCapoMode = const Value.absent(),
+    this.keyCapo = const Value.absent(),
+    this.keyBaseTranspose = const Value.absent(),
+    this.keyBaseCapo = const Value.absent(),
     this.baseContentVersion = const Value.absent(),
     this.originSnapshotJson = const Value.absent(),
     this.errorCode = const Value.absent(),
@@ -3364,6 +3781,12 @@ class CachedPlanningMutationsCompanion
     Expression<String>? songTitle,
     Expression<String>? orderedSiblingIds,
     Expression<int>? baseVersion,
+    Expression<String>? keyTransposeMode,
+    Expression<int>? keyTranspose,
+    Expression<String>? keyCapoMode,
+    Expression<int>? keyCapo,
+    Expression<int>? keyBaseTranspose,
+    Expression<int>? keyBaseCapo,
     Expression<int>? baseContentVersion,
     Expression<String>? originSnapshotJson,
     Expression<String>? errorCode,
@@ -3391,6 +3814,12 @@ class CachedPlanningMutationsCompanion
       if (songTitle != null) 'song_title': songTitle,
       if (orderedSiblingIds != null) 'ordered_sibling_ids': orderedSiblingIds,
       if (baseVersion != null) 'base_version': baseVersion,
+      if (keyTransposeMode != null) 'key_transpose_mode': keyTransposeMode,
+      if (keyTranspose != null) 'key_transpose': keyTranspose,
+      if (keyCapoMode != null) 'key_capo_mode': keyCapoMode,
+      if (keyCapo != null) 'key_capo': keyCapo,
+      if (keyBaseTranspose != null) 'key_base_transpose': keyBaseTranspose,
+      if (keyBaseCapo != null) 'key_base_capo': keyBaseCapo,
       if (baseContentVersion != null)
         'base_content_version': baseContentVersion,
       if (originSnapshotJson != null)
@@ -3422,6 +3851,12 @@ class CachedPlanningMutationsCompanion
     Value<String?>? songTitle,
     Value<String?>? orderedSiblingIds,
     Value<int?>? baseVersion,
+    Value<String?>? keyTransposeMode,
+    Value<int?>? keyTranspose,
+    Value<String?>? keyCapoMode,
+    Value<int?>? keyCapo,
+    Value<int?>? keyBaseTranspose,
+    Value<int?>? keyBaseCapo,
     Value<int?>? baseContentVersion,
     Value<String?>? originSnapshotJson,
     Value<String?>? errorCode,
@@ -3449,6 +3884,12 @@ class CachedPlanningMutationsCompanion
       songTitle: songTitle ?? this.songTitle,
       orderedSiblingIds: orderedSiblingIds ?? this.orderedSiblingIds,
       baseVersion: baseVersion ?? this.baseVersion,
+      keyTransposeMode: keyTransposeMode ?? this.keyTransposeMode,
+      keyTranspose: keyTranspose ?? this.keyTranspose,
+      keyCapoMode: keyCapoMode ?? this.keyCapoMode,
+      keyCapo: keyCapo ?? this.keyCapo,
+      keyBaseTranspose: keyBaseTranspose ?? this.keyBaseTranspose,
+      keyBaseCapo: keyBaseCapo ?? this.keyBaseCapo,
       baseContentVersion: baseContentVersion ?? this.baseContentVersion,
       originSnapshotJson: originSnapshotJson ?? this.originSnapshotJson,
       errorCode: errorCode ?? this.errorCode,
@@ -3514,6 +3955,24 @@ class CachedPlanningMutationsCompanion
     if (baseVersion.present) {
       map['base_version'] = Variable<int>(baseVersion.value);
     }
+    if (keyTransposeMode.present) {
+      map['key_transpose_mode'] = Variable<String>(keyTransposeMode.value);
+    }
+    if (keyTranspose.present) {
+      map['key_transpose'] = Variable<int>(keyTranspose.value);
+    }
+    if (keyCapoMode.present) {
+      map['key_capo_mode'] = Variable<String>(keyCapoMode.value);
+    }
+    if (keyCapo.present) {
+      map['key_capo'] = Variable<int>(keyCapo.value);
+    }
+    if (keyBaseTranspose.present) {
+      map['key_base_transpose'] = Variable<int>(keyBaseTranspose.value);
+    }
+    if (keyBaseCapo.present) {
+      map['key_base_capo'] = Variable<int>(keyBaseCapo.value);
+    }
     if (baseContentVersion.present) {
       map['base_content_version'] = Variable<int>(baseContentVersion.value);
     }
@@ -3561,6 +4020,12 @@ class CachedPlanningMutationsCompanion
           ..write('songTitle: $songTitle, ')
           ..write('orderedSiblingIds: $orderedSiblingIds, ')
           ..write('baseVersion: $baseVersion, ')
+          ..write('keyTransposeMode: $keyTransposeMode, ')
+          ..write('keyTranspose: $keyTranspose, ')
+          ..write('keyCapoMode: $keyCapoMode, ')
+          ..write('keyCapo: $keyCapo, ')
+          ..write('keyBaseTranspose: $keyBaseTranspose, ')
+          ..write('keyBaseCapo: $keyBaseCapo, ')
           ..write('baseContentVersion: $baseContentVersion, ')
           ..write('originSnapshotJson: $originSnapshotJson, ')
           ..write('errorCode: $errorCode, ')
@@ -4457,6 +4922,9 @@ typedef $$CachedPlanningSessionItemsTableCreateCompanionBuilder =
       required int position,
       required String songId,
       required String songTitle,
+      Value<int> version,
+      Value<int?> transpose,
+      Value<int?> capo,
       Value<int> rowid,
     });
 typedef $$CachedPlanningSessionItemsTableUpdateCompanionBuilder =
@@ -4470,6 +4938,9 @@ typedef $$CachedPlanningSessionItemsTableUpdateCompanionBuilder =
       Value<int> position,
       Value<String> songId,
       Value<String> songTitle,
+      Value<int> version,
+      Value<int?> transpose,
+      Value<int?> capo,
       Value<int> rowid,
     });
 
@@ -4525,6 +4996,21 @@ class $$CachedPlanningSessionItemsTableFilterComposer
 
   ColumnFilters<String> get songTitle => $composableBuilder(
     column: $table.songTitle,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get transpose => $composableBuilder(
+    column: $table.transpose,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get capo => $composableBuilder(
+    column: $table.capo,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -4583,6 +5069,21 @@ class $$CachedPlanningSessionItemsTableOrderingComposer
     column: $table.songTitle,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get transpose => $composableBuilder(
+    column: $table.transpose,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get capo => $composableBuilder(
+    column: $table.capo,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$CachedPlanningSessionItemsTableAnnotationComposer
@@ -4627,6 +5128,15 @@ class $$CachedPlanningSessionItemsTableAnnotationComposer
 
   GeneratedColumn<String> get songTitle =>
       $composableBuilder(column: $table.songTitle, builder: (column) => column);
+
+  GeneratedColumn<int> get version =>
+      $composableBuilder(column: $table.version, builder: (column) => column);
+
+  GeneratedColumn<int> get transpose =>
+      $composableBuilder(column: $table.transpose, builder: (column) => column);
+
+  GeneratedColumn<int> get capo =>
+      $composableBuilder(column: $table.capo, builder: (column) => column);
 }
 
 class $$CachedPlanningSessionItemsTableTableManager
@@ -4684,6 +5194,9 @@ class $$CachedPlanningSessionItemsTableTableManager
                 Value<int> position = const Value.absent(),
                 Value<String> songId = const Value.absent(),
                 Value<String> songTitle = const Value.absent(),
+                Value<int> version = const Value.absent(),
+                Value<int?> transpose = const Value.absent(),
+                Value<int?> capo = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CachedPlanningSessionItemsCompanion(
                 userId: userId,
@@ -4695,6 +5208,9 @@ class $$CachedPlanningSessionItemsTableTableManager
                 position: position,
                 songId: songId,
                 songTitle: songTitle,
+                version: version,
+                transpose: transpose,
+                capo: capo,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -4708,6 +5224,9 @@ class $$CachedPlanningSessionItemsTableTableManager
                 required int position,
                 required String songId,
                 required String songTitle,
+                Value<int> version = const Value.absent(),
+                Value<int?> transpose = const Value.absent(),
+                Value<int?> capo = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CachedPlanningSessionItemsCompanion.insert(
                 userId: userId,
@@ -4719,6 +5238,9 @@ class $$CachedPlanningSessionItemsTableTableManager
                 position: position,
                 songId: songId,
                 songTitle: songTitle,
+                version: version,
+                transpose: transpose,
+                capo: capo,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -4769,6 +5291,12 @@ typedef $$CachedPlanningMutationsTableCreateCompanionBuilder =
       Value<String?> songTitle,
       Value<String?> orderedSiblingIds,
       Value<int?> baseVersion,
+      Value<String?> keyTransposeMode,
+      Value<int?> keyTranspose,
+      Value<String?> keyCapoMode,
+      Value<int?> keyCapo,
+      Value<int?> keyBaseTranspose,
+      Value<int?> keyBaseCapo,
       Value<int?> baseContentVersion,
       Value<String?> originSnapshotJson,
       Value<String?> errorCode,
@@ -4797,6 +5325,12 @@ typedef $$CachedPlanningMutationsTableUpdateCompanionBuilder =
       Value<String?> songTitle,
       Value<String?> orderedSiblingIds,
       Value<int?> baseVersion,
+      Value<String?> keyTransposeMode,
+      Value<int?> keyTranspose,
+      Value<String?> keyCapoMode,
+      Value<int?> keyCapo,
+      Value<int?> keyBaseTranspose,
+      Value<int?> keyBaseCapo,
       Value<int?> baseContentVersion,
       Value<String?> originSnapshotJson,
       Value<String?> errorCode,
@@ -4898,6 +5432,36 @@ class $$CachedPlanningMutationsTableFilterComposer
 
   ColumnFilters<int> get baseVersion => $composableBuilder(
     column: $table.baseVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get keyTransposeMode => $composableBuilder(
+    column: $table.keyTransposeMode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get keyTranspose => $composableBuilder(
+    column: $table.keyTranspose,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get keyCapoMode => $composableBuilder(
+    column: $table.keyCapoMode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get keyCapo => $composableBuilder(
+    column: $table.keyCapo,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get keyBaseTranspose => $composableBuilder(
+    column: $table.keyBaseTranspose,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get keyBaseCapo => $composableBuilder(
+    column: $table.keyBaseCapo,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -5031,6 +5595,36 @@ class $$CachedPlanningMutationsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get keyTransposeMode => $composableBuilder(
+    column: $table.keyTransposeMode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get keyTranspose => $composableBuilder(
+    column: $table.keyTranspose,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get keyCapoMode => $composableBuilder(
+    column: $table.keyCapoMode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get keyCapo => $composableBuilder(
+    column: $table.keyCapo,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get keyBaseTranspose => $composableBuilder(
+    column: $table.keyBaseTranspose,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get keyBaseCapo => $composableBuilder(
+    column: $table.keyBaseCapo,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get baseContentVersion => $composableBuilder(
     column: $table.baseContentVersion,
     builder: (column) => ColumnOrderings(column),
@@ -5145,6 +5739,34 @@ class $$CachedPlanningMutationsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get keyTransposeMode => $composableBuilder(
+    column: $table.keyTransposeMode,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get keyTranspose => $composableBuilder(
+    column: $table.keyTranspose,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get keyCapoMode => $composableBuilder(
+    column: $table.keyCapoMode,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get keyCapo =>
+      $composableBuilder(column: $table.keyCapo, builder: (column) => column);
+
+  GeneratedColumn<int> get keyBaseTranspose => $composableBuilder(
+    column: $table.keyBaseTranspose,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get keyBaseCapo => $composableBuilder(
+    column: $table.keyBaseCapo,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<int> get baseContentVersion => $composableBuilder(
     column: $table.baseContentVersion,
     builder: (column) => column,
@@ -5238,6 +5860,12 @@ class $$CachedPlanningMutationsTableTableManager
                 Value<String?> songTitle = const Value.absent(),
                 Value<String?> orderedSiblingIds = const Value.absent(),
                 Value<int?> baseVersion = const Value.absent(),
+                Value<String?> keyTransposeMode = const Value.absent(),
+                Value<int?> keyTranspose = const Value.absent(),
+                Value<String?> keyCapoMode = const Value.absent(),
+                Value<int?> keyCapo = const Value.absent(),
+                Value<int?> keyBaseTranspose = const Value.absent(),
+                Value<int?> keyBaseCapo = const Value.absent(),
                 Value<int?> baseContentVersion = const Value.absent(),
                 Value<String?> originSnapshotJson = const Value.absent(),
                 Value<String?> errorCode = const Value.absent(),
@@ -5264,6 +5892,12 @@ class $$CachedPlanningMutationsTableTableManager
                 songTitle: songTitle,
                 orderedSiblingIds: orderedSiblingIds,
                 baseVersion: baseVersion,
+                keyTransposeMode: keyTransposeMode,
+                keyTranspose: keyTranspose,
+                keyCapoMode: keyCapoMode,
+                keyCapo: keyCapo,
+                keyBaseTranspose: keyBaseTranspose,
+                keyBaseCapo: keyBaseCapo,
                 baseContentVersion: baseContentVersion,
                 originSnapshotJson: originSnapshotJson,
                 errorCode: errorCode,
@@ -5292,6 +5926,12 @@ class $$CachedPlanningMutationsTableTableManager
                 Value<String?> songTitle = const Value.absent(),
                 Value<String?> orderedSiblingIds = const Value.absent(),
                 Value<int?> baseVersion = const Value.absent(),
+                Value<String?> keyTransposeMode = const Value.absent(),
+                Value<int?> keyTranspose = const Value.absent(),
+                Value<String?> keyCapoMode = const Value.absent(),
+                Value<int?> keyCapo = const Value.absent(),
+                Value<int?> keyBaseTranspose = const Value.absent(),
+                Value<int?> keyBaseCapo = const Value.absent(),
                 Value<int?> baseContentVersion = const Value.absent(),
                 Value<String?> originSnapshotJson = const Value.absent(),
                 Value<String?> errorCode = const Value.absent(),
@@ -5318,6 +5958,12 @@ class $$CachedPlanningMutationsTableTableManager
                 songTitle: songTitle,
                 orderedSiblingIds: orderedSiblingIds,
                 baseVersion: baseVersion,
+                keyTransposeMode: keyTransposeMode,
+                keyTranspose: keyTranspose,
+                keyCapoMode: keyCapoMode,
+                keyCapo: keyCapo,
+                keyBaseTranspose: keyBaseTranspose,
+                keyBaseCapo: keyBaseCapo,
                 baseContentVersion: baseContentVersion,
                 originSnapshotJson: originSnapshotJson,
                 errorCode: errorCode,

@@ -1,8 +1,11 @@
 # Spec: Song Key Layers (S3)
 
 > Status: Accepted (2026-10-13, design gate approved). PR 1 (backend)
-> implemented on `feat/personal-settings-backend`; PR 2 and PR 3 not yet
-> (see "PR Boundaries"). Amends
+> merged as #94 (`603d69b`, 2026-10-14) and deployed to the hosted project;
+> PR 2 implemented on `feat/song-key-planning-client`
+> (`docs/plans/2026-10-14-song-key-planning-client.md`), PR 3
+> not yet (see "PR Boundaries"). PS14–PS16 refined on 2026-10-14 (base
+> values, the PS15 state rule, C11). Amends
 > `docs/specs/2026-04-01-session-scoped-plan-reader-navigation.md`
 > ("Reader-Local State Preservation"). The file keeps the slice's original
 > name, "personal song settings"; the brainstorm replaced the per-user
@@ -258,7 +261,9 @@ returns table (
   `sessionId` set. A separate aggregate type keeps the row apart from the
   item's own create and delete rows (the store keeps one row per
   `(userId, organizationId, aggregateType, aggregateId)`).
-- Payload: the mode and value per field. Recorded through
+- Payload: the mode and value per field, plus the **base values**: the
+  item's projection `transpose` and `capo` at the base version (PS15 needs
+  them). Recorded through
   `PlanningWriteService` → `BudgetedPlanningMutationStore`, a tenth
   budget-admitted `record*` method (ADR-028 D3 amended in PR 2). The store
   refuses an out-of-range value with an `ArgumentError` (a programming
@@ -271,11 +276,18 @@ returns table (
   later `keep` leaves it. The first captured base is kept (ADR-028 squash
   rule).
 - `bumpsPlanContent` is true, so the existing rule 1a and the pending plan
-  delete contiguity rebase (ADR-038 D4) apply.
+  delete contiguity rebase (ADR-038 D4) apply, but only to a response that
+  passes the PS15 own-write state rule. A no-op or foreign-state response
+  returns the CURRENT content version without a bump of this write, and that
+  value can include foreign bumps, so the client discards it: it never feeds
+  rule 1a or 1b (the projection lags and a stale plan delete conflicts, the
+  fail-safe direction).
 - **Interactions:**
   - The row is sent after the item's own pending create (order key).
   - Deleting the item locally drops a pending key-edit row that is not in
-    flight. One in flight is left to finish; the delete follows.
+    flight. One in flight is left to finish; the delete follows. When that
+    delete is accepted, a key-edit row of the item that has since ended
+    `conflict` or `failed*` is removed with it (a still in-flight one stays).
   - Collapsing a pending create drops its key-edit row.
   - An accepted session or plan delete removes the key-edit rows of its
     items, through the existing child-mutation cleanup, which must match the
@@ -284,14 +296,29 @@ returns table (
 **PS15. No self-conflict.**
 
 - **Reconcile after an accepted edit or a no-op success:** the projection's
-  item takes the returned `version`, `transpose` and `capo`, before the plan's
-  content version advances (I7). The next edit reads the new version.
-- **An edit made while the previous one was in flight** folds into the row
-  and resets it to pending. When the in-flight send is accepted, the row's
-  base moves to the returned item version only if the row's base still equals
-  the base that was sent: exact contiguity, a version the client's own write
-  produced (the ADR-038 D4 discipline). Anything else keeps the base, and a
-  stale base conflicts, the fail-safe direction.
+  item takes the returned `version`, `transpose` and `capo`: through the
+  post-sync refresh, or, when that refresh fails, through the reconciler, in
+  the same order as every other kind (rule 1a, then the reconcile). The next
+  edit reads the new version.
+- **An edit folded into a row whose previous content was in flight or
+  accepted but not yet cleared** resets the row to pending with the first
+  base. When the earlier send's response is applied, the row is rebased only
+  if the server state is provably the one the client's own write produced:
+  the returned version `R` equals the sent base `b` + 1, and the returned
+  `transpose` and `capo` equal the sent payload applied to the sent base
+  values. Then the row's base becomes `R` and its base values the returned
+  values. A plain version check (`R == b + 1`) is not enough, because a no-op
+  success (PS12 step 6) can return `b + 1` after a foreign write; the state
+  check makes such a case either identical to the client's own write (safe to
+  build on) or a visible conflict. Anything else keeps the base, and a stale
+  base conflicts, the fail-safe direction. The rule runs in
+  `applyAcceptedWriteEffects`, which the sync run calls right after the
+  response and again before the batch-end clear, and, for this kind, again
+  after the accept write or the clear misses its revision, so a fold landing
+  between any two awaits is covered; a crash-resumed `accepted` marker
+  carries no response and never rebases. The same state rule gates the
+  response's `plan_content_version`: a response that is not the client's own
+  write contributes no content version to D7 rules 1a and 1b.
 - **Inherited gap, accepted:** when a context switch skips the reconcile
   (`docs/deferred/2026-09-30-content-version-advance-on-context-switch.md`),
   the projection keeps the old item version. The next key edit on that item
@@ -302,7 +329,8 @@ returns table (
 
 - A conflicted key edit shows the plan row's existing recovery actions.
 - **Keep mine** rebases only from a visible `conflict`: the base becomes the
-  session item's `version` in the current projection. `_currentBaseVersionFor`
+  session item's `version` in the current projection, and the base values
+  its `transpose` and `capo`. `_currentBaseVersionFor`
   resolves `sessionItemKeyEdit` to that item, never to the session or the
   plan. This is the S5b session-rename defect (a lookup by the wrong id, so
   the retry never rebases and conflicts forever), which must not repeat here.
@@ -489,9 +517,9 @@ Contract tests (all calls as `authenticated` with the caller's claims):
     base and the merged fields;
   - **C3** a resend after a commit whose response was lost returns the no-op
     success and reconciles;
-  - **C4** an edit folded in while the previous send was in flight: the
-    accepted send moves the row's base by exact contiguity, and the next send
-    is accepted;
+  - **C4** an edit folded in while the previous send was in flight, and one
+    folded onto an accepted-but-uncleared row: the earlier response rebases
+    the row by the PS15 state rule, and the next send is accepted;
   - **C5** Keep mine: a conflicting key edit, then a refresh that shows a
     newer item version; the retry goes out with that version and is accepted;
   - **C6** a non-conflict retry resends the original base;
@@ -501,7 +529,12 @@ Contract tests (all calls as `authenticated` with the caller's claims):
     purge deletes it;
   - **C9** schema 7 → 8 upgrade keeps existing rows (version 1, null keys);
   - **C10** the context-switch reconcile gap is pinned as known behavior
-    (one visible false conflict), referencing S5b.
+    (one visible false conflict), referencing S5b;
+  - **C11** no rebase when the response is a no-op over a foreign write
+    (`R == b + 1` but a kept field differs from the sent base values): the
+    folded row keeps its base and its next send is a visible conflict; its
+  `plan_content_version` is discarded too, so a pending plan delete keeps its
+  base (no foreign write is absorbed).
 
 ### PR 3 — reader
 

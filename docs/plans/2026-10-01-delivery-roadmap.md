@@ -48,7 +48,10 @@
 > the session item and a temporary reader layer
 > (`docs/specs/2026-10-13-personal-song-settings.md`, ADR-042; see "S3 Scope
 > Change (2026-10-13)"). S4 builds the per-user personal layer itself. New
-> order: S3, then S5b, then S4. The open
+> order: S3, then S5b, then S4.
+> S3 PR 1 (backend) merged as #94 (`603d69b`, 2026-10-14); its migration
+> `202610130001` is deployed to the hosted project. S3 PR 2 (planning client)
+> is next. The open
 > deferred entries were triaged on
 > 2026-10-12 (see "Deferred Triage (2026-10-12)"): S6 is split into S6a and
 > S6b, and S6a runs right after S2. The

@@ -147,6 +147,12 @@ class _NoopPlanningMutationStore implements PlanningMutationStore {
   }) async {}
 
   @override
+  Future<void> recordSessionItemKeyEdit({
+    required PlanningMutationContext context,
+    required PlanningSessionItemKeyEditMutationDraft draft,
+  }) async {}
+
+  @override
   Future<List<PlanningMutationRecord>> readPendingMutations({
     required String userId,
     required String organizationId,

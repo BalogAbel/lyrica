@@ -5,6 +5,7 @@ import 'package:lyron_app/src/application/planning/drift_planning_mutation_store
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/planning/planning_write_service.dart';
+import 'package:lyron_app/src/application/planning/session_item_key_edit.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/domain/planning/planning_repository.dart';
@@ -538,6 +539,185 @@ void main() {
         expect(pending, isEmpty);
       },
     );
+
+    group('setSessionItemKey (S3 PR 2)', () {
+      test('records a key edit based on the merged item and syncs', () async {
+        await seedProjection();
+        final edit = SessionItemKeyEdit(
+          transposeMode: SessionItemKeyFieldMode.set,
+          transpose: 2,
+          capoMode: SessionItemKeyFieldMode.keep,
+        );
+
+        await service.setSessionItemKey(
+          context: context,
+          draft: SessionItemKeyDraft(
+            planId: 'plan-1',
+            sessionId: 'session-1',
+            sessionItemId: 'item-1',
+            edit: edit,
+          ),
+        );
+
+        final mutation = await mutationStore.readMutation(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType: PlanningMutationKind.sessionItemKeyEdit.aggregateType,
+          aggregateId: 'item-1',
+        );
+        expect(mutation?.kind, PlanningMutationKind.sessionItemKeyEdit);
+        expect(mutation?.planId, 'plan-1');
+        expect(mutation?.sessionId, 'session-1');
+        expect(mutation?.keyEdit, edit);
+        expect(mutation?.baseVersion, 1);
+        expect(mutation?.keyBaseTranspose, isNull);
+        expect(mutation?.keyBaseCapo, isNull);
+        expect(mutation?.originSnapshot?['id'], 'item-1');
+        expect(mutation?.originSnapshot?['songTitle'], 'Alpha');
+        expect(syncCalls, 1);
+      });
+
+      test('the base is the merged item version and key, not null', () async {
+        await localStore.replaceActiveProjection(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          plans: [
+            CachedPlanRecord(
+              id: 'plan-1',
+              slug: 'sunday-am',
+              name: 'Sunday AM',
+              description: null,
+              scheduledFor: null,
+              updatedAt: DateTime.utc(2026, 4, 1, 12),
+            ),
+          ],
+          sessions: const [
+            CachedSessionRecord(
+              id: 'session-1',
+              planId: 'plan-1',
+              slug: 'welcome',
+              position: 10,
+              name: 'Welcome',
+            ),
+          ],
+          items: const [
+            CachedSessionItemRecord(
+              id: 'item-1',
+              planId: 'plan-1',
+              sessionId: 'session-1',
+              position: 10,
+              songId: 'song-1',
+              songTitle: 'Alpha',
+              version: 3,
+              transpose: 2,
+              capo: 5,
+            ),
+          ],
+          refreshedAt: DateTime.utc(2026, 4, 1, 12),
+        );
+
+        await service.setSessionItemKey(
+          context: context,
+          draft: SessionItemKeyDraft(
+            planId: 'plan-1',
+            sessionId: 'session-1',
+            sessionItemId: 'item-1',
+            edit: SessionItemKeyEdit(
+              transposeMode: SessionItemKeyFieldMode.clear,
+              capoMode: SessionItemKeyFieldMode.keep,
+            ),
+          ),
+        );
+
+        final mutation = await mutationStore.readMutation(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType: PlanningMutationKind.sessionItemKeyEdit.aggregateType,
+          aggregateId: 'item-1',
+        );
+        expect(mutation?.baseVersion, 3);
+        expect(mutation?.keyBaseTranspose, 2);
+        expect(mutation?.keyBaseCapo, 5);
+      });
+
+      test('an item whose create is pending has base version 1', () async {
+        await seedProjection();
+        await service.addSongSessionItem(
+          context: context,
+          draft: const SessionItemCreateSongDraft(
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            songId: 'song-2',
+          ),
+        );
+
+        await service.setSessionItemKey(
+          context: context,
+          draft: SessionItemKeyDraft(
+            planId: 'plan-1',
+            sessionId: 'session-1',
+            sessionItemId: 'generated-id-1',
+            edit: SessionItemKeyEdit(
+              transposeMode: SessionItemKeyFieldMode.keep,
+              capoMode: SessionItemKeyFieldMode.set,
+              capo: 4,
+            ),
+          ),
+        );
+
+        final mutation = await mutationStore.readMutation(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType: PlanningMutationKind.sessionItemKeyEdit.aggregateType,
+          aggregateId: 'generated-id-1',
+        );
+        expect(mutation?.baseVersion, 1);
+        expect(mutation?.keyEdit?.capo, 4);
+      });
+
+      test(
+        'a deleted item is not in the merged read: nothing is recorded',
+        () async {
+          await seedProjection();
+          await service.deleteSessionItem(
+            context: context,
+            draft: const SessionItemDeleteDraft(
+              sessionItemId: 'item-1',
+              sessionId: 'session-1',
+              planId: 'plan-1',
+            ),
+          );
+          final syncsBefore = syncCalls;
+
+          await expectLater(
+            () => service.setSessionItemKey(
+              context: context,
+              draft: SessionItemKeyDraft(
+                planId: 'plan-1',
+                sessionId: 'session-1',
+                sessionItemId: 'item-1',
+                edit: SessionItemKeyEdit(
+                  transposeMode: SessionItemKeyFieldMode.set,
+                  transpose: 1,
+                  capoMode: SessionItemKeyFieldMode.keep,
+                ),
+              ),
+            ),
+            throwsStateError,
+          );
+
+          final mutation = await mutationStore.readMutation(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            aggregateType:
+                PlanningMutationKind.sessionItemKeyEdit.aggregateType,
+            aggregateId: 'item-1',
+          );
+          expect(mutation, isNull);
+          expect(syncCalls, syncsBefore);
+        },
+      );
+    });
   });
 
   group('PlanningWriteService plan delete and cascade', () {

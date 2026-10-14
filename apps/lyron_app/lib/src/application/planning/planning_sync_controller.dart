@@ -612,6 +612,9 @@ class PlanningSyncController extends ChangeNotifier {
               position: item.position,
               songId: item.songId,
               songTitle: item.songTitle,
+              version: item.version,
+              transpose: item.transpose,
+              capo: item.capo,
             ),
           )
           .toList(growable: false),
