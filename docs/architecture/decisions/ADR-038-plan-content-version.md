@@ -225,3 +225,24 @@ Follow-ups this slice created, each recorded under `docs/deferred/`:
   projection sits at the advanced value without the write until its next
   refresh. Found by review gate 4 (F6); narrow, and nothing foreign is
   absorbed.
+
+## Amendment: key edits (2026-10-13, S3)
+
+Spec: `docs/specs/2026-10-13-personal-song-settings.md` (PS10–PS13); ADR-042;
+migration `supabase/migrations/202610130001_session_item_key.sql`.
+
+`set_session_item_key` writes a song item's plan-level `transpose` and `capo`.
+
+- It is a child write. It locks the owning plan row first and bumps
+  `plans.content_version` (decision 1; I4 unchanged). A no-op (every affected
+  field already holds the requested value) writes and bumps nothing.
+- Its optimistic concurrency uses `session_items.version`, which no other RPC
+  bumps. Key edits on different items, and a key edit next to a structural
+  write in the same session, never conflict.
+- It does not bump `sessions.version`. A session's version covers its
+  structure (items added, removed, reordered) and its name; a key is not
+  structure. A session delete recorded from a view older than a key edit
+  therefore still succeeds, while a plan delete recorded from such a view
+  conflicts through `content_version`. Accepted: the deleting user removes
+  the items they saw, and the key edit added no content they did not see.
+- Lock order: plan, then item. It locks no session row.

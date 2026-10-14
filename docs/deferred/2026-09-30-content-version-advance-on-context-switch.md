@@ -120,3 +120,12 @@ same-context predicate that `shouldReconcileAcceptedMutation` uses.
 - Option (b) would create more stranded `accepted` rows.
 
 The S5b spec confirms or overrides this default.
+
+## Roadmap (2026-10-13)
+
+S3's new `sessionItemKeyEdit` mutation bumps the plan's `content_version` and
+reconciles the session item's `version`, so it inherits this gap: an accepted
+key edit whose reconcile is skipped by a context switch leaves the projection
+one version behind, and the next key edit on that item shows one visible false
+conflict (Keep mine resolves it). S5b, now scheduled right after S3, covers the
+new kind with the same rule (`docs/specs/2026-10-13-personal-song-settings.md`).

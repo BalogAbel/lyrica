@@ -40,6 +40,10 @@ planning_cascade_delete_test_script="${PLANNING_CASCADE_DELETE_TEST_SCRIPT:-./sc
 BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
   bash "$planning_cascade_delete_test_script"
 
+session_item_key_test_script="${SESSION_ITEM_KEY_TEST_SCRIPT:-./scripts/tests/session-item-key-contract-test.sh}"
+BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
+  bash "$session_item_key_test_script"
+
 BACKEND_WRITE_CONTRACTS_SKIP_BOOTSTRAP=1 \
   bash "$song_crud_write_contract_test_script"
 

@@ -52,8 +52,12 @@ Layout work only:
 
 ## Trigger
 
-S3 PR 2, which integrates the personal layer into the sync overview and so
-extends the popup (the roadmap lists the popup as a hotspot between S6a and S3
-PR 2), or a field report of an unreadable popup on a small phone.
+The slice that integrates the per-user personal layer into the sync overview
+and so extends the popup (S4 since 2026-10-13; it was S3 PR 2 before S3's
+scope change), or a field report of an unreadable popup on a small phone.
 
 Roadmap (2026-10-12): trigger-gated (S9); S3 PR 2 picks it up.
+
+Roadmap (2026-10-13): S3 PR 2 adds only a nested detail label to plan rows,
+which does not change the layout, so it does not pick this up. Trigger moved
+to S4's personal layer.

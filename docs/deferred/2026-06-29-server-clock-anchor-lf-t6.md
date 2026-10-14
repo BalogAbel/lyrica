@@ -64,3 +64,8 @@ The trigger is not met: planning still has no trusted server-time source. The
 new personal-layer sync (S3) orders writes and pulls by a server-assigned
 sequence, never by a device clock, so it does not widen this gap. This entry
 stays deferred.
+
+Correction (2026-10-13, S3 brainstorm): the personal layer moved to S4 and
+keeps the server-sequence design. S3's key edit is a planning mutation under
+OCC on the session item's `version`; it uses no device clock for ordering, so
+it does not widen this gap either.

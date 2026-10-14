@@ -125,3 +125,11 @@ The trigger is not met, and this entry stays deferred.
 - The new personal-layer sync (S3) is idempotent by design: its upserts are
   keyed by a client-generated UUID. It does not add another path with this
   failure shape.
+
+**Correction (2026-10-13, S3 brainstorm).** S3 no longer builds the personal
+layer (S4 does, with the idempotent design above). S3's
+`set_session_item_key` is an OCC write and has this entry's shape. Its RPC
+answers a resend whose field values already match with a no-op success
+(`docs/specs/2026-10-13-personal-song-settings.md`), so an abandoned but
+committed key edit does not come back as a false conflict. The trigger is
+still not met; the existing planning and song write RPCs are unchanged.
