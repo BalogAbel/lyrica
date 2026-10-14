@@ -216,6 +216,10 @@ class SupabasePlanningMutationRepository
         ),
         acceptedOwnKeyVersion: ownWrite ? returnedVersion : null,
         clearAcceptedOwnKeyVersion: !ownWrite,
+        // A no-op or foreign-state response returns the CURRENT content
+        // version without a bump of this write; it can include foreign bumps.
+        // Only an own write's value may feed D7 rules 1a / 1b (ADR-038 D4).
+        clearAcceptedPlanContentVersion: !ownWrite,
       );
     }
     return mapped;

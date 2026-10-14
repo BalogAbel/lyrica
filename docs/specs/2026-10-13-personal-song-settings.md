@@ -276,11 +276,18 @@ returns table (
   later `keep` leaves it. The first captured base is kept (ADR-028 squash
   rule).
 - `bumpsPlanContent` is true, so the existing rule 1a and the pending plan
-  delete contiguity rebase (ADR-038 D4) apply.
+  delete contiguity rebase (ADR-038 D4) apply, but only to a response that
+  passes the PS15 own-write state rule. A no-op or foreign-state response
+  returns the CURRENT content version without a bump of this write, and that
+  value can include foreign bumps, so the client discards it: it never feeds
+  rule 1a or 1b (the projection lags and a stale plan delete conflicts, the
+  fail-safe direction).
 - **Interactions:**
   - The row is sent after the item's own pending create (order key).
   - Deleting the item locally drops a pending key-edit row that is not in
-    flight. One in flight is left to finish; the delete follows.
+    flight. One in flight is left to finish; the delete follows. When that
+    delete is accepted, a key-edit row of the item that has since ended
+    `conflict` or `failed*` is removed with it (a still in-flight one stays).
   - Collapsing a pending create drops its key-edit row.
   - An accepted session or plan delete removes the key-edit rows of its
     items, through the existing child-mutation cleanup, which must match the
@@ -309,7 +316,9 @@ returns table (
   response and again before the batch-end clear, and, for this kind, again
   after the accept write or the clear misses its revision, so a fold landing
   between any two awaits is covered; a crash-resumed `accepted` marker
-  carries no response and never rebases.
+  carries no response and never rebases. The same state rule gates the
+  response's `plan_content_version`: a response that is not the client's own
+  write contributes no content version to D7 rules 1a and 1b.
 - **Inherited gap, accepted:** when a context switch skips the reconcile
   (`docs/deferred/2026-09-30-content-version-advance-on-context-switch.md`),
   the projection keeps the old item version. The next key edit on that item
@@ -523,7 +532,9 @@ Contract tests (all calls as `authenticated` with the caller's claims):
     (one visible false conflict), referencing S5b;
   - **C11** no rebase when the response is a no-op over a foreign write
     (`R == b + 1` but a kept field differs from the sent base values): the
-    folded row keeps its base and its next send is a visible conflict.
+    folded row keeps its base and its next send is a visible conflict; its
+  `plan_content_version` is discarded too, so a pending plan delete keeps its
+  base (no foreign write is absorbed).
 
 ### PR 3 — reader
 

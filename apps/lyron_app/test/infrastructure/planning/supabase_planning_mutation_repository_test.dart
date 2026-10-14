@@ -788,6 +788,20 @@ void main() {
       expect(result.keyEdit!.capoMode, SessionItemKeyFieldMode.set);
       expect(result.keyEdit!.capo, 5);
       expect(result.acceptedOwnKeyVersion, isNull);
+      // A no-op success returns the CURRENT content version, which can hold
+      // foreign bumps: it must not feed D7 rules 1a / 1b.
+      expect(result.acceptedPlanContentVersion, isNull);
+    });
+
+    test('a foreign transpose on a +1 version (capo matches) is not an own '
+        'write and discards the content version', () async {
+      final result = await syncWith(
+        response(version: 2, transpose: 4, capo: null),
+      );
+
+      expect(result.baseVersion, 2);
+      expect(result.acceptedOwnKeyVersion, isNull);
+      expect(result.acceptedPlanContentVersion, isNull);
     });
 
     test('a no-op at the current base is not an own write', () async {
@@ -795,6 +809,7 @@ void main() {
 
       expect(result.baseVersion, 1);
       expect(result.acceptedOwnKeyVersion, isNull);
+      expect(result.acceptedPlanContentVersion, isNull);
     });
 
     Future<void> expectErrorCode(

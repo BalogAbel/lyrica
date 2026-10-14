@@ -614,6 +614,178 @@ void main() {
     expect((await keyRow())!.syncStatus, PlanningMutationSyncStatus.conflict);
   });
 
+  Future<PlanningMutationRecord?> planDeleteRow() => store.readMutation(
+    userId: 'user-1',
+    organizationId: 'org-1',
+    aggregateType: 'plan',
+    aggregateId: 'plan-1',
+  );
+
+  Future<int?> projectedContentVersion() async {
+    final detail = await localStore.readPlanDetail(
+      userId: 'user-1',
+      organizationId: 'org-1',
+      planId: 'plan-1',
+    );
+    return detail!.plan.contentVersion;
+  }
+
+  test('a no-op success over a foreign write does not feed the content '
+      'version to a pending plan delete (rule 1b): the stale delete keeps '
+      'its base and cannot absorb the foreign write', () async {
+    await editKey(transposeTo(2));
+    final gate = server.armGate();
+    final run = sync();
+    await gate.entered.future;
+
+    // A foreign device wrote the same item (transpose 2, capo 5): content
+    // 3 -> 4. The user, who never saw it, deletes the plan from content 3.
+    server.foreignWrite(transpose: 2, capo: 5);
+    await store.recordPlanDelete(
+      context: context,
+      draft: const PlanningPlanDeleteMutationDraft(
+        planId: 'plan-1',
+        baseVersion: 2,
+        baseContentVersion: 3,
+      ),
+    );
+
+    gate.release.complete();
+    await run;
+
+    expect(
+      (await planDeleteRow())!.baseContentVersion,
+      3,
+      reason:
+          'the no-op response carries the CURRENT content version (4), '
+          'which includes the foreign bump: it must not move the base',
+    );
+  });
+
+  test('a no-op success does not advance the projection content version '
+      '(rule 1a) when the post-sync refresh fails', () async {
+    refresh = () async => false;
+    // A foreign write ELSEWHERE in the plan moved the content version.
+    server.contentVersion += 1;
+    await editKey(
+      SessionItemKeyEdit(
+        transposeMode: SessionItemKeyFieldMode.clear,
+        capoMode: SessionItemKeyFieldMode.keep,
+      ),
+    );
+
+    await sync();
+
+    expect(server.sends.single.baseVersion, 1);
+    expect(server.version, 1, reason: 'a no-op: nothing was written');
+    expect(
+      await projectedContentVersion(),
+      3,
+      reason: 'the projection must not lead the content it reflects',
+    );
+  });
+
+  test('an OWN-write key edit still rebases a pending plan delete to the '
+      'returned content version (rule 1b guard)', () async {
+    await editKey(transposeTo(2));
+    final gate = server.armGate();
+    final run = sync();
+    await gate.entered.future;
+    await store.recordPlanDelete(
+      context: context,
+      draft: const PlanningPlanDeleteMutationDraft(
+        planId: 'plan-1',
+        baseVersion: 2,
+        baseContentVersion: 3,
+      ),
+    );
+
+    gate.release.complete();
+    await run;
+
+    expect(server.contentVersion, 4);
+    expect((await planDeleteRow())!.baseContentVersion, 4);
+  });
+
+  Future<void> recordItemDelete() => store.recordSessionItemDelete(
+    context: context,
+    draft: const PlanningSessionItemDeleteMutationDraft(
+      sessionItemId: 'item-1',
+      sessionId: 'session-1',
+      planId: 'plan-1',
+      baseVersion: 2,
+    ),
+  );
+
+  Future<void> applyItemDeleteAccepted() async {
+    final deleteRow = await store.readMutation(
+      userId: 'user-1',
+      organizationId: 'org-1',
+      aggregateType: 'session_item',
+      aggregateId: 'item-1',
+    );
+    await store.applyAcceptedWriteEffects(
+      userId: 'user-1',
+      organizationId: 'org-1',
+      accepted: deleteRow!,
+      remoteResponse: true,
+    );
+  }
+
+  test(
+    'an accepted item delete purges the conflicted key edit that '
+    'outlived the delete (it was in flight when the item was deleted)',
+    () async {
+      await editKey(transposeTo(2));
+      final sendingRevision = await store.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'session_item_key',
+        aggregateId: 'item-1',
+        syncStatus: PlanningMutationSyncStatus.sending,
+        expectedRevision: (await keyRow())!.localRevision,
+      );
+      await recordItemDelete();
+      expect(
+        (await keyRow())!.syncStatus,
+        PlanningMutationSyncStatus.sending,
+        reason: 'in flight: spared by the delete itself',
+      );
+      await store.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'session_item_key',
+        aggregateId: 'item-1',
+        syncStatus: PlanningMutationSyncStatus.conflict,
+        errorCode: PlanningMutationSyncErrorCode.conflict,
+        expectedRevision: sendingRevision,
+      );
+      expect((await keyRow())!.syncStatus, PlanningMutationSyncStatus.conflict);
+
+      await applyItemDeleteAccepted();
+
+      expect(await keyRow(), isNull);
+    },
+  );
+
+  test('an accepted item delete keeps a key edit of the same item that is '
+      'still in flight', () async {
+    await editKey(transposeTo(2));
+    await store.saveSyncAttemptResult(
+      userId: 'user-1',
+      organizationId: 'org-1',
+      aggregateType: 'session_item_key',
+      aggregateId: 'item-1',
+      syncStatus: PlanningMutationSyncStatus.sending,
+      expectedRevision: (await keyRow())!.localRevision,
+    );
+    await recordItemDelete();
+
+    await applyItemDeleteAccepted();
+
+    expect((await keyRow())!.syncStatus, PlanningMutationSyncStatus.sending);
+  });
+
   test('C10 (inherited gap, '
       'docs/deferred/2026-09-30-content-version-advance-on-context-switch.md): '
       'an accepted key edit whose reconcile a context switch skips leaves the '

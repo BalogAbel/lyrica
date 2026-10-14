@@ -246,3 +246,11 @@ migration `supabase/migrations/202610130001_session_item_key.sql`.
   conflicts through `content_version`. Accepted: the deleting user removes
   the items they saw, and the key edit added no content they did not see.
 - Lock order: plan, then item. It locks no session row.
+- Client rule (S3 PR 2): a no-op success returns the CURRENT
+  `content_version` and bumps nothing, so the value can include foreign
+  bumps. The client feeds a key edit's `plan_content_version` to rules 1a and
+  1b (D4 contiguity) only when the response is provably its own write (the
+  returned item version is the sent base + 1 and the key state equals the
+  sent edit applied to the sent base values, PS15). Any other response's
+  content version is discarded: the projection lags and a stale plan delete
+  conflicts, the fail-safe direction.

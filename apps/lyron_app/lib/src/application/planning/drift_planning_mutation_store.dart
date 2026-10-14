@@ -1451,6 +1451,19 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
             await _rebaseFoldedKeyEdit(context: context, accepted: accepted) ||
             changed;
       }
+      if (accepted.kind == PlanningMutationKind.sessionItemDelete) {
+        // A key edit spared because it was in flight when the item was
+        // deleted can end conflicted or failed; with the item gone it is an
+        // orphan. Still-in-flight rows stay (not gated on remoteResponse,
+        // like the cascade purges below).
+        changed =
+            await _deleteKeyEditUnlessInFlight(
+                  context: context,
+                  sessionItemId: accepted.aggregateId,
+                ) >
+                0 ||
+            changed;
+      }
       if (accepted.kind == PlanningMutationKind.planDelete) {
         changed =
             await _deleteChildMutationsOfPlan(
@@ -2035,12 +2048,12 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
   /// C7: a key edit of an item that is deleted or whose create is cancelled
   /// must never be sent. An in-flight row (`sending`/`accepted`) is left to
   /// conclude on its own.
-  Future<void> _deleteKeyEditUnlessInFlight({
+  Future<int> _deleteKeyEditUnlessInFlight({
     required PlanningMutationContext context,
     required String sessionItemId,
   }) async {
     final table = _database.cachedPlanningMutations;
-    await (_database.delete(table)..where(
+    return (_database.delete(table)..where(
           (row) =>
               row.userId.equals(context.userId) &
               row.organizationId.equals(context.organizationId) &
