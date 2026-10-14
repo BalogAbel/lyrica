@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/planning/session_item_key_edit.dart';
 import 'package:lyron_app/src/infrastructure/planning/supabase_planning_mutation_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -685,6 +686,172 @@ void main() {
       'p_organization_id': 'org-1',
       'p_session_id': 'session-1',
       'p_base_version': 4,
+    });
+  });
+
+  group('sessionItemKeyEdit', () {
+    PlanningMutationRecord keyRecord({int baseVersion = 1}) =>
+        PlanningMutationRecord(
+          aggregateId: 'item-1',
+          organizationId: 'org-1',
+          sessionId: 'session-1',
+          kind: PlanningMutationKind.sessionItemKeyEdit,
+          syncStatus: PlanningMutationSyncStatus.pending,
+          orderKey: 1,
+          updatedAt: DateTime.utc(2026),
+          baseVersion: baseVersion,
+          keyEdit: SessionItemKeyEdit(
+            transposeMode: SessionItemKeyFieldMode.set,
+            transpose: 3,
+            capoMode: SessionItemKeyFieldMode.keep,
+          ),
+        );
+
+    Future<PlanningMutationRecord> syncWith(
+      Map<String, dynamic> response, {
+      PlanningMutationRecord? record,
+      void Function(String name, Map<String, dynamic> params)? onCall,
+    }) {
+      final repository = SupabasePlanningMutationRepository.testing(
+        rpc: (name, {params}) async {
+          onCall?.call(name, params ?? const {});
+          return response;
+        },
+      );
+      return repository.syncMutation(
+        organizationId: 'org-1',
+        record: record ?? keyRecord(),
+      );
+    }
+
+    Map<String, dynamic> response({
+      required int version,
+      int? transpose,
+      int? capo,
+    }) => {
+      'id': 'item-1',
+      'plan_id': 'plan-1',
+      'session_id': 'session-1',
+      'organization_id': 'org-1',
+      'version': version,
+      'transpose': transpose,
+      'capo': capo,
+      'plan_content_version': 9,
+    };
+
+    test('sends set_session_item_key with exactly the eight params', () async {
+      late String rpcName;
+      late Map<String, dynamic> rpcParams;
+      await syncWith(
+        response(version: 2, transpose: 3),
+        onCall: (name, params) {
+          rpcName = name;
+          rpcParams = params;
+        },
+      );
+
+      expect(rpcName, 'set_session_item_key');
+      expect(rpcParams, {
+        'p_organization_id': 'org-1',
+        'p_session_id': 'session-1',
+        'p_session_item_id': 'item-1',
+        'p_base_version': 1,
+        'p_transpose_mode': 'set',
+        'p_transpose': 3,
+        'p_capo_mode': 'keep',
+        'p_capo': null,
+      });
+    });
+
+    test('maps an own write to the server key state and own version', () async {
+      final result = await syncWith(response(version: 2, transpose: 3));
+
+      expect(result.baseVersion, 2);
+      expect(
+        result.keyEdit,
+        SessionItemKeyEdit(
+          transposeMode: SessionItemKeyFieldMode.set,
+          transpose: 3,
+          capoMode: SessionItemKeyFieldMode.clear,
+        ),
+      );
+      expect(result.acceptedPlanContentVersion, 9);
+      expect(result.acceptedOwnKeyVersion, 2);
+    });
+
+    test('C11: a foreign capo on a +1 version is not an own write', () async {
+      final result = await syncWith(response(version: 2, transpose: 3, capo: 5));
+
+      expect(result.baseVersion, 2);
+      expect(result.keyEdit!.capoMode, SessionItemKeyFieldMode.set);
+      expect(result.keyEdit!.capo, 5);
+      expect(result.acceptedOwnKeyVersion, isNull);
+    });
+
+    test('a no-op at the current base is not an own write', () async {
+      final result = await syncWith(response(version: 1, transpose: 3));
+
+      expect(result.baseVersion, 1);
+      expect(result.acceptedOwnKeyVersion, isNull);
+    });
+
+    Future<void> expectErrorCode(
+      PostgrestException error,
+      PlanningMutationSyncErrorCode code,
+    ) async {
+      final repository = SupabasePlanningMutationRepository.testing(
+        rpc: (name, {params}) async => throw error,
+      );
+      await expectLater(
+        () => repository.syncMutation(
+          organizationId: 'org-1',
+          record: keyRecord(),
+        ),
+        throwsA(
+          isA<PlanningMutationSyncException>().having(
+            (e) => e.code,
+            'code',
+            code,
+          ),
+        ),
+      );
+    }
+
+    test('maps session_item_version_conflict to conflict', () {
+      return expectErrorCode(
+        const PostgrestException(
+          message: 'session_item_version_conflict',
+          code: 'P0001',
+        ),
+        PlanningMutationSyncErrorCode.conflict,
+      );
+    });
+
+    test('maps session_item_not_found to remoteMissing', () {
+      return expectErrorCode(
+        const PostgrestException(
+          message: 'session_item_not_found',
+          code: 'P0002',
+        ),
+        PlanningMutationSyncErrorCode.remoteMissing,
+      );
+    });
+
+    test('maps session_not_found to remoteMissing', () {
+      return expectErrorCode(
+        const PostgrestException(message: 'session_not_found', code: 'P0002'),
+        PlanningMutationSyncErrorCode.remoteMissing,
+      );
+    });
+
+    test('maps invalid_session_item_key to unknown', () {
+      return expectErrorCode(
+        const PostgrestException(
+          message: 'invalid_session_item_key',
+          code: '22023',
+        ),
+        PlanningMutationSyncErrorCode.unknown,
+      );
     });
   });
 }
