@@ -243,6 +243,7 @@ class PlanningLocalReadRepository implements PlanningRepository {
         case PlanningMutationKind.sessionItemCreateSong:
         case PlanningMutationKind.sessionItemDelete:
         case PlanningMutationKind.sessionItemReorder:
+        case PlanningMutationKind.sessionItemKeyEdit:
           break;
       }
     }
@@ -428,6 +429,9 @@ class PlanningLocalReadRepository implements PlanningRepository {
               );
             }
             itemsBySessionId[sessionId] = reordered;
+          case PlanningMutationKind.sessionItemKeyEdit:
+            // PLACEHOLDER (S3 PR 2 Task 2): the key overlay is Task 5.
+            break;
           case PlanningMutationKind.planCreate:
           case PlanningMutationKind.planEdit:
           case PlanningMutationKind.planDelete:

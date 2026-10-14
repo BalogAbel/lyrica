@@ -449,5 +449,6 @@ String _nestedSummaryFor(PlanningMutationRecord entry) {
     PlanningMutationKind.sessionItemCreateSong => 'song added',
     PlanningMutationKind.sessionItemDelete => 'song removed',
     PlanningMutationKind.sessionItemReorder => 'song order changed',
+    PlanningMutationKind.sessionItemKeyEdit => 'song key changed',
   };
 }

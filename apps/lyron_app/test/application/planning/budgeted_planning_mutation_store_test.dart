@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/planning/budgeted_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/drift_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/planning/session_item_key_edit.dart';
 import 'package:lyron_app/src/application/storage/catalog_storage_accountant.dart';
 import 'package:lyron_app/src/application/storage/local_storage_budget.dart';
 import 'package:lyron_app/src/application/storage/local_storage_write_failure.dart';
@@ -85,6 +86,67 @@ void main() {
           organizationId: context.organizationId,
         ),
         hasLength(1),
+      );
+    });
+
+    test('a session item key edit is admitted below the budget and refused '
+        'at an exhausted one', () async {
+      final keyDraft = PlanningSessionItemKeyEditMutationDraft(
+        sessionItemId: 'item-1',
+        sessionId: 'session-1',
+        planId: 'plan-1',
+        edit: SessionItemKeyEdit(
+          transposeMode: SessionItemKeyFieldMode.set,
+          transpose: 2,
+          capoMode: SessionItemKeyFieldMode.keep,
+        ),
+        baseVersion: 1,
+        baseTranspose: null,
+        baseCapo: null,
+      );
+      final permissive = storeWithBudget(
+        const LocalStorageBudget(mutationRefuseBytes: 1000000),
+      );
+      await permissive.recordPlanCreate(
+        context: context,
+        draft: const PlanningPlanCreateMutationDraft(
+          planId: 'plan-1',
+          slug: 'weekend-service',
+          name: 'Weekend Service',
+        ),
+      );
+
+      await permissive.recordSessionItemKeyEdit(
+        context: context,
+        draft: keyDraft,
+      );
+      expect(
+        await permissive.readMutation(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          aggregateType: 'session_item_key',
+          aggregateId: 'item-1',
+        ),
+        isNotNull,
+      );
+
+      final exhausted = storeWithBudget(
+        const LocalStorageBudget(mutationRefuseBytes: 1),
+      );
+      await expectLater(
+        () => exhausted.recordSessionItemKeyEdit(
+          context: context,
+          draft: PlanningSessionItemKeyEditMutationDraft(
+            sessionItemId: 'item-2',
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            edit: keyDraft.edit,
+            baseVersion: 1,
+            baseTranspose: null,
+            baseCapo: null,
+          ),
+        ),
+        throwsA(isA<PlanningMutationBudgetExceededException>()),
       );
     });
 
@@ -1106,6 +1168,12 @@ class _ReentrantPlanningMutationStore implements PlanningMutationStore {
   }) => throw UnimplementedError();
 
   @override
+  Future<void> recordSessionItemKeyEdit({
+    required PlanningMutationContext context,
+    required PlanningSessionItemKeyEditMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
   Future<List<PlanningMutationRecord>> readPendingMutations({
     required String userId,
     required String organizationId,
@@ -1271,6 +1339,12 @@ class _HookedPlanningMutationStore implements PlanningMutationStore {
   Future<void> recordSessionItemReorder({
     required PlanningMutationContext context,
     required PlanningSessionItemReorderMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> recordSessionItemKeyEdit({
+    required PlanningMutationContext context,
+    required PlanningSessionItemKeyEditMutationDraft draft,
   }) => throw UnimplementedError();
 
   @override
@@ -1737,6 +1811,12 @@ class _CollapseRaceMutationStore implements PlanningMutationStore {
   Future<void> recordSessionItemReorder({
     required PlanningMutationContext context,
     required PlanningSessionItemReorderMutationDraft draft,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<void> recordSessionItemKeyEdit({
+    required PlanningMutationContext context,
+    required PlanningSessionItemKeyEditMutationDraft draft,
   }) => throw UnimplementedError();
 
   @override

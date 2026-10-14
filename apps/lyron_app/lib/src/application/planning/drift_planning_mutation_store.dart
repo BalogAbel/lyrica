@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:collection/collection.dart';
 import 'package:drift/drift.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/planning/session_item_key_edit.dart';
 import 'package:lyron_app/src/application/storage/local_storage_footprint_revision.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
@@ -751,6 +752,10 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
           sessionId: draft.sessionId,
           sessionItemId: draft.sessionItemId,
         );
+        await _deleteKeyEditUnlessInFlight(
+          context: context,
+          sessionItemId: draft.sessionItemId,
+        );
         return;
       }
 
@@ -778,6 +783,10 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       await _removeSessionItemFromPendingReorder(
         context: context,
         sessionId: draft.sessionId,
+        sessionItemId: draft.sessionItemId,
+      );
+      await _deleteKeyEditUnlessInFlight(
+        context: context,
         sessionItemId: draft.sessionItemId,
       );
     });
@@ -817,6 +826,57 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
           baseVersion: existing?.baseVersion ?? draft.baseVersion,
           originSnapshot: existing?.originSnapshot ?? draft.originSnapshot,
         ),
+      );
+    });
+    _onStorageFootprintChanged?.call();
+  }
+
+  @override
+  Future<void> recordSessionItemKeyEdit({
+    required PlanningMutationContext context,
+    required PlanningSessionItemKeyEditMutationDraft draft,
+  }) async {
+    await _database.transaction(() async {
+      final existing = await _readMutationByKey(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        aggregateType: 'session_item_key',
+        aggregateId: draft.sessionItemId,
+      );
+      final record = existing == null
+          ? PlanningMutationRecord(
+              aggregateId: draft.sessionItemId,
+              organizationId: context.organizationId,
+              planId: draft.planId,
+              sessionId: draft.sessionId,
+              kind: PlanningMutationKind.sessionItemKeyEdit,
+              syncStatus: PlanningMutationSyncStatus.pending,
+              orderKey: await _nextOrderKey(
+                userId: context.userId,
+                organizationId: context.organizationId,
+              ),
+              updatedAt: DateTime.now().toUtc(),
+              baseVersion: draft.baseVersion,
+              keyEdit: draft.edit,
+              keyBaseTranspose: draft.baseTranspose,
+              keyBaseCapo: draft.baseCapo,
+              originSnapshot: draft.originSnapshot,
+            )
+          // PS14: fold. First base and base values kept (ADR-028 squash
+          // rule); any status returns to pending, which also makes an
+          // in-flight send's accept write miss its revision (ADR-030 D3)
+          // and leaves the row for the PS15 rebase.
+          : existing.copyWith(
+              keyEdit: draft.edit.foldOnto(existing.keyEdit!),
+              syncStatus: PlanningMutationSyncStatus.pending,
+              updatedAt: DateTime.now().toUtc(),
+              clearErrorCode: true,
+              clearErrorMessage: true,
+            );
+      await _upsertRecord(
+        context: context,
+        aggregateType: 'session_item_key',
+        record: record,
       );
     });
     _onStorageFootprintChanged?.call();
@@ -1237,6 +1297,17 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
                   table.aggregateId.equals(aggregateId),
             ))
             .go();
+        // C7: the item never existed remotely, so a key edit of it must
+        // not be sent either (an in-flight one is left to conclude).
+        if (aggregateType == 'session_item') {
+          await _deleteKeyEditUnlessInFlight(
+            context: PlanningMutationContext(
+              userId: userId,
+              organizationId: organizationId,
+            ),
+            sessionItemId: aggregateId,
+          );
+        }
         // Spec D5(b): a plan whose create never reached the backend has no
         // children there either; drop every child row left behind.
         if (existing.kind == PlanningMutationKind.planCreate) {
@@ -1501,6 +1572,12 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
             ),
             baseVersion: Value(record.baseVersion),
             baseContentVersion: Value(record.baseContentVersion),
+            keyTransposeMode: Value(record.keyEdit?.transposeMode.value),
+            keyTranspose: Value(record.keyEdit?.transpose),
+            keyCapoMode: Value(record.keyEdit?.capoMode.value),
+            keyCapo: Value(record.keyEdit?.capo),
+            keyBaseTranspose: Value(record.keyBaseTranspose),
+            keyBaseCapo: Value(record.keyBaseCapo),
             originSnapshotJson: Value(_encodeJsonValue(record.originSnapshot)),
             errorCode: Value(record.errorCode?.name),
             errorMessage: Value(record.errorMessage),
@@ -1539,6 +1616,12 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
             _encodeJsonValue(record.orderedSiblingIds) &&
         existing.baseVersion == record.baseVersion &&
         existing.baseContentVersion == record.baseContentVersion &&
+        existing.keyTransposeMode == record.keyEdit?.transposeMode.value &&
+        existing.keyTranspose == record.keyEdit?.transpose &&
+        existing.keyCapoMode == record.keyEdit?.capoMode.value &&
+        existing.keyCapo == record.keyEdit?.capo &&
+        existing.keyBaseTranspose == record.keyBaseTranspose &&
+        existing.keyBaseCapo == record.keyBaseCapo &&
         existing.originSnapshotJson ==
             _encodeJsonValue(record.originSnapshot) &&
         existing.errorCode == record.errorCode?.name &&
@@ -1688,6 +1771,9 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       orderedSiblingIds: _orderedSiblingIdsFromValue(row.orderedSiblingIds),
       baseVersion: row.baseVersion,
       baseContentVersion: row.baseContentVersion,
+      keyEdit: _keyEditFromRow(row),
+      keyBaseTranspose: row.keyBaseTranspose,
+      keyBaseCapo: row.keyBaseCapo,
       originSnapshot: _originSnapshotFromValue(row.originSnapshotJson),
       errorCode: _errorCodeFromValue(row.errorCode),
       errorMessage: row.errorMessage,
@@ -1696,6 +1782,20 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       orderKey: row.orderKey,
       updatedAt: row.updatedAt.toUtc(),
       localRevision: row.localRevision,
+    );
+  }
+
+  SessionItemKeyEdit? _keyEditFromRow(CachedPlanningMutation row) {
+    final transposeMode = row.keyTransposeMode;
+    final capoMode = row.keyCapoMode;
+    if (transposeMode == null || capoMode == null) {
+      return null;
+    }
+    return SessionItemKeyEdit(
+      transposeMode: sessionItemKeyFieldModeFromValue(transposeMode),
+      transpose: row.keyTranspose,
+      capoMode: sessionItemKeyFieldModeFromValue(capoMode),
+      capo: row.keyCapo,
     );
   }
 
@@ -1785,7 +1885,8 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
     var predicate =
         table.userId.equals(context.userId) &
         table.organizationId.equals(context.organizationId) &
-        ((table.aggregateType.equals('session_item') &
+        (((table.aggregateType.equals('session_item') |
+                    table.aggregateType.equals('session_item_key')) &
                 table.sessionId.equals(sessionId)) |
             (table.aggregateType.equals('session_item_order') &
                 table.aggregateId.equals(sessionId)));
@@ -1807,7 +1908,8 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
           (table) =>
               table.userId.equals(context.userId) &
               table.organizationId.equals(context.organizationId) &
-              table.aggregateType.equals('session_item') &
+              (table.aggregateType.equals('session_item') |
+                  table.aggregateType.equals('session_item_key')) &
               table.sessionId.equals(sessionId),
         ))
         .go();
@@ -1817,6 +1919,27 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
               table.organizationId.equals(context.organizationId) &
               table.aggregateType.equals('session_item_order') &
               table.aggregateId.equals(sessionId),
+        ))
+        .go();
+  }
+
+  /// C7: a key edit of an item that is deleted or whose create is cancelled
+  /// must never be sent. An in-flight row (`sending`/`accepted`) is left to
+  /// conclude on its own.
+  Future<void> _deleteKeyEditUnlessInFlight({
+    required PlanningMutationContext context,
+    required String sessionItemId,
+  }) async {
+    final table = _database.cachedPlanningMutations;
+    await (_database.delete(table)..where(
+          (row) =>
+              row.userId.equals(context.userId) &
+              row.organizationId.equals(context.organizationId) &
+              row.aggregateType.equals('session_item_key') &
+              row.aggregateId.equals(sessionItemId) &
+              row.syncStatus.isNotIn(
+                _inFlightSyncStatuses.map((status) => status.value),
+              ),
         ))
         .go();
   }

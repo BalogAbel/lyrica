@@ -1514,6 +1514,7 @@ class _AcceptedWriteFallbackPlanningMutationRemoteRepository
         return record.copyWith(songTitle: '${record.songTitle} Accepted');
       case PlanningMutationKind.sessionItemDelete:
       case PlanningMutationKind.sessionItemReorder:
+      case PlanningMutationKind.sessionItemKeyEdit:
         return record;
     }
   }
@@ -1825,6 +1826,12 @@ class _MutablePlanningMutationStore implements PlanningMutationStore {
   Future<void> recordSessionItemReorder({
     required PlanningMutationContext context,
     required PlanningSessionItemReorderMutationDraft draft,
+  }) async {}
+
+  @override
+  Future<void> recordSessionItemKeyEdit({
+    required PlanningMutationContext context,
+    required PlanningSessionItemKeyEditMutationDraft draft,
   }) async {}
 
   @override

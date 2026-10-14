@@ -202,6 +202,9 @@ class PlanningMutationReconciler {
           refreshedAt: reconciledAt,
         );
         return;
+      case PlanningMutationKind.sessionItemKeyEdit:
+        // PLACEHOLDER (S3 PR 2 Task 2): key reconcile is Task 4.
+        return;
     }
   }
 }

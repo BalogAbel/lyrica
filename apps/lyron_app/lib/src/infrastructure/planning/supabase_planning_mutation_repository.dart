@@ -32,6 +32,10 @@ class SupabasePlanningMutationRepository
           'create_song_session_item',
         PlanningMutationKind.sessionItemDelete => 'delete_session_item',
         PlanningMutationKind.sessionItemReorder => 'reorder_session_items',
+        // PLACEHOLDER (S3 PR 2 Task 2): the remote mapping is Task 3.
+        PlanningMutationKind.sessionItemKeyEdit => throw UnsupportedError(
+          'sessionItemKeyEdit has no remote mapping yet',
+        ),
       };
 
       final params = _paramsFor(record, organizationId: organizationId);
@@ -132,6 +136,10 @@ class SupabasePlanningMutationRepository
         'p_base_version': record.baseVersion,
         'p_session_item_ids': record.orderedSiblingIds,
       },
+      // PLACEHOLDER (S3 PR 2 Task 2): the remote mapping is Task 3.
+      PlanningMutationKind.sessionItemKeyEdit => throw UnsupportedError(
+        'sessionItemKeyEdit has no remote mapping yet',
+      ),
     };
   }
 
