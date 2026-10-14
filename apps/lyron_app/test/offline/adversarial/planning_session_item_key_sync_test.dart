@@ -619,6 +619,9 @@ void main() {
       'an accepted key edit whose reconcile a context switch skips leaves the '
       'projection at the old item version, and the next edit shows one '
       'visible false conflict', () async {
+    // Pinned as KNOWN behavior, not a defect of this slice: see
+    // docs/deferred/2026-09-30-content-version-advance-on-context-switch.md
+    // (the 2026-10-13 roadmap entry extends it to this kind; S5b decides).
     // The same switch the sync controller tests use for the boundary change:
     // the post-sync refresh does not run for this context and
     // `shouldReconcileAcceptedMutation` is false. The accepted row clears

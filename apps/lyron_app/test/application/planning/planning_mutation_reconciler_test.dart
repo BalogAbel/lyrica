@@ -446,6 +446,8 @@ void main() {
       PlanningMutationRecord keyRecord({
         int? baseVersion = 2,
         SessionItemKeyEdit? keyEdit,
+        int? keyBaseTranspose,
+        int? keyBaseCapo,
       }) => PlanningMutationRecord(
         aggregateId: 'item-1',
         organizationId: organizationId,
@@ -455,9 +457,12 @@ void main() {
         syncStatus: PlanningMutationSyncStatus.pending,
         orderKey: 1,
         updatedAt: DateTime.utc(2026, 4, 11, 11),
-        // The synced record carries the RETURNED item version in
-        // baseVersion and the server key in keyEdit (all set/clear).
+        // A response-shaped record carries the RETURNED item version in
+        // baseVersion and the server key in keyEdit (all set/clear). A
+        // crash-resumed `accepted` marker is the unsent shape instead.
         baseVersion: baseVersion,
+        keyBaseTranspose: keyBaseTranspose,
+        keyBaseCapo: keyBaseCapo,
         keyEdit:
             keyEdit ??
             SessionItemKeyEdit(
@@ -510,6 +515,52 @@ void main() {
           expect(item.planCapo, 4);
         },
       );
+
+      test(
+        'a crash-resumed marker (unsent shape, a kept field) takes the '
+        'edit applied over its base values, never a nulled kept field',
+        () async {
+          await reconciler.reconcile(
+            testContext,
+            keyRecord(
+              baseVersion: 4,
+              keyBaseTranspose: 1,
+              keyBaseCapo: 2,
+              keyEdit: SessionItemKeyEdit(
+                transposeMode: SessionItemKeyFieldMode.set,
+                transpose: 3,
+                capoMode: SessionItemKeyFieldMode.keep,
+              ),
+            ),
+          );
+
+          final item = await projectedItem();
+          expect(item.version, 4);
+          expect(item.planTranspose, 3);
+          expect(item.planCapo, 2, reason: 'kept: the base value, not null');
+        },
+      );
+
+      test('a crash-resumed marker with a kept transpose and a cleared capo '
+          'keeps the base transpose and clears the capo', () async {
+        await reconciler.reconcile(
+          testContext,
+          keyRecord(
+            baseVersion: 6,
+            keyBaseTranspose: 5,
+            keyBaseCapo: 2,
+            keyEdit: SessionItemKeyEdit(
+              transposeMode: SessionItemKeyFieldMode.keep,
+              capoMode: SessionItemKeyFieldMode.clear,
+            ),
+          ),
+        );
+
+        final item = await projectedItem();
+        expect(item.version, 6);
+        expect(item.planTranspose, 5);
+        expect(item.planCapo, isNull);
+      });
 
       test('a record without its returned version is a corrupt mutation '
           '(LF-8)', () async {

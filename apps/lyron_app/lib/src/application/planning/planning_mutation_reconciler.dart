@@ -203,11 +203,20 @@ class PlanningMutationReconciler {
         );
         return;
       case PlanningMutationKind.sessionItemKeyEdit:
-        // The synced record carries the RETURNED item version in baseVersion
-        // and the server key in keyEdit (all set/clear), so applyTo() with no
-        // arguments is the server key (PS15). A record without them is a
-        // corrupt mutation (LF-8), not a value to default.
-        final key = _required(record.keyEdit, 'keyEdit', record.kind).applyTo();
+        // Two shapes reach here (PS15). A response-shaped synced record
+        // carries the RETURNED item version in baseVersion and the server key
+        // in keyEdit (all set/clear), which ignores the base values. A
+        // crash-resumed `accepted` marker is the unsent shape: baseVersion is
+        // the OLD item version and keyEdit may hold `keep`, so the edit is
+        // applied over the base values -- what an accepted OCC write at that
+        // base produced. A stale version then shows at most one visible
+        // conflict, as for the other kinds. A record without its edit or
+        // version is a corrupt mutation (LF-8), not a value to default.
+        final key = _required(
+          record.keyEdit,
+          'keyEdit',
+          record.kind,
+        ).applyTo(transpose: record.keyBaseTranspose, capo: record.keyBaseCapo);
         await localStore.applySyncedSessionItemKey(
           userId: context.userId,
           organizationId: context.organizationId,
