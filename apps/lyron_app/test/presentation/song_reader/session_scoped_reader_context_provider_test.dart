@@ -135,6 +135,51 @@ void main() {
     expect(resolved.context.selectedItem.title, 'Masodik');
     expect(resolved.context.selectedItem.songSlug, 'masodik');
   });
+
+  test('canonicalizing songs keeps item version and plan key', () async {
+    final source = PlanDetail(
+      plan: _planDetail().plan,
+      sessions: const [
+        SessionSummary(
+          id: 'session-1',
+          slug: 'main',
+          name: 'Main',
+          position: 10,
+          items: [
+            SessionItemSummary(
+              id: 'item-10',
+              position: 10,
+              song: SongSummary(id: 'song-1', slug: 'elso', title: 'Elso'),
+              version: 3,
+              planTranspose: 4,
+              planCapo: 2,
+            ),
+          ],
+        ),
+      ],
+    );
+    final canonicalProvider = FutureProvider.autoDispose(
+      (ref) => canonicalizePlanDetailSongs(ref, source),
+    );
+    final container = ProviderContainer(
+      overrides: [
+        songLibraryListProvider.overrideWith(
+          (ref) => const [
+            SongSummary(id: 'song-1', slug: 'elso', title: 'Canonical Elso'),
+          ],
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final result = await container.read(canonicalProvider.future);
+
+    final item = result.sessions.single.items.single;
+    expect(item.song.title, 'Canonical Elso');
+    expect(item.version, 3);
+    expect(item.planTranspose, 4);
+    expect(item.planCapo, 2);
+  });
 }
 
 const _signedInPlanningState = PlanningSyncState(

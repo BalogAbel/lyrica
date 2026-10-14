@@ -241,6 +241,94 @@ void main() {
         },
       );
 
+      test(
+        'a pending reorder keeps the item version and a pending key edit',
+        () async {
+          await localStore.replaceActiveProjection(
+            userId: context.userId,
+            organizationId: context.organizationId,
+            plans: [
+              CachedPlanRecord(
+                id: 'plan-1',
+                slug: 'team-rehearsal',
+                name: 'Team Rehearsal',
+                description: null,
+                scheduledFor: null,
+                updatedAt: DateTime.utc(2026, 4, 11, 10),
+                version: 2,
+                contentVersion: 5,
+              ),
+            ],
+            sessions: const [
+              CachedSessionRecord(
+                id: 'session-1',
+                planId: 'plan-1',
+                slug: 'warm-up',
+                position: 10,
+                name: 'Warm-Up',
+              ),
+            ],
+            items: const [
+              CachedSessionItemRecord(
+                id: 'item-1',
+                planId: 'plan-1',
+                sessionId: 'session-1',
+                position: 10,
+                songId: 'song-1',
+                songTitle: 'Alpha',
+                version: 3,
+                transpose: 1,
+              ),
+              CachedSessionItemRecord(
+                id: 'item-2',
+                planId: 'plan-1',
+                sessionId: 'session-1',
+                position: 20,
+                songId: 'song-2',
+                songTitle: 'Beta',
+              ),
+            ],
+            refreshedAt: DateTime.utc(2026, 4, 11, 10),
+          );
+          await mutationStore.recordSessionItemKeyEdit(
+            context: context,
+            draft: PlanningSessionItemKeyEditMutationDraft(
+              sessionItemId: 'item-1',
+              sessionId: 'session-1',
+              planId: 'plan-1',
+              edit: SessionItemKeyEdit(
+                transposeMode: SessionItemKeyFieldMode.set,
+                transpose: 4,
+                capoMode: SessionItemKeyFieldMode.keep,
+              ),
+              baseVersion: 3,
+              baseTranspose: 1,
+              baseCapo: null,
+            ),
+          );
+          await mutationStore.recordSessionItemReorder(
+            context: context,
+            draft: const PlanningSessionItemReorderMutationDraft(
+              sessionId: 'session-1',
+              planId: 'plan-1',
+              orderedSessionItemIds: ['item-2', 'item-1'],
+              baseVersion: 1,
+            ),
+          );
+
+          final items = (await repository.getPlanDetail(
+            'plan-1',
+          )).sessions.single.items;
+
+          expect(items.map((item) => item.id), ['item-2', 'item-1']);
+          final moved = items.last;
+          expect(moved.position, 2);
+          expect(moved.version, 3);
+          expect(moved.planTranspose, 4);
+          expect(moved.planCapo, isNull);
+        },
+      );
+
       test('a conflicted key edit still overlays', () async {
         await seedKeyedItem();
         final conflicted = PlanningMutationRecord(

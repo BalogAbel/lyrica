@@ -577,6 +577,69 @@ void main() {
         expect(syncCalls, 1);
       });
 
+      test('the base is the merged item version and key, not null', () async {
+        await localStore.replaceActiveProjection(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          plans: [
+            CachedPlanRecord(
+              id: 'plan-1',
+              slug: 'sunday-am',
+              name: 'Sunday AM',
+              description: null,
+              scheduledFor: null,
+              updatedAt: DateTime.utc(2026, 4, 1, 12),
+            ),
+          ],
+          sessions: const [
+            CachedSessionRecord(
+              id: 'session-1',
+              planId: 'plan-1',
+              slug: 'welcome',
+              position: 10,
+              name: 'Welcome',
+            ),
+          ],
+          items: const [
+            CachedSessionItemRecord(
+              id: 'item-1',
+              planId: 'plan-1',
+              sessionId: 'session-1',
+              position: 10,
+              songId: 'song-1',
+              songTitle: 'Alpha',
+              version: 3,
+              transpose: 2,
+              capo: 5,
+            ),
+          ],
+          refreshedAt: DateTime.utc(2026, 4, 1, 12),
+        );
+
+        await service.setSessionItemKey(
+          context: context,
+          draft: SessionItemKeyDraft(
+            planId: 'plan-1',
+            sessionId: 'session-1',
+            sessionItemId: 'item-1',
+            edit: SessionItemKeyEdit(
+              transposeMode: SessionItemKeyFieldMode.clear,
+              capoMode: SessionItemKeyFieldMode.keep,
+            ),
+          ),
+        );
+
+        final mutation = await mutationStore.readMutation(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType: PlanningMutationKind.sessionItemKeyEdit.aggregateType,
+          aggregateId: 'item-1',
+        );
+        expect(mutation?.baseVersion, 3);
+        expect(mutation?.keyBaseTranspose, 2);
+        expect(mutation?.keyBaseCapo, 5);
+      });
+
       test('an item whose create is pending has base version 1', () async {
         await seedProjection();
         await service.addSongSessionItem(
