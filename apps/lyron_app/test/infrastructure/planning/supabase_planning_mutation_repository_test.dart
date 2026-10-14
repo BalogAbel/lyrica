@@ -780,7 +780,9 @@ void main() {
     });
 
     test('C11: a foreign capo on a +1 version is not an own write', () async {
-      final result = await syncWith(response(version: 2, transpose: 3, capo: 5));
+      final result = await syncWith(
+        response(version: 2, transpose: 3, capo: 5),
+      );
 
       expect(result.baseVersion, 2);
       expect(result.keyEdit!.capoMode, SessionItemKeyFieldMode.set);
