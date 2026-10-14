@@ -2,7 +2,8 @@
 
 > Status: Accepted (2026-10-13, design gate approved). PR 1 (backend)
 > merged as #94 (`603d69b`, 2026-10-14) and deployed to the hosted project;
-> PR 2 planned (`docs/plans/2026-10-14-song-key-planning-client.md`), PR 3
+> PR 2 implemented on `feat/song-key-planning-client`
+> (`docs/plans/2026-10-14-song-key-planning-client.md`), PR 3
 > not yet (see "PR Boundaries"). PS14–PS16 refined on 2026-10-14 (base
 > values, the PS15 state rule, C11). Amends
 > `docs/specs/2026-04-01-session-scoped-plan-reader-navigation.md`

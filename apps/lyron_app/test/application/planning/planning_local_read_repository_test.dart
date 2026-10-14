@@ -2,8 +2,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/planning/drift_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/planning/session_item_key_edit.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
+import 'package:lyron_app/src/domain/planning/session_item_summary.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 
@@ -163,6 +165,117 @@ void main() {
         expect(session.items.first.song.title, 'Gamma');
       },
     );
+
+    group('plan key overlay (S3 PR 2)', () {
+      Future<void> seedKeyedItem() {
+        return localStore.replaceActiveProjection(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          plans: [
+            CachedPlanRecord(
+              id: 'plan-1',
+              slug: 'team-rehearsal',
+              name: 'Team Rehearsal',
+              description: null,
+              scheduledFor: null,
+              updatedAt: DateTime.utc(2026, 4, 11, 10),
+              version: 2,
+              contentVersion: 5,
+            ),
+          ],
+          sessions: const [
+            CachedSessionRecord(
+              id: 'session-1',
+              planId: 'plan-1',
+              slug: 'warm-up',
+              position: 10,
+              name: 'Warm-Up',
+            ),
+          ],
+          items: const [
+            CachedSessionItemRecord(
+              id: 'item-1',
+              planId: 'plan-1',
+              sessionId: 'session-1',
+              position: 10,
+              songId: 'song-1',
+              songTitle: 'Alpha',
+              version: 2,
+              transpose: 1,
+            ),
+          ],
+          refreshedAt: DateTime.utc(2026, 4, 11, 10),
+        );
+      }
+
+      SessionItemSummary itemOf(PlanDetail detail) =>
+          detail.sessions.single.items.single;
+
+      test(
+        'a pending key edit overlays the key and keeps the version',
+        () async {
+          await seedKeyedItem();
+          await mutationStore.recordSessionItemKeyEdit(
+            context: context,
+            draft: PlanningSessionItemKeyEditMutationDraft(
+              sessionItemId: 'item-1',
+              sessionId: 'session-1',
+              planId: 'plan-1',
+              edit: SessionItemKeyEdit(
+                transposeMode: SessionItemKeyFieldMode.keep,
+                capoMode: SessionItemKeyFieldMode.set,
+                capo: 3,
+              ),
+              baseVersion: 2,
+              baseTranspose: 1,
+              baseCapo: null,
+            ),
+          );
+
+          final item = itemOf(await repository.getPlanDetail('plan-1'));
+
+          expect(item.planTranspose, 1);
+          expect(item.planCapo, 3);
+          expect(item.version, 2);
+          expect(item.position, 10);
+        },
+      );
+
+      test('a conflicted key edit still overlays', () async {
+        await seedKeyedItem();
+        final conflicted = PlanningMutationRecord(
+          aggregateId: 'item-1',
+          organizationId: 'org-1',
+          planId: 'plan-1',
+          sessionId: 'session-1',
+          kind: PlanningMutationKind.sessionItemKeyEdit,
+          syncStatus: PlanningMutationSyncStatus.conflict,
+          orderKey: 1,
+          updatedAt: DateTime.utc(2026, 4, 12),
+          keyEdit: SessionItemKeyEdit(
+            transposeMode: SessionItemKeyFieldMode.clear,
+            capoMode: SessionItemKeyFieldMode.set,
+            capo: 2,
+          ),
+        );
+        final stub = PlanningLocalReadRepository(
+          store: localStore,
+          mutationStore: _RecordingPlanningMutationStore(
+            actionable: [conflicted],
+          ),
+          contextReader: () async => const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+        );
+
+        final item = itemOf(await stub.getPlanDetail('plan-1'));
+
+        expect(item.planTranspose, isNull);
+        expect(item.planCapo, 2);
+        expect(item.version, 2);
+      });
+    });
 
     test('a pending plan edit keeps the projection contentVersion in merged '
         'reads (spec D4)', () async {

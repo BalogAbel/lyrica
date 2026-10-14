@@ -1,5 +1,6 @@
 import 'package:lyron_app/src/application/planning/planning_local_read_repository.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/planning/session_item_key_edit.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
 import 'package:lyron_app/src/domain/planning/planning_repository.dart';
@@ -125,6 +126,20 @@ class SessionItemDeleteDraft {
   final String sessionItemId;
   final String sessionId;
   final String planId;
+}
+
+class SessionItemKeyDraft {
+  const SessionItemKeyDraft({
+    required this.planId,
+    required this.sessionId,
+    required this.sessionItemId,
+    required this.edit,
+  });
+
+  final String planId;
+  final String sessionId;
+  final String sessionItemId;
+  final SessionItemKeyEdit edit;
 }
 
 class SessionItemReorderDraft {
@@ -425,6 +440,37 @@ class PlanningWriteService {
             (candidate) => candidate.id == draft.sessionItemId,
           ),
         ),
+      ),
+    );
+    await _scheduleSync(context);
+  }
+
+  Future<void> setSessionItemKey({
+    required PlanningWriteContext context,
+    required SessionItemKeyDraft draft,
+  }) async {
+    await _requireMatchingContext(context);
+    final detail = await _repository.getPlanDetail(draft.planId);
+    final session = detail.sessions.firstWhere(
+      (candidate) => candidate.id == draft.sessionId,
+    );
+    final item = session.items.firstWhere(
+      (candidate) => candidate.id == draft.sessionItemId,
+    );
+    await _mutationStore.recordSessionItemKeyEdit(
+      context: PlanningMutationContext(
+        userId: context.userId,
+        organizationId: context.organizationId,
+      ),
+      draft: PlanningSessionItemKeyEditMutationDraft(
+        sessionItemId: draft.sessionItemId,
+        sessionId: draft.sessionId,
+        planId: draft.planId,
+        edit: draft.edit,
+        baseVersion: item.version,
+        baseTranspose: item.planTranspose,
+        baseCapo: item.planCapo,
+        originSnapshot: _sessionItemSnapshot(item),
       ),
     );
     await _scheduleSync(context);

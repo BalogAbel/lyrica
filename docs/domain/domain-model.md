@@ -258,6 +258,7 @@ Read-model note:
 
 - In the current executable planning slice, readable session items inherit the same organization-scoped visibility boundary as the owning session and are persisted locally by explicit `sessionItemId`, even though the public scoped reader URL resolves through `songSlug` within a session.
 - Song-backed session-item add, delete, and reorder are implemented through the persisted planning mutation store rather than mutating synchronized projection rows directly.
+- From S3 PR 2 the client reads each item's `version`, `transpose` and `capo` into the local projection and writes the key through the same mutation store (`sessionItemKeyEdit`, per-field keep/set/clear, folded per item). The merged read overlays a pending or conflicted key edit onto the item's key and leaves its `version` untouched.
 - Session items are removed by cascade when their session or plan is deleted. The referenced song or attachment is never deleted.
 - Session-item add is currently limited to visible songs from the active organization's locally available song catalog and appends deterministically after the current locally visible last item for the session.
 - Session-item add, delete, and reorder capture the owning session's synchronized `base_version`, keep backend authorization and duplicate-song enforcement on the write RPC boundary, and reconcile accepted canonical order back into the read projection when the immediate refresh fails.
