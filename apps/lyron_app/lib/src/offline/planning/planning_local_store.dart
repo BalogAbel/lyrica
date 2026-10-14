@@ -72,6 +72,9 @@ class CachedSessionItemRecord {
     required this.position,
     required this.songId,
     required this.songTitle,
+    this.version = 1,
+    this.transpose,
+    this.capo,
   });
 
   final String id;
@@ -80,6 +83,9 @@ class CachedSessionItemRecord {
   final int position;
   final String songId;
   final String songTitle;
+  final int version;
+  final int? transpose;
+  final int? capo;
 }
 
 abstract interface class PlanningLocalStore {
@@ -210,6 +216,18 @@ abstract interface class PlanningLocalStore {
     required String sessionId,
     required String sessionItemId,
     required int sessionVersion,
+    required DateTime refreshedAt,
+  });
+
+  /// Writes an accepted key edit's result (version, plan key) onto an
+  /// existing projected item; a no-op for an unknown item.
+  Future<void> applySyncedSessionItemKey({
+    required String userId,
+    required String organizationId,
+    required String sessionItemId,
+    required int version,
+    required int? transpose,
+    required int? capo,
     required DateTime refreshedAt,
   });
 
@@ -362,6 +380,9 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
                   position: item.position,
                   songId: item.songId,
                   songTitle: item.songTitle,
+                  version: Value(item.version),
+                  transpose: Value(item.transpose),
+                  capo: Value(item.capo),
                 ),
               )
               .toList(growable: false),
@@ -510,6 +531,9 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
                       id: item.sessionItemId,
                       position: item.position,
                       song: SongSummary(id: item.songId, title: item.songTitle),
+                      version: item.version,
+                      planTranspose: item.transpose,
+                      planCapo: item.capo,
                     ),
                   )
                   .toList(growable: false),
@@ -1063,6 +1087,45 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
   }
 
   @override
+  Future<void> applySyncedSessionItemKey({
+    required String userId,
+    required String organizationId,
+    required String sessionItemId,
+    required int version,
+    required int? transpose,
+    required int? capo,
+    required DateTime refreshedAt,
+  }) async {
+    // In-place update of an existing row (ADR-028 D8): not write-recovery
+    // guarded, and it never creates an owner or a row.
+    final owner = await _readOwner(
+      userId: userId,
+      organizationId: organizationId,
+    );
+    if (owner == null) {
+      return;
+    }
+    final updated =
+        await (_database.update(_database.cachedPlanningSessionItems)..where(
+              (table) =>
+                  table.userId.equals(userId) &
+                  table.organizationId.equals(organizationId) &
+                  table.snapshotVersion.equals(owner.snapshotVersion) &
+                  table.sessionItemId.equals(sessionItemId),
+            ))
+            .write(
+              CachedPlanningSessionItemsCompanion(
+                version: Value(version),
+                transpose: Value(transpose),
+                capo: Value(capo),
+              ),
+            );
+    if (updated > 0) {
+      _onStorageFootprintChanged?.call();
+    }
+  }
+
+  @override
   Future<void> replaceSyncedSessionItemOrder({
     required String userId,
     required String organizationId,
@@ -1235,7 +1298,10 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
         existing.sessionId == item.sessionId &&
         existing.position == item.position &&
         existing.songId == item.songId &&
-        existing.songTitle == item.songTitle) {
+        existing.songTitle == item.songTitle &&
+        existing.version == item.version &&
+        existing.transpose == item.transpose &&
+        existing.capo == item.capo) {
       return false;
     }
     await _database
@@ -1251,6 +1317,9 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
             position: item.position,
             songId: item.songId,
             songTitle: item.songTitle,
+            version: Value(item.version),
+            transpose: Value(item.transpose),
+            capo: Value(item.capo),
           ),
         );
     return true;

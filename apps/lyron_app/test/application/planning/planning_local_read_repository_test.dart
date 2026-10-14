@@ -677,6 +677,17 @@ class _RecordingPlanningLocalStore implements PlanningLocalStore {
   }) async {}
 
   @override
+  Future<void> applySyncedSessionItemKey({
+    required String userId,
+    required String organizationId,
+    required String sessionItemId,
+    required int version,
+    required int? transpose,
+    required int? capo,
+    required DateTime refreshedAt,
+  }) async {}
+
+  @override
   Future<void> deleteSyncedSessionItem({
     required String userId,
     required String organizationId,

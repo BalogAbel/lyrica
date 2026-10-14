@@ -1984,6 +1984,25 @@ class _BlockingDeletePlanningLocalStore implements PlanningLocalStore {
   }
 
   @override
+  Future<void> applySyncedSessionItemKey({
+    required String userId,
+    required String organizationId,
+    required String sessionItemId,
+    required int version,
+    required int? transpose,
+    required int? capo,
+    required DateTime refreshedAt,
+  }) => _delegate.applySyncedSessionItemKey(
+    userId: userId,
+    organizationId: organizationId,
+    sessionItemId: sessionItemId,
+    version: version,
+    transpose: transpose,
+    capo: capo,
+    refreshedAt: refreshedAt,
+  );
+
+  @override
   Future<void> deleteSyncedSessionItem({
     required String userId,
     required String organizationId,
