@@ -203,7 +203,20 @@ class PlanningMutationReconciler {
         );
         return;
       case PlanningMutationKind.sessionItemKeyEdit:
-        // PLACEHOLDER (S3 PR 2 Task 2): key reconcile is Task 4.
+        // The synced record carries the RETURNED item version in baseVersion
+        // and the server key in keyEdit (all set/clear), so applyTo() with no
+        // arguments is the server key (PS15). A record without them is a
+        // corrupt mutation (LF-8), not a value to default.
+        final key = _required(record.keyEdit, 'keyEdit', record.kind).applyTo();
+        await localStore.applySyncedSessionItemKey(
+          userId: context.userId,
+          organizationId: context.organizationId,
+          sessionItemId: record.aggregateId,
+          version: _required(record.baseVersion, 'baseVersion', record.kind),
+          transpose: key.transpose,
+          capo: key.capo,
+          refreshedAt: reconciledAt,
+        );
         return;
     }
   }

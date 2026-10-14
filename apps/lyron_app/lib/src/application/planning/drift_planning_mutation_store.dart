@@ -5,6 +5,7 @@ import 'package:drift/drift.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
 import 'package:lyron_app/src/application/planning/session_item_key_edit.dart';
 import 'package:lyron_app/src/application/storage/local_storage_footprint_revision.dart';
+import 'package:lyron_app/src/domain/planning/session_item_summary.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 
@@ -1170,19 +1171,38 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
     // projection. Any other retry (connectivity error, failed dependency,
     // ...) resends the bases the user saw: a foreign write in between must
     // surface as a conflict, never be absorbed by a silent rebase.
+    //
+    // PS16: a key edit is treated like the cascade deletes. Only Keep mine
+    // (the retry of a visible CONFLICT) rebases onto the item as the
+    // projection shows it; a connectivity retry resends the original base.
     final isCascadeDelete =
         existing.kind == PlanningMutationKind.planDelete ||
         existing.kind == PlanningMutationKind.sessionDelete;
+    final isKeyEdit = existing.kind == PlanningMutationKind.sessionItemKeyEdit;
     final rebases =
-        !isCascadeDelete ||
+        !(isCascadeDelete || isKeyEdit) ||
         existing.syncStatus == PlanningMutationSyncStatus.conflict;
-    final rebasedBaseVersion = rebases
-        ? await _currentBaseVersionFor(
+    // The base version and the item the base values come from are read in one
+    // transaction, so a refresh landing between the two reads cannot pair the
+    // version of one snapshot with the values of another.
+    int? rebasedBaseVersion;
+    SessionItemSummary? rebasedKeyItem;
+    if (rebases) {
+      await _database.transaction(() async {
+        rebasedBaseVersion = await _currentBaseVersionFor(
+          existing,
+          userId: userId,
+          organizationId: organizationId,
+        );
+        if (isKeyEdit) {
+          rebasedKeyItem = await _projectedKeyItem(
             existing,
             userId: userId,
             organizationId: organizationId,
-          )
-        : null;
+          );
+        }
+      });
+    }
     // Spec D9: retrying a conflicted plan delete is the explicit remove -- it
     // targets the plan as the projection now shows it, content version
     // included.
@@ -1207,6 +1227,15 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         baseVersion: rebasedBaseVersion ?? existing.baseVersion,
         baseContentVersion:
             rebasedBaseContentVersion ?? existing.baseContentVersion,
+        // PS16: the base values travel with the base version. An item that is
+        // not in the projection keeps both (fail-safe: the stale base
+        // conflicts again instead of rebasing onto nothing).
+        keyBaseTranspose: rebasedKeyItem?.planTranspose,
+        clearKeyBaseTranspose:
+            rebasedKeyItem != null && rebasedKeyItem!.planTranspose == null,
+        keyBaseCapo: rebasedKeyItem?.planCapo,
+        clearKeyBaseCapo:
+            rebasedKeyItem != null && rebasedKeyItem!.planCapo == null,
         updatedAt: DateTime.now().toUtc(),
       ),
     );
@@ -1416,6 +1445,12 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
             ) ||
             changed;
       }
+      if (remoteResponse &&
+          accepted.kind == PlanningMutationKind.sessionItemKeyEdit) {
+        changed =
+            await _rebaseFoldedKeyEdit(context: context, accepted: accepted) ||
+            changed;
+      }
       if (accepted.kind == PlanningMutationKind.planDelete) {
         changed =
             await _deleteChildMutationsOfPlan(
@@ -1479,6 +1514,51 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       return false;
     }
     return _upsertRecord(context: context, aggregateType: 'plan', record: next);
+  }
+
+  /// PS15: a key edit folded into a row whose earlier content was in flight
+  /// or accepted-uncleared moves to the version the client's OWN write
+  /// produced -- [PlanningMutationRecord.acceptedOwnKeyVersion], set only
+  /// when the server state is exactly what that write produces. A row still
+  /// `sending` or `accepted` (no fold happened) is never touched: its own
+  /// accept write or clear must still apply.
+  ///
+  /// Idempotent: once the base is [PlanningMutationRecord.acceptedOwnKeyVersion]
+  /// the contiguity test no longer matches, so the sync run may call it again
+  /// after a write that missed its revision.
+  Future<bool> _rebaseFoldedKeyEdit({
+    required PlanningMutationContext context,
+    required PlanningMutationRecord accepted,
+  }) async {
+    final ownVersion = accepted.acceptedOwnKeyVersion;
+    if (ownVersion == null) {
+      return false;
+    }
+    final row = await _readMutationByKey(
+      userId: context.userId,
+      organizationId: context.organizationId,
+      aggregateType: 'session_item_key',
+      aggregateId: accepted.aggregateId,
+    );
+    if (row == null ||
+        row.kind != PlanningMutationKind.sessionItemKeyEdit ||
+        row.syncStatus != PlanningMutationSyncStatus.pending ||
+        row.baseVersion != ownVersion - 1) {
+      return false;
+    }
+    // The synced keyEdit is all set/clear, so applyTo() yields the server key.
+    final serverKey = accepted.keyEdit!.applyTo();
+    return _upsertRecord(
+      context: context,
+      aggregateType: 'session_item_key',
+      record: row.copyWith(
+        baseVersion: ownVersion,
+        keyBaseTranspose: serverKey.transpose,
+        clearKeyBaseTranspose: serverKey.transpose == null,
+        keyBaseCapo: serverKey.capo,
+        clearKeyBaseCapo: serverKey.capo == null,
+      ),
+    );
   }
 
   // D7 rule 3.
@@ -1656,6 +1736,17 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
     if (record.kind == PlanningMutationKind.planCreate) {
       return record.baseVersion;
     }
+    // PS16: a key edit's version is the ITEM's, never the session's or the
+    // plan's (the S5b session-rename defect: a lookup by the wrong id means
+    // the retry never rebases and conflicts forever).
+    if (record.kind == PlanningMutationKind.sessionItemKeyEdit) {
+      return (await _projectedKeyItem(
+            record,
+            userId: userId,
+            organizationId: organizationId,
+          ))?.version ??
+          record.baseVersion;
+    }
 
     final detail = await _localStore.readPlanDetail(
       userId: userId,
@@ -1689,6 +1780,24 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
                   record.baseVersion,
       _ => record.baseVersion,
     };
+  }
+
+  /// The projection's session item a key edit [record] targets, or null when
+  /// the plan, session or item is not in the projection.
+  Future<SessionItemSummary?> _projectedKeyItem(
+    PlanningMutationRecord record, {
+    required String userId,
+    required String organizationId,
+  }) async {
+    final detail = await _localStore.readPlanDetail(
+      userId: userId,
+      organizationId: organizationId,
+      planId: record.planId ?? record.aggregateId,
+    );
+    return detail?.sessions
+        .firstWhereOrNull((session) => session.id == record.sessionId)
+        ?.items
+        .firstWhereOrNull((item) => item.id == record.aggregateId);
   }
 
   String? _encodeJsonValue(Object? value) {
