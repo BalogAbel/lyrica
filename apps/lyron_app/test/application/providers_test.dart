@@ -1514,6 +1514,7 @@ class _AcceptedWriteFallbackPlanningMutationRemoteRepository
         return record.copyWith(songTitle: '${record.songTitle} Accepted');
       case PlanningMutationKind.sessionItemDelete:
       case PlanningMutationKind.sessionItemReorder:
+      case PlanningMutationKind.sessionItemKeyEdit:
         return record;
     }
   }
@@ -1828,6 +1829,12 @@ class _MutablePlanningMutationStore implements PlanningMutationStore {
   }) async {}
 
   @override
+  Future<void> recordSessionItemKeyEdit({
+    required PlanningMutationContext context,
+    required PlanningSessionItemKeyEditMutationDraft draft,
+  }) async {}
+
+  @override
   Future<void> recordSessionReorder({
     required PlanningMutationContext context,
     required PlanningSessionReorderMutationDraft draft,
@@ -1982,6 +1989,25 @@ class _BlockingDeletePlanningLocalStore implements PlanningLocalStore {
       refreshedAt: refreshedAt,
     );
   }
+
+  @override
+  Future<void> applySyncedSessionItemKey({
+    required String userId,
+    required String organizationId,
+    required String sessionItemId,
+    required int version,
+    required int? transpose,
+    required int? capo,
+    required DateTime refreshedAt,
+  }) => _delegate.applySyncedSessionItemKey(
+    userId: userId,
+    organizationId: organizationId,
+    sessionItemId: sessionItemId,
+    version: version,
+    transpose: transpose,
+    capo: capo,
+    refreshedAt: refreshedAt,
+  );
 
   @override
   Future<void> deleteSyncedSessionItem({

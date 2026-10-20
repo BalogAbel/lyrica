@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:lyron_app/src/application/planning/session_item_key_edit.dart';
 import 'package:lyron_app/src/application/storage/local_storage_domain_rejection.dart';
 
 enum PlanningMutationKind {
@@ -13,6 +14,11 @@ enum PlanningMutationKind {
   sessionItemCreateSong,
   sessionItemDelete,
   sessionItemReorder,
+
+  /// S3 PR 2 (PS14): a per-item plan key edit (transpose/capo). Its own
+  /// aggregate (`session_item_key`, keyed by the session item id) so it
+  /// coexists with the item's create/delete row.
+  sessionItemKeyEdit,
 }
 
 enum PlanningMutationSyncStatus {
@@ -76,6 +82,7 @@ extension PlanningMutationKindX on PlanningMutationKind {
     PlanningMutationKind.sessionItemCreateSong => 'session_item_create_song',
     PlanningMutationKind.sessionItemDelete => 'session_item_delete',
     PlanningMutationKind.sessionItemReorder => 'session_item_reorder',
+    PlanningMutationKind.sessionItemKeyEdit => 'session_item_key_edit',
   };
 
   String get aggregateType => switch (this) {
@@ -89,6 +96,7 @@ extension PlanningMutationKindX on PlanningMutationKind {
     PlanningMutationKind.sessionItemCreateSong ||
     PlanningMutationKind.sessionItemDelete => 'session_item',
     PlanningMutationKind.sessionItemReorder => 'session_item_order',
+    PlanningMutationKind.sessionItemKeyEdit => 'session_item_key',
   };
 
   /// Whether this kind's backend RPC bumps `plans.content_version` (spec I4,
@@ -104,7 +112,8 @@ extension PlanningMutationKindX on PlanningMutationKind {
     PlanningMutationKind.sessionReorder ||
     PlanningMutationKind.sessionItemCreateSong ||
     PlanningMutationKind.sessionItemDelete ||
-    PlanningMutationKind.sessionItemReorder => true,
+    PlanningMutationKind.sessionItemReorder ||
+    PlanningMutationKind.sessionItemKeyEdit => true,
   };
 }
 
@@ -133,6 +142,7 @@ PlanningMutationKind planningMutationKindFromValue(String value) {
     'session_item_create_song' => PlanningMutationKind.sessionItemCreateSong,
     'session_item_delete' => PlanningMutationKind.sessionItemDelete,
     'session_item_reorder' => PlanningMutationKind.sessionItemReorder,
+    'session_item_key_edit' => PlanningMutationKind.sessionItemKeyEdit,
     _ => throw ArgumentError.value(
       value,
       'value',
@@ -226,6 +236,10 @@ class PlanningMutationRecord {
     this.baseVersion,
     this.baseContentVersion,
     this.acceptedPlanContentVersion,
+    this.keyEdit,
+    this.keyBaseTranspose,
+    this.keyBaseCapo,
+    this.acceptedOwnKeyVersion,
     this.originSnapshot,
     this.errorCode,
     this.errorMessage,
@@ -255,6 +269,19 @@ class PlanningMutationRecord {
   /// (or a `plans` row's `content_version`) from the RPC response this record
   /// was mapped from. Spec D4/D7.
   final int? acceptedPlanContentVersion;
+
+  /// Persisted; only meaningful for `sessionItemKeyEdit` records (PS14).
+  final SessionItemKeyEdit? keyEdit;
+
+  /// The item's key when this edit's [baseVersion] was read (PS14 base
+  /// values, used by the PS15 rebase). Persisted; `sessionItemKeyEdit` only.
+  final int? keyBaseTranspose;
+  final int? keyBaseCapo;
+
+  /// In-memory only, never persisted: the item's own `version` returned by
+  /// the RPC response this record was mapped from, like
+  /// [acceptedPlanContentVersion].
+  final int? acceptedOwnKeyVersion;
   final Map<String, Object?>? originSnapshot;
   final PlanningMutationSyncErrorCode? errorCode;
   final String? errorMessage;
@@ -301,6 +328,14 @@ class PlanningMutationRecord {
     bool clearBaseContentVersion = false,
     int? acceptedPlanContentVersion,
     bool clearAcceptedPlanContentVersion = false,
+    SessionItemKeyEdit? keyEdit,
+    bool clearKeyEdit = false,
+    int? keyBaseTranspose,
+    bool clearKeyBaseTranspose = false,
+    int? keyBaseCapo,
+    bool clearKeyBaseCapo = false,
+    int? acceptedOwnKeyVersion,
+    bool clearAcceptedOwnKeyVersion = false,
     Map<String, Object?>? originSnapshot,
     bool clearOriginSnapshot = false,
     PlanningMutationSyncErrorCode? errorCode,
@@ -340,6 +375,14 @@ class PlanningMutationRecord {
       acceptedPlanContentVersion: clearAcceptedPlanContentVersion
           ? null
           : (acceptedPlanContentVersion ?? this.acceptedPlanContentVersion),
+      keyEdit: clearKeyEdit ? null : (keyEdit ?? this.keyEdit),
+      keyBaseTranspose: clearKeyBaseTranspose
+          ? null
+          : (keyBaseTranspose ?? this.keyBaseTranspose),
+      keyBaseCapo: clearKeyBaseCapo ? null : (keyBaseCapo ?? this.keyBaseCapo),
+      acceptedOwnKeyVersion: clearAcceptedOwnKeyVersion
+          ? null
+          : (acceptedOwnKeyVersion ?? this.acceptedOwnKeyVersion),
       originSnapshot: clearOriginSnapshot
           ? null
           : (originSnapshot ?? this.originSnapshot),
@@ -518,6 +561,33 @@ class PlanningSessionItemReorderMutationDraft {
   final Map<String, Object?>? originSnapshot;
 }
 
+class PlanningSessionItemKeyEditMutationDraft {
+  const PlanningSessionItemKeyEditMutationDraft({
+    required this.sessionItemId,
+    required this.sessionId,
+    required this.planId,
+    required this.edit,
+    required this.baseVersion,
+    required this.baseTranspose,
+    required this.baseCapo,
+    this.originSnapshot,
+  });
+
+  final String sessionItemId;
+  final String sessionId;
+  final String planId;
+  final SessionItemKeyEdit edit;
+
+  /// The item's `version` in the merged read (1 for an item whose create is
+  /// still pending: the version `create_song_session_item` writes).
+  final int baseVersion;
+
+  /// The item's key at [baseVersion] (PS14 base values, used by PS15).
+  final int? baseTranspose;
+  final int? baseCapo;
+  final Map<String, Object?>? originSnapshot;
+}
+
 abstract interface class PlanningMutationStore {
   Future<void> recordPlanCreate({
     required PlanningMutationContext context,
@@ -568,6 +638,13 @@ abstract interface class PlanningMutationStore {
   Future<void> recordSessionItemReorder({
     required PlanningMutationContext context,
     required PlanningSessionItemReorderMutationDraft draft,
+  });
+
+  /// S3 PR 2 (PS14): records a per-item key edit, folding onto an existing
+  /// key row for the same item.
+  Future<void> recordSessionItemKeyEdit({
+    required PlanningMutationContext context,
+    required PlanningSessionItemKeyEditMutationDraft draft,
   });
 
   Future<List<PlanningMutationRecord>> readPendingMutations({

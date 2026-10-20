@@ -243,6 +243,7 @@ class PlanningLocalReadRepository implements PlanningRepository {
         case PlanningMutationKind.sessionItemCreateSong:
         case PlanningMutationKind.sessionItemDelete:
         case PlanningMutationKind.sessionItemReorder:
+        case PlanningMutationKind.sessionItemKeyEdit:
           break;
       }
     }
@@ -424,10 +425,43 @@ class PlanningLocalReadRepository implements PlanningRepository {
                   slug: existing.slug,
                   position: index + 1,
                   song: existing.song,
+                  version: existing.version,
+                  planTranspose: existing.planTranspose,
+                  planCapo: existing.planCapo,
                 ),
               );
             }
             itemsBySessionId[sessionId] = reordered;
+          case PlanningMutationKind.sessionItemKeyEdit:
+            // The user's key intent stays visible, also while `conflict`.
+            // `version` is the confirmed item version and is left alone.
+            final sessionId = mutation.sessionId;
+            final keyEdit = mutation.keyEdit;
+            final sessionItems = sessionId == null
+                ? null
+                : itemsBySessionId[sessionId];
+            if (sessionItems == null || keyEdit == null) {
+              continue;
+            }
+            for (var index = 0; index < sessionItems.length; index += 1) {
+              final item = sessionItems[index];
+              if (item.id != mutation.aggregateId) {
+                continue;
+              }
+              final key = keyEdit.applyTo(
+                transpose: item.planTranspose,
+                capo: item.planCapo,
+              );
+              sessionItems[index] = SessionItemSummary(
+                id: item.id,
+                slug: item.slug,
+                position: item.position,
+                song: item.song,
+                version: item.version,
+                planTranspose: key.transpose,
+                planCapo: key.capo,
+              );
+            }
           case PlanningMutationKind.planCreate:
           case PlanningMutationKind.planEdit:
           case PlanningMutationKind.planDelete:

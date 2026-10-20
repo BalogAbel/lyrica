@@ -256,6 +256,17 @@ class PlanningMutationSyncController {
               acceptedBaseVersion: syncedMutation.baseVersion,
             );
           }
+          // PS15: a key edit folded in AFTER the effects call right above
+          // and BEFORE this accept write is exactly what made the write miss;
+          // the earlier call never saw that row pending, so the (idempotent)
+          // rebase runs again. No other kind's path changes.
+          if (mutation.kind == PlanningMutationKind.sessionItemKeyEdit) {
+            await _applyAcceptedEffects(
+              context,
+              syncedMutation,
+              remoteResponse: true,
+            );
+          }
           continue;
         }
         acceptedRecords.add((mutation, syncedMutation, newRevision, true));
@@ -391,7 +402,7 @@ class PlanningMutationSyncController {
           // (`remoteResponse: false`) and purges before clearing.
           continue;
         }
-        await _mutationStore().clearMutation(
+        final cleared = await _mutationStore().clearMutation(
           userId: context.userId,
           organizationId: context.organizationId,
           aggregateType: original.kind.aggregateType,
@@ -402,6 +413,16 @@ class PlanningMutationSyncController {
           // the edit already reset the row itself.
           expectedRevision: clearRevision,
         );
+        if (!cleared &&
+            synced.kind == PlanningMutationKind.sessionItemKeyEdit) {
+          // PS15: the clear missed because a key edit folded in after the
+          // effects call above; rebase it onto the returned version now.
+          await _applyAcceptedEffects(
+            context,
+            synced,
+            remoteResponse: remoteResponse,
+          );
+        }
       }
     } else {
       for (final (original, synced, clearRevision, remoteResponse)
@@ -473,13 +494,22 @@ class PlanningMutationSyncController {
           // (spec D8, review gate 3 F5).
           continue;
         }
-        await _mutationStore().clearMutation(
+        final cleared = await _mutationStore().clearMutation(
           userId: context.userId,
           organizationId: context.organizationId,
           aggregateType: original.kind.aggregateType,
           aggregateId: original.aggregateId,
           expectedRevision: clearRevision,
         );
+        if (!cleared &&
+            synced.kind == PlanningMutationKind.sessionItemKeyEdit) {
+          // PS15: same as the refreshed branch.
+          await _applyAcceptedEffects(
+            context,
+            synced,
+            remoteResponse: remoteResponse,
+          );
+        }
       }
     }
   }

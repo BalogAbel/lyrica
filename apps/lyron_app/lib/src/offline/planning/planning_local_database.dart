@@ -81,9 +81,36 @@ class PlanningLocalDatabase extends _$PlanningLocalDatabase {
           cachedPlanningMutations.baseContentVersion,
         );
       }
+      if (from < 8) {
+        // S3 PR 2 (docs/specs/2026-10-13-personal-song-settings.md, PS17):
+        // a pre-8 projection row reads item version 1 (no RPC bumped it
+        // before the key edit existed) and no key until the next refresh.
+        await m.addColumn(
+          cachedPlanningSessionItems,
+          cachedPlanningSessionItems.version,
+        );
+        await m.addColumn(
+          cachedPlanningSessionItems,
+          cachedPlanningSessionItems.transpose,
+        );
+        await m.addColumn(
+          cachedPlanningSessionItems,
+          cachedPlanningSessionItems.capo,
+        );
+        for (final column in [
+          cachedPlanningMutations.keyTransposeMode,
+          cachedPlanningMutations.keyTranspose,
+          cachedPlanningMutations.keyCapoMode,
+          cachedPlanningMutations.keyCapo,
+          cachedPlanningMutations.keyBaseTranspose,
+          cachedPlanningMutations.keyBaseCapo,
+        ]) {
+          await m.addColumn(cachedPlanningMutations, column);
+        }
+      }
     },
   );
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 }

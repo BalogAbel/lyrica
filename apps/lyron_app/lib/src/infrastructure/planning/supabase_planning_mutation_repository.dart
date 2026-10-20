@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/planning/session_item_key_edit.dart';
 import 'package:lyron_app/src/shared/connectivity_failure.dart';
 import 'package:lyron_app/src/shared/permanent_authorization_denial.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -32,6 +33,7 @@ class SupabasePlanningMutationRepository
           'create_song_session_item',
         PlanningMutationKind.sessionItemDelete => 'delete_session_item',
         PlanningMutationKind.sessionItemReorder => 'reorder_session_items',
+        PlanningMutationKind.sessionItemKeyEdit => 'set_session_item_key',
       };
 
       final params = _paramsFor(record, organizationId: organizationId);
@@ -132,6 +134,16 @@ class SupabasePlanningMutationRepository
         'p_base_version': record.baseVersion,
         'p_session_item_ids': record.orderedSiblingIds,
       },
+      PlanningMutationKind.sessionItemKeyEdit => {
+        ...organization,
+        'p_session_id': record.sessionId,
+        'p_session_item_id': record.aggregateId,
+        'p_base_version': record.baseVersion,
+        'p_transpose_mode': record.keyEdit!.transposeMode.value,
+        'p_transpose': record.keyEdit!.transpose,
+        'p_capo_mode': record.keyEdit!.capoMode.value,
+        'p_capo': record.keyEdit!.capo,
+      },
     };
   }
 
@@ -145,7 +157,7 @@ class SupabasePlanningMutationRepository
     final orderedSiblingPositionsValue =
         row['ordered_session_positions'] ??
         row['ordered_session_item_positions'];
-    return original.copyWith(
+    final mapped = original.copyWith(
       aggregateId: (row['id'] ?? original.aggregateId) as String,
       organizationId: (row['organization_id'] ?? organizationId) as String,
       planId: (row['plan_id'] ?? original.planId) as String?,
@@ -173,6 +185,44 @@ class SupabasePlanningMutationRepository
       clearErrorMessage: true,
       syncStatus: PlanningMutationSyncStatus.pending,
     );
+    if (original.kind == PlanningMutationKind.sessionItemKeyEdit) {
+      final returnedVersion = (row['version'] as num).toInt();
+      final serverTranspose = (row['transpose'] as num?)?.toInt();
+      final serverCapo = (row['capo'] as num?)?.toInt();
+      // PS15: the server state is provably this client's own write only when
+      // the version moved by exactly one from the sent base AND the state is
+      // what the sent edit produces from the sent base values. A no-op
+      // success can return base + 1 after a foreign write; the state check
+      // catches it.
+      final expected = original.keyEdit!.applyTo(
+        transpose: original.keyBaseTranspose,
+        capo: original.keyBaseCapo,
+      );
+      final ownWrite =
+          original.baseVersion != null &&
+          returnedVersion == original.baseVersion! + 1 &&
+          expected.transpose == serverTranspose &&
+          expected.capo == serverCapo;
+      return mapped.copyWith(
+        keyEdit: SessionItemKeyEdit(
+          transposeMode: serverTranspose == null
+              ? SessionItemKeyFieldMode.clear
+              : SessionItemKeyFieldMode.set,
+          transpose: serverTranspose,
+          capoMode: serverCapo == null
+              ? SessionItemKeyFieldMode.clear
+              : SessionItemKeyFieldMode.set,
+          capo: serverCapo,
+        ),
+        acceptedOwnKeyVersion: ownWrite ? returnedVersion : null,
+        clearAcceptedOwnKeyVersion: !ownWrite,
+        // A no-op or foreign-state response returns the CURRENT content
+        // version without a bump of this write; it can include foreign bumps.
+        // Only an own write's value may feed D7 rules 1a / 1b (ADR-038 D4).
+        clearAcceptedPlanContentVersion: !ownWrite,
+      );
+    }
+    return mapped;
   }
 
   PlanningMutationSyncException _mapError(Object error) {

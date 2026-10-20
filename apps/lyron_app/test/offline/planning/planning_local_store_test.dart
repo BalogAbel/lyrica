@@ -6,6 +6,7 @@ import 'package:lyron_app/src/application/storage/catalog_storage_accountant.dar
 import 'package:lyron_app/src/application/storage/local_storage_write_failure.dart';
 import 'package:lyron_app/src/application/storage/local_storage_write_recovery.dart';
 import 'package:lyron_app/src/application/storage/song_catalog_evictor.dart';
+import 'package:lyron_app/src/domain/planning/session_item_summary.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
@@ -94,6 +95,91 @@ void main() {
         throwsA(isA<PlanningProjectionAbortedException>()),
       );
       expect(revisionCount, 0);
+    });
+
+    test('projects session item version and plan key and applies key writes '
+        '(S3 PR 2)', () async {
+      var revisionCount = 0;
+      final trackedStore = DriftPlanningLocalStore(
+        database,
+        onStorageFootprintChanged: () => revisionCount += 1,
+      );
+      await trackedStore.replaceActiveProjection(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        plans: [_planRecord(id: 'plan-1', name: 'Plan')],
+        sessions: const [
+          CachedSessionRecord(
+            id: 'session-1',
+            planId: 'plan-1',
+            position: 10,
+            name: 'Worship',
+          ),
+        ],
+        items: const [
+          CachedSessionItemRecord(
+            id: 'item-1',
+            planId: 'plan-1',
+            sessionId: 'session-1',
+            position: 10,
+            songId: 'song-1',
+            songTitle: 'A forrasnal',
+            version: 3,
+            transpose: 2,
+            capo: 1,
+          ),
+        ],
+        refreshedAt: DateTime.utc(2026, 4, 3, 12),
+      );
+
+      Future<SessionItemSummary> readItem() async {
+        final detail = await trackedStore.readPlanDetail(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          planId: 'plan-1',
+        );
+        return detail!.sessions.single.items.single;
+      }
+
+      var item = await readItem();
+      expect(item.version, 3);
+      expect(item.planTranspose, 2);
+      expect(item.planCapo, 1);
+
+      revisionCount = 0;
+      await trackedStore.applySyncedSessionItemKey(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        sessionItemId: 'item-1',
+        version: 4,
+        transpose: null,
+        capo: 5,
+        refreshedAt: DateTime.utc(2026, 4, 3, 12),
+      );
+      item = await readItem();
+      expect(item.version, 4);
+      expect(item.planTranspose, isNull);
+      expect(item.planCapo, 5);
+      expect(item.position, 10);
+      expect(item.song.id, 'song-1');
+      expect(revisionCount, 1);
+
+      await trackedStore.applySyncedSessionItemKey(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        sessionItemId: 'unknown-item',
+        version: 9,
+        transpose: 1,
+        capo: 1,
+        refreshedAt: DateTime.utc(2026, 4, 3, 12),
+      );
+      final detail = await trackedStore.readPlanDetail(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        planId: 'plan-1',
+      );
+      expect(detail!.sessions.single.items, hasLength(1));
+      expect(revisionCount, 1, reason: 'a no-op write reports no footprint');
     });
 
     test('does not report an identical synced-plan upsert', () async {

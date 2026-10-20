@@ -5,8 +5,11 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/planning/drift_planning_mutation_store.dart';
 import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.dart';
+import 'package:lyron_app/src/application/planning/session_item_key_edit.dart';
+import 'package:lyron_app/src/offline/auth/drift_pending_local_work_reader.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
+import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart';
 
@@ -3063,6 +3066,467 @@ void main() {
         await store.readAllMutations(userId: 'user-1', organizationId: 'org-1'),
         isEmpty,
       );
+    });
+  });
+  group('sessionItemKeyEdit (S3 PR 2, PS14, C2, C7, C8)', () {
+    late PlanningLocalDatabase database;
+    late DriftPlanningLocalStore localStore;
+    late DriftPlanningMutationStore store;
+    const context = PlanningMutationContext(
+      userId: 'user-1',
+      organizationId: 'org-1',
+    );
+    const keep = SessionItemKeyFieldMode.keep;
+    const set = SessionItemKeyFieldMode.set;
+
+    setUp(() {
+      database = PlanningLocalDatabase.inMemory();
+      localStore = DriftPlanningLocalStore(database);
+      store = DriftPlanningMutationStore(
+        database: database,
+        localStore: localStore,
+      );
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    PlanningSessionItemKeyEditMutationDraft draft({
+      String itemId = 'item-1',
+      String sessionId = 'session-1',
+      String planId = 'plan-1',
+      required SessionItemKeyEdit edit,
+      int baseVersion = 4,
+      int? baseTranspose,
+      int? baseCapo,
+    }) => PlanningSessionItemKeyEditMutationDraft(
+      sessionItemId: itemId,
+      sessionId: sessionId,
+      planId: planId,
+      edit: edit,
+      baseVersion: baseVersion,
+      baseTranspose: baseTranspose,
+      baseCapo: baseCapo,
+    );
+
+    Future<PlanningMutationRecord?> keyRow([String itemId = 'item-1']) =>
+        store.readMutation(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType: 'session_item_key',
+          aggregateId: itemId,
+        );
+
+    Future<void> setStatus(
+      PlanningMutationSyncStatus status, {
+      String aggregateType = 'session_item_key',
+      String aggregateId = 'item-1',
+    }) => store.saveSyncAttemptResult(
+      userId: 'user-1',
+      organizationId: 'org-1',
+      aggregateType: aggregateType,
+      aggregateId: aggregateId,
+      syncStatus: status,
+    );
+
+    Future<void> recordKey({
+      String itemId = 'item-1',
+      String sessionId = 'session-1',
+      String planId = 'plan-1',
+      int transpose = 3,
+    }) => store.recordSessionItemKeyEdit(
+      context: context,
+      draft: draft(
+        itemId: itemId,
+        sessionId: sessionId,
+        planId: planId,
+        edit: SessionItemKeyEdit(
+          transposeMode: set,
+          transpose: transpose,
+          capoMode: keep,
+        ),
+        baseTranspose: 1,
+        baseCapo: 2,
+      ),
+    );
+
+    Future<void> recordItemDelete() => store.recordSessionItemDelete(
+      context: context,
+      draft: const PlanningSessionItemDeleteMutationDraft(
+        sessionItemId: 'item-1',
+        sessionId: 'session-1',
+        planId: 'plan-1',
+        baseVersion: 4,
+      ),
+    );
+
+    Future<void> recordItemCreate() => store.recordSessionItemCreateSong(
+      context: context,
+      draft: const PlanningSessionItemCreateSongMutationDraft(
+        sessionItemId: 'item-1',
+        sessionId: 'session-1',
+        planId: 'plan-1',
+        songId: 'song-1',
+        songTitle: 'Song',
+        position: 1,
+        baseVersion: 3,
+      ),
+    );
+
+    PlanningMutationRecord accepted(
+      PlanningMutationKind kind, {
+      required String aggregateId,
+    }) => PlanningMutationRecord(
+      aggregateId: aggregateId,
+      organizationId: 'org-1',
+      planId: 'plan-1',
+      sessionId: 'session-1',
+      kind: kind,
+      syncStatus: PlanningMutationSyncStatus.pending,
+      orderKey: 99,
+      updatedAt: DateTime.utc(2026),
+    );
+
+    test('inserts one pending row with the draft bases and round-trips the '
+        'edit', () async {
+      await store.recordSessionItemKeyEdit(
+        context: context,
+        draft: draft(
+          edit: SessionItemKeyEdit(
+            transposeMode: set,
+            transpose: -4,
+            capoMode: SessionItemKeyFieldMode.clear,
+          ),
+          baseVersion: 7,
+          baseTranspose: 2,
+          baseCapo: 5,
+        ),
+      );
+
+      final all = await store.readAllMutations(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+      expect(all, hasLength(1));
+      final row = (await keyRow())!;
+      expect(row.kind, PlanningMutationKind.sessionItemKeyEdit);
+      expect(row.kind.value, 'session_item_key_edit');
+      expect(row.kind.aggregateType, 'session_item_key');
+      expect(row.kind.bumpsPlanContent, isTrue);
+      expect(row.aggregateId, 'item-1');
+      expect(row.planId, 'plan-1');
+      expect(row.sessionId, 'session-1');
+      expect(row.syncStatus, PlanningMutationSyncStatus.pending);
+      expect(row.baseVersion, 7);
+      expect(row.keyBaseTranspose, 2);
+      expect(row.keyBaseCapo, 5);
+      expect(
+        row.keyEdit,
+        SessionItemKeyEdit(
+          transposeMode: set,
+          transpose: -4,
+          capoMode: SessionItemKeyFieldMode.clear,
+        ),
+      );
+    });
+
+    test('C2: a second edit folds into the one row, keeping the first '
+        'base, base values and orderKey', () async {
+      await store.recordSessionItemKeyEdit(
+        context: context,
+        draft: draft(
+          edit: SessionItemKeyEdit(
+            transposeMode: set,
+            transpose: 3,
+            capoMode: keep,
+          ),
+          baseVersion: 4,
+          baseTranspose: 1,
+          baseCapo: 2,
+        ),
+      );
+      final first = (await keyRow())!;
+
+      await store.recordSessionItemKeyEdit(
+        context: context,
+        draft: draft(
+          edit: SessionItemKeyEdit(transposeMode: keep, capoMode: set, capo: 2),
+          baseVersion: 9,
+          baseTranspose: 8,
+          baseCapo: 8,
+        ),
+      );
+
+      final all = await store.readAllMutations(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+      expect(all, hasLength(1));
+      final row = (await keyRow())!;
+      expect(
+        row.keyEdit,
+        SessionItemKeyEdit(
+          transposeMode: set,
+          transpose: 3,
+          capoMode: set,
+          capo: 2,
+        ),
+      );
+      expect(row.baseVersion, 4);
+      expect(row.keyBaseTranspose, 1);
+      expect(row.keyBaseCapo, 2);
+      expect(row.orderKey, first.orderKey);
+    });
+
+    for (final status in [
+      PlanningMutationSyncStatus.sending,
+      PlanningMutationSyncStatus.accepted,
+      PlanningMutationSyncStatus.conflict,
+      PlanningMutationSyncStatus.failedRemoteDelete,
+    ]) {
+      test('a fold resets a ${status.value} row to pending, keeps its '
+          'base and clears its error', () async {
+        await recordKey();
+        await store.saveSyncAttemptResult(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType: 'session_item_key',
+          aggregateId: 'item-1',
+          syncStatus: status,
+          errorCode: PlanningMutationSyncErrorCode.conflict,
+          errorMessage: 'boom',
+        );
+
+        await recordKey(transpose: 5);
+
+        final row = (await keyRow())!;
+        expect(row.syncStatus, PlanningMutationSyncStatus.pending);
+        expect(row.errorCode, isNull);
+        expect(row.errorMessage, isNull);
+        expect(row.baseVersion, 4);
+        expect(row.keyBaseTranspose, 1);
+        expect(row.keyEdit!.transpose, 5);
+      });
+    }
+
+    test('an out-of-bounds edit is refused before it reaches the store', () {
+      expect(
+        () => SessionItemKeyEdit(
+          transposeMode: set,
+          transpose: 12,
+          capoMode: keep,
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    group('C7', () {
+      test('deleting the item drops a pending key row', () async {
+        await recordKey();
+        await recordItemDelete();
+
+        expect(await keyRow(), isNull);
+        expect(
+          (await store.readMutation(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            aggregateType: 'session_item',
+            aggregateId: 'item-1',
+          ))?.kind,
+          PlanningMutationKind.sessionItemDelete,
+        );
+      });
+
+      for (final status in [
+        PlanningMutationSyncStatus.sending,
+        PlanningMutationSyncStatus.accepted,
+      ]) {
+        test('deleting the item keeps an in-flight (${status.value}) key '
+            'row', () async {
+          await recordKey();
+          await setStatus(status);
+
+          await recordItemDelete();
+
+          final row = await keyRow();
+          expect(row, isNotNull);
+          expect(row!.syncStatus, status);
+        });
+      }
+
+      test(
+        'collapsing a still-pending item create drops the key row',
+        () async {
+          await recordItemCreate();
+          await recordKey();
+
+          await recordItemDelete();
+
+          expect(await keyRow(), isNull);
+          expect(
+            await store.readAllMutations(
+              userId: 'user-1',
+              organizationId: 'org-1',
+            ),
+            isEmpty,
+          );
+        },
+      );
+
+      test(
+        'deleting an in-flight-created item drops a pending key row',
+        () async {
+          await recordItemCreate();
+          await setStatus(
+            PlanningMutationSyncStatus.sending,
+            aggregateType: 'session_item',
+          );
+          await recordKey();
+
+          await recordItemDelete();
+
+          expect(await keyRow(), isNull);
+        },
+      );
+
+      test('resolveCancelledCreate(created: false) drops a pending key row, '
+          'keeps an in-flight one', () async {
+        await recordItemCreate();
+        await setStatus(
+          PlanningMutationSyncStatus.sending,
+          aggregateType: 'session_item',
+        );
+        await recordItemDelete(); // tombstone (cancelling)
+        await recordKey();
+
+        await store.resolveCancelledCreate(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType: 'session_item',
+          aggregateId: 'item-1',
+          created: false,
+        );
+        expect(await keyRow(), isNull);
+
+        // In flight: kept.
+        await recordItemCreate();
+        await setStatus(
+          PlanningMutationSyncStatus.sending,
+          aggregateType: 'session_item',
+        );
+        await recordItemDelete();
+        await recordKey();
+        await setStatus(PlanningMutationSyncStatus.sending);
+        await store.resolveCancelledCreate(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType: 'session_item',
+          aggregateId: 'item-1',
+          created: false,
+        );
+        expect(await keyRow(), isNotNull);
+      });
+
+      test(
+        'an accepted sessionDelete removes the session key rows only',
+        () async {
+          await recordKey();
+          await recordKey(itemId: 'item-other', sessionId: 'session-2');
+
+          await store.applyAcceptedWriteEffects(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            accepted: accepted(
+              PlanningMutationKind.sessionDelete,
+              aggregateId: 'session-1',
+            ),
+            remoteResponse: false,
+          );
+
+          expect(await keyRow(), isNull);
+          expect(await keyRow('item-other'), isNotNull);
+        },
+      );
+
+      test('an accepted planDelete removes the plan key rows', () async {
+        await recordKey();
+        await recordKey(
+          itemId: 'item-other',
+          sessionId: 'session-9',
+          planId: 'plan-2',
+        );
+
+        await store.applyAcceptedWriteEffects(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          accepted: accepted(
+            PlanningMutationKind.planDelete,
+            aggregateId: 'plan-1',
+          ),
+          remoteResponse: false,
+        );
+
+        expect(await keyRow(), isNull);
+        expect(await keyRow('item-other'), isNotNull);
+      });
+
+      test('a collapsed pending sessionCreate removes its key rows', () async {
+        await store.recordSessionCreate(
+          context: context,
+          draft: const PlanningSessionCreateMutationDraft(
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            slug: 'morning',
+            name: 'Morning',
+            position: 1,
+          ),
+        );
+        await recordKey();
+
+        await store.recordSessionDelete(
+          context: context,
+          draft: const PlanningSessionDeleteMutationDraft(
+            sessionId: 'session-1',
+            planId: 'plan-1',
+          ),
+        );
+
+        expect(await keyRow(), isNull);
+      });
+
+      test('deleting a synced session drops a pending key row', () async {
+        await recordKey();
+
+        await store.recordSessionDelete(
+          context: context,
+          draft: const PlanningSessionDeleteMutationDraft(
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            baseVersion: 3,
+          ),
+        );
+
+        expect(await keyRow(), isNull);
+      });
+    });
+
+    test('C8: counted by the pending work reader and deleted with the '
+        "user's planning data", () async {
+      await recordKey();
+      final songDatabase = SongCatalogDatabase.inMemory();
+      addTearDown(songDatabase.close);
+      final reader = DriftPendingLocalWorkReader(
+        planningDatabase: database,
+        songDatabase: songDatabase,
+      );
+
+      expect(await reader.countPlanningPendingWork(userId: 'user-1'), 1);
+
+      await localStore.deletePlanningDataForUser(userId: 'user-1');
+
+      expect(await keyRow(), isNull);
+      expect(await reader.countPlanningPendingWork(userId: 'user-1'), 0);
     });
   });
 }

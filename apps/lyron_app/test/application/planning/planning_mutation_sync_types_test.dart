@@ -33,6 +33,7 @@ void main() {
         PlanningMutationKind.sessionItemCreateSong,
         PlanningMutationKind.sessionItemDelete,
         PlanningMutationKind.sessionItemReorder,
+        PlanningMutationKind.sessionItemKeyEdit,
       },
     );
   });

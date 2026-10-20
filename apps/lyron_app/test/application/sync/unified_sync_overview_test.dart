@@ -220,6 +220,27 @@ void main() {
       expect(summaryFor(PlanningMutationSyncStatus.pending), 'session removed');
     });
 
+    test('a pending key edit reads song key changed under its plan', () {
+      final overview = _compute(
+        planTitles: const {'plan-1': 'Sunday Service'},
+        plans: [
+          PlanningMutationRecord(
+            aggregateId: 'item-1',
+            organizationId: 'org-1',
+            planId: 'plan-1',
+            kind: PlanningMutationKind.sessionItemKeyEdit,
+            syncStatus: PlanningMutationSyncStatus.pending,
+            orderKey: 1,
+            updatedAt: DateTime.utc(2026),
+          ),
+        ],
+      );
+
+      final row = overview.planRows.single;
+      expect(row.title, 'Sunday Service');
+      expect(row.nestedSummaries.single, 'song key changed');
+    });
+
     test('red wins over yellow when mixed', () {
       final overview = _compute(
         songs: [_song(id: 's1', title: 'Hymn')],

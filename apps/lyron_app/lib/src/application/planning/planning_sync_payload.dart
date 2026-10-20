@@ -58,6 +58,9 @@ class PlanningSyncSessionItem {
     required this.position,
     required this.songId,
     required this.songTitle,
+    this.version = 1,
+    this.transpose,
+    this.capo,
   });
 
   final String id;
@@ -66,4 +69,7 @@ class PlanningSyncSessionItem {
   final int position;
   final String songId;
   final String songTitle;
+  final int version;
+  final int? transpose;
+  final int? capo;
 }

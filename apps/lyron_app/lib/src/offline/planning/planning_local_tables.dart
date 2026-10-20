@@ -57,6 +57,9 @@ class CachedPlanningSessionItems extends Table {
   IntColumn get position => integer()();
   TextColumn get songId => text()();
   TextColumn get songTitle => text()();
+  IntColumn get version => integer().withDefault(const Constant(1))();
+  IntColumn get transpose => integer().nullable()();
+  IntColumn get capo => integer().nullable()();
 
   @override
   Set<Column<Object>> get primaryKey => {userId, organizationId, sessionItemId};
@@ -80,6 +83,14 @@ class CachedPlanningMutations extends Table {
   TextColumn get songTitle => text().nullable()();
   TextColumn get orderedSiblingIds => text().nullable()();
   IntColumn get baseVersion => integer().nullable()();
+
+  /// Session item key edit payload (S3 PR 2); null for every other kind.
+  TextColumn get keyTransposeMode => text().nullable()();
+  IntColumn get keyTranspose => integer().nullable()();
+  TextColumn get keyCapoMode => text().nullable()();
+  IntColumn get keyCapo => integer().nullable()();
+  IntColumn get keyBaseTranspose => integer().nullable()();
+  IntColumn get keyBaseCapo => integer().nullable()();
 
   /// The plan content version a `planDelete` was based on (spec D4/D5).
   /// A `planCreate` row carries 1, a new plan's content version, which a

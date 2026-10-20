@@ -7,6 +7,7 @@ import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/song_library/song_library_providers.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_context.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_context_resolver.dart';
+import 'package:meta/meta.dart';
 
 final sessionScopedReaderContextProvider = FutureProvider.autoDispose
     .family<
@@ -15,7 +16,7 @@ final sessionScopedReaderContextProvider = FutureProvider.autoDispose
     >((ref, request) async {
       final warmPlanDetail = request.warmPlanDetail;
       if (warmPlanDetail != null) {
-        final canonicalWarmPlanDetail = await _canonicalizePlanDetailSongs(
+        final canonicalWarmPlanDetail = await canonicalizePlanDetailSongs(
           ref,
           warmPlanDetail,
         );
@@ -32,7 +33,7 @@ final sessionScopedReaderContextProvider = FutureProvider.autoDispose
         final planDetail = await ref.watch(
           planningPlanDetailProvider(request.planId).future,
         );
-        final canonicalPlanDetail = await _canonicalizePlanDetailSongs(
+        final canonicalPlanDetail = await canonicalizePlanDetailSongs(
           ref,
           planDetail,
         );
@@ -50,7 +51,8 @@ final sessionScopedReaderContextProvider = FutureProvider.autoDispose
       }
     }, retry: noAutomaticProviderRetry);
 
-Future<PlanDetail> _canonicalizePlanDetailSongs(
+@visibleForTesting
+Future<PlanDetail> canonicalizePlanDetailSongs(
   Ref ref,
   PlanDetail planDetail,
 ) async {
@@ -74,6 +76,9 @@ Future<PlanDetail> _canonicalizePlanDetailSongs(
                   slug: item.slug,
                   position: item.position,
                   song: songsById[item.song.id] ?? item.song,
+                  version: item.version,
+                  planTranspose: item.planTranspose,
+                  planCapo: item.planCapo,
                 ),
             ],
           ),
