@@ -1644,7 +1644,8 @@ void main() {
   );
 
   testWidgets(
-    'scoped navigation preserves view mode, transpose, and shared font scale',
+    'scoped navigation preserves view mode and font scale and clears the '
+    'temporary key',
     (tester) async {
       await pumpWithViewport(
         tester,
@@ -1656,34 +1657,221 @@ void main() {
             'song-2': buildScopedResult('Song Two'),
             'song-3': buildScopedResult('Song Three'),
           },
+          initialLocation: _songOneLocation,
         ),
       );
 
-      await tester.tap(find.byIcon(Icons.more_horiz));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text(AppStrings.songReaderLyricsOnlyAction));
-      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('song-reader-transpose-up')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('A+'));
       await tester.pumpAndSettle();
 
-      final resizedBeforeNavigation = tester.widget<Text>(find.text('Hello'));
-      final fontSizeBeforeNavigation = resizedBeforeNavigation.style!.fontSize!;
+      expect(find.text('Gm'), findsOneWidget);
+      expect(_transposeValue(tester), '+1');
+      final fontSizeBeforeNavigation = tester
+          .widget<Text>(find.text('Hello'))
+          .style!
+          .fontSize!;
 
       await tester.tap(
         find.byKey(SongReaderExpandedContextPanel.nextSegmentKey),
       );
       await tester.pumpAndSettle();
 
-      final resizedAfterNavigation = tester.widget<Text>(find.text('Hello'));
-      final fontSizeAfterNavigation = resizedAfterNavigation.style!.fontSize!;
-
-      expect(find.text('F#m'), findsNothing);
+      expect(find.widgetWithText(AppBar, 'Song Two'), findsOneWidget);
+      expect(find.text('F#m'), findsOneWidget);
       expect(find.text('Gm'), findsNothing);
-      expect(fontSizeAfterNavigation, fontSizeBeforeNavigation);
+      expect(_transposeValue(tester), '0');
+      expect(
+        tester.widget<Text>(find.text('Hello')).style!.fontSize!,
+        fontSizeBeforeNavigation,
+      );
     },
   );
+
+  testWidgets('scoped navigation preserves the lyrics-only view mode', (
+    tester,
+  ) async {
+    await pumpWithViewport(
+      tester,
+      size: const Size(1600, 1200),
+      child: buildScopedReaderApp(
+        planDetail: _multiItemPlanDetail(),
+        resultsBySongId: {
+          'song-1': buildScopedResult('Song One'),
+          'song-2': buildScopedResult('Song Two'),
+          'song-3': buildScopedResult('Song Three'),
+        },
+        initialLocation: _songOneLocation,
+      ),
+    );
+
+    await tester.tap(find.byIcon(Icons.more_horiz));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(AppStrings.songReaderLyricsOnlyAction));
+    await tester.pumpAndSettle();
+    expect(find.text('F#m'), findsNothing);
+
+    await tester.tap(find.byKey(SongReaderExpandedContextPanel.nextSegmentKey));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(AppBar, 'Song Two'), findsOneWidget);
+    expect(find.text('Hello'), findsOneWidget);
+    expect(find.text('F#m'), findsNothing);
+    expect(find.text('Gm'), findsNothing);
+  });
+
+  testWidgets('the first frame after previous/next shows no stale temporary '
+      'key', (tester) async {
+    await pumpWithViewport(
+      tester,
+      size: const Size(1600, 1200),
+      child: buildScopedReaderApp(
+        planDetail: _multiItemPlanDetail(),
+        resultsBySongId: {
+          'song-1': buildScopedResult('Song One'),
+          'song-2': buildScopedResult('Song Two'),
+          'song-3': buildScopedResult('Song Three'),
+        },
+        initialLocation: _songOneLocation,
+      ),
+    );
+    await _keepReaderResultLoaded(tester, 'song-2');
+    await tester.tap(find.byKey(const Key('song-reader-transpose-up')));
+    await tester.pumpAndSettle();
+    expect(_transposeValue(tester), '+1');
+
+    await tester.tap(find.byKey(SongReaderExpandedContextPanel.nextSegmentKey));
+    final valueAtFirstFrame = await _pumpUntilTransposeValue(
+      tester,
+      title: 'Song Two',
+    );
+
+    expect(valueAtFirstFrame, '0');
+  });
+
+  testWidgets('reopening the same plan item shows no old temporary key', (
+    tester,
+  ) async {
+    await pumpWithViewport(
+      tester,
+      size: const Size(1600, 1200),
+      child: buildScopedReaderApp(
+        planDetail: _multiItemPlanDetail(),
+        resultsBySongId: {
+          'song-1': buildScopedResult('Song One'),
+          'song-2': buildScopedResult('Song Two'),
+          'song-3': buildScopedResult('Song Three'),
+        },
+        initialLocation: '/plans/plan-fixture',
+      ),
+    );
+    await tester.tap(find.text('10. Song One'));
+    await tester.pumpAndSettle();
+    await _keepReaderResultLoaded(tester, 'song-1');
+    await tester.tap(find.byKey(const Key('song-reader-transpose-up')));
+    await tester.pumpAndSettle();
+    expect(_transposeValue(tester), '+1');
+
+    await tester.tap(find.byTooltip(AppStrings.songReaderBackAction));
+    await tester.pumpAndSettle();
+    expect(find.text(AppStrings.planDetailTitle), findsOneWidget);
+
+    await tester.tap(find.text('10. Song One'));
+    final valueAtFirstFrame = await _pumpUntilTransposeValue(
+      tester,
+      title: 'Song One',
+    );
+
+    expect(valueAtFirstFrame, '0');
+  });
+
+  testWidgets('a library reader reused for another song drops the temporary '
+      'key', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1600, 1200);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final currentSongId = ValueNotifier<String>('song-1');
+    addTearDown(currentSongId.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          _noopPreferencesStoreOverride,
+          catalogSnapshotStateProvider.overrideWithValue(
+            const CatalogSnapshotState(
+              context: null,
+              connectionStatus: CatalogConnectionStatus.online,
+              refreshStatus: CatalogRefreshStatus.idle,
+              sessionStatus: CatalogSessionStatus.verified,
+              hasCachedCatalog: true,
+            ),
+          ),
+          activeCatalogContextProvider.overrideWithValue(null),
+          songLibraryReaderProvider.overrideWith(
+            (ref, songId) async =>
+                buildScopedResult(songId == 'song-1' ? 'Song One' : 'Song Two'),
+          ),
+        ],
+        child: MaterialApp(
+          home: ValueListenableBuilder<String>(
+            valueListenable: currentSongId,
+            builder: (context, id, _) => SongReaderScreen(songId: id),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('song-reader-transpose-up')));
+    await tester.pumpAndSettle();
+    expect(_transposeValue(tester), '+1');
+
+    currentSongId.value = 'song-2';
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(AppBar, 'Song Two'), findsOneWidget);
+    expect(_transposeValue(tester), '0');
+
+    currentSongId.value = 'song-1';
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(AppBar, 'Song One'), findsOneWidget);
+    expect(_transposeValue(tester), '0');
+  });
+
+  testWidgets('out-of-range song base enables only the step toward the range', (
+    tester,
+  ) async {
+    await pumpWithViewport(
+      tester,
+      size: const Size(1600, 1200),
+      child: buildApp(result: buildResult(baseTranspose: 14)),
+    );
+
+    expect(_transposeValue(tester), '+14');
+    expect(
+      tester
+          .widget<OutlinedButton>(
+            find.byKey(const Key('song-reader-transpose-up')),
+          )
+          .onPressed,
+      isNull,
+    );
+    expect(
+      tester
+          .widget<OutlinedButton>(
+            find.byKey(const Key('song-reader-transpose-down')),
+          )
+          .onPressed,
+      isNotNull,
+    );
+
+    await tester.tap(find.byKey(const Key('song-reader-transpose-down')));
+    await tester.pumpAndSettle();
+
+    expect(_transposeValue(tester), '+13');
+  });
 
   testWidgets('invalid scoped context shows explicit scoped error state', (
     tester,
@@ -2535,6 +2723,64 @@ void main() {
       );
     }
   });
+}
+
+const _songOneLocation =
+    '/plans/plan-fixture/sessions/main-set/items/songs/song-one';
+
+/// The text the transpose value chip currently shows.
+String _transposeValue(WidgetTester tester, {bool skipOffstage = true}) {
+  return tester
+      .widget<Text>(
+        find.descendant(
+          of: find.byKey(
+            const Key('song-reader-transpose-value'),
+            skipOffstage: skipOffstage,
+          ),
+          matching: find.byType(Text, skipOffstage: skipOffstage),
+          skipOffstage: skipOffstage,
+        ),
+      )
+      .data!;
+}
+
+/// Keeps the reader result of [songId] loaded for the rest of the test. A
+/// reader that opens on a result that is already loaded renders its song in
+/// its very first frame -- the only frame in which a stale temporary key could
+/// show, since without it the first frame is the loading view.
+Future<void> _keepReaderResultLoaded(WidgetTester tester, String songId) async {
+  final container = ProviderScope.containerOf(
+    tester.element(find.byType(SongReaderScreen)),
+  );
+  final subscription = container.listen(
+    songLibraryReaderProvider(songId),
+    (previous, next) {},
+  );
+  addTearDown(subscription.close);
+  await tester.pumpAndSettle();
+}
+
+/// Pumps frame by frame (never `pumpAndSettle`, which would hide a stale
+/// frame) until the reader titled [title] has built its transpose value chip,
+/// and returns the chip's text from that first frame. A route that is pushed
+/// builds its first frame offstage, and that frame must not render a stale
+/// key either, so offstage widgets count. Fails after 10 frames.
+Future<String> _pumpUntilTransposeValue(
+  WidgetTester tester, {
+  required String title,
+}) async {
+  final heading = find.widgetWithText(AppBar, title, skipOffstage: false);
+  final chip = find.byKey(
+    const Key('song-reader-transpose-value'),
+    skipOffstage: false,
+  );
+  for (var frame = 0; frame < 10; frame += 1) {
+    await tester.pump();
+    if (heading.evaluate().isNotEmpty && chip.evaluate().isNotEmpty) {
+      return _transposeValue(tester, skipOffstage: false);
+    }
+  }
+  fail('No transpose value for "$title" within 10 frames');
 }
 
 PlanDetail _multiItemPlanDetail() {

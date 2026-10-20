@@ -5,7 +5,7 @@ import 'package:lyron_app/src/presentation/song_reader/song_reader_controller.da
 import 'package:lyron_app/src/presentation/song_reader/song_reader_immersive_mode.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 
-/// Reader command dispatch: routes view-mode/transpose/capo/font-scale/
+/// Reader command dispatch: routes view-mode/temporary-key/font-scale/
 /// compact-controls commands to either the scoped session runtime controller
 /// (multi-song plan sessions) or the screen's local [SongReaderController],
 /// depending on `isScopedMode`.
@@ -42,7 +42,8 @@ class SongReaderCommands {
     _updateState((controller) => controller.toggleViewMode());
   }
 
-  void transposeDown({
+  void setTemporaryLayer(
+    SongReaderTemporaryLayer? layer, {
     required WidgetRef ref,
     required bool isScopedMode,
     required String sessionKey,
@@ -50,56 +51,11 @@ class SongReaderCommands {
     if (isScopedMode) {
       ref
           .read(sessionScopedReaderRuntimeControllerProvider(sessionKey))
-          .transposeDown();
+          .setTemporaryLayer(layer);
       return;
     }
 
-    _updateState((controller) => controller.transposeDown());
-  }
-
-  void transposeUp({
-    required WidgetRef ref,
-    required bool isScopedMode,
-    required String sessionKey,
-  }) {
-    if (isScopedMode) {
-      ref
-          .read(sessionScopedReaderRuntimeControllerProvider(sessionKey))
-          .transposeUp();
-      return;
-    }
-
-    _updateState((controller) => controller.transposeUp());
-  }
-
-  void capoDown({
-    required WidgetRef ref,
-    required bool isScopedMode,
-    required String sessionKey,
-  }) {
-    if (isScopedMode) {
-      ref
-          .read(sessionScopedReaderRuntimeControllerProvider(sessionKey))
-          .capoDown();
-      return;
-    }
-
-    _updateState((controller) => controller.capoDown());
-  }
-
-  void capoUp({
-    required WidgetRef ref,
-    required bool isScopedMode,
-    required String sessionKey,
-  }) {
-    if (isScopedMode) {
-      ref
-          .read(sessionScopedReaderRuntimeControllerProvider(sessionKey))
-          .capoUp();
-      return;
-    }
-
-    _updateState((controller) => controller.capoUp());
+    _updateState((controller) => controller.setTemporaryLayer(layer));
   }
 
   void setInstrumentDisplayMode(

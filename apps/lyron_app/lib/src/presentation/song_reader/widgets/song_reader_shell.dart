@@ -6,6 +6,7 @@ import 'package:lyron_app/src/application/song_library/song_reader_result.dart';
 import 'package:lyron_app/src/domain/song/song_access_denied_exception.dart';
 import 'package:lyron_app/src/domain/song/song_not_found_exception.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_context.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_key_layers.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_layout.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
@@ -33,6 +34,7 @@ class SongReaderBodyShell extends StatelessWidget {
     required this.mutationRecord,
     required this.resolvedScopedContext,
     required this.readerState,
+    this.keyLayers = SongReaderKeyLayers.baseOnly,
     required this.preservedScopedTitle,
     required this.onBack,
     required this.onRetry,
@@ -63,6 +65,10 @@ class SongReaderBodyShell extends StatelessWidget {
   final SessionScopedReaderContext? resolvedScopedContext;
   final SongReaderState readerState;
 
+  /// The layers [readerState] and the open item resolve the song's key from;
+  /// the projection renders the key they give.
+  final SongReaderKeyLayers keyLayers;
+
   /// Preserved title to show in the deleted-song tombstone. Precomputed by
   /// the screen (pure, cheap) since the tombstone widget itself takes only
   /// resolved values.
@@ -70,10 +76,13 @@ class SongReaderBodyShell extends StatelessWidget {
 
   final void Function(BuildContext context) onBack;
   final VoidCallback onRetry;
-  final VoidCallback onTransposeDown;
-  final VoidCallback onTransposeUp;
-  final VoidCallback onCapoDown;
-  final VoidCallback onCapoUp;
+
+  /// The `±` steps of the key controls; null disables the button. The screen
+  /// decides which steps are allowed (PS9), this widget only passes them on.
+  final VoidCallback? onTransposeDown;
+  final VoidCallback? onTransposeUp;
+  final VoidCallback? onCapoDown;
+  final VoidCallback? onCapoUp;
   final void Function(double delta) onAdjustSharedFontScale;
   final void Function(double scale) onSetFontScale;
   final VoidCallback onPersistFontScale;
@@ -236,6 +245,7 @@ class SongReaderBodyShell extends StatelessWidget {
                     final projection = SongReaderProjection(
                       song: result.song,
                       state: readerState,
+                      key: keyLayers.resolveFor(result.song),
                     );
                     final currentTitle = resolveCurrentTitle(
                       scopedContext: resolvedScopedContext,
@@ -268,9 +278,7 @@ class SongReaderBodyShell extends StatelessWidget {
                             contentColumnCount: layout.contentColumnCount,
                             onTransposeDown: onTransposeDown,
                             onTransposeUp: onTransposeUp,
-                            onCapoDown: projection.effectiveCapo > 0
-                                ? onCapoDown
-                                : null,
+                            onCapoDown: onCapoDown,
                             onCapoUp: onCapoUp,
                             onDecreaseFontScale: () =>
                                 onAdjustSharedFontScale(-0.1),
@@ -301,9 +309,7 @@ class SongReaderBodyShell extends StatelessWidget {
                             showBottomContextBar: showCompactBottomContextBar,
                             onTransposeDown: onTransposeDown,
                             onTransposeUp: onTransposeUp,
-                            onCapoDown: projection.effectiveCapo > 0
-                                ? onCapoDown
-                                : null,
+                            onCapoDown: onCapoDown,
                             onCapoUp: onCapoUp,
                             onDecreaseFontScale: () =>
                                 onAdjustSharedFontScale(-0.1),

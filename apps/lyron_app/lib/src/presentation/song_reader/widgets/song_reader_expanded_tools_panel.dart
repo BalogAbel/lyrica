@@ -15,8 +15,8 @@ class SongReaderExpandedToolsPanel extends StatelessWidget {
   });
 
   final SongReaderProjection projection;
-  final VoidCallback onTransposeDown;
-  final VoidCallback onTransposeUp;
+  final VoidCallback? onTransposeDown;
+  final VoidCallback? onTransposeUp;
   final VoidCallback? onCapoDown;
   final VoidCallback? onCapoUp;
   final VoidCallback onDecreaseFontScale;

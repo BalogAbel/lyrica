@@ -9,13 +9,15 @@ import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyron_app/src/domain/core/capability.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
-import 'package:lyron_app/src/domain/song/parse_diagnostic.dart';
+import 'package:lyron_app/src/domain/song/parsed_song.dart';
+import 'package:lyron_app/src/domain/song/song_key_layers.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_context.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_context_provider.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_runtime_controller.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_commands.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_controller.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_immersive_mode.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_key_layers.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_layout.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_preferences_store.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
@@ -55,6 +57,14 @@ class SongReaderScreen extends ConsumerStatefulWidget {
 }
 
 class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
+  static int _nextReaderVisit = 0;
+
+  /// One id per opened reader (assigned once per `State`): a reader opened
+  /// again gets a new one, scoped previous/next inside one reader keeps it.
+  /// Part of [_keyOwnerId], so a temporary key left in a runtime state that
+  /// outlives the screen never shows in a reader opened later (PS5).
+  late final int _readerVisit = _nextReaderVisit++;
+
   late final SongReaderController _controller = SongReaderController();
   final _immersiveMode = SongReaderImmersiveMode();
   final _zoomPersistence = SongReaderZoomPersistence();
@@ -93,6 +103,13 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
 
   String get _sessionKey => '${widget.planId}:${widget.sessionId}';
 
+  /// Who owns the temporary key layer (PS5): the open plan item (or the song
+  /// outside a plan) in this reader visit. A layer owned by anyone else is
+  /// not shown, so the frames before the post-frame `startSession` of a new
+  /// item or visit never render the old temporary key.
+  String get _keyOwnerId =>
+      '${_isScopedMode ? widget.sessionItemId! : widget.songId}@$_readerVisit';
+
   @override
   void initState() {
     super.initState();
@@ -110,6 +127,12 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
   @override
   void didUpdateWidget(covariant SongReaderScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.songId != widget.songId && !_isScopedMode) {
+      // PS5: any route to another song ends the temporary key. The owner
+      // check already hides it; clearing keeps a return to the first song
+      // from reviving it.
+      _controller.setTemporaryLayer(null);
+    }
     if (oldWidget.songId != widget.songId ||
         oldWidget.planId != widget.planId ||
         oldWidget.sessionId != widget.sessionId) {
@@ -175,32 +198,20 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     );
   }
 
-  void _transposeDown() {
-    _commands.transposeDown(
-      ref: ref,
-      isScopedMode: _isScopedMode,
-      sessionKey: _sessionKey,
-    );
-  }
-
-  void _transposeUp() {
-    _commands.transposeUp(
-      ref: ref,
-      isScopedMode: _isScopedMode,
-      sessionKey: _sessionKey,
-    );
-  }
-
-  void _capoDown() {
-    _commands.capoDown(
-      ref: ref,
-      isScopedMode: _isScopedMode,
-      sessionKey: _sessionKey,
-    );
-  }
-
-  void _capoUp() {
-    _commands.capoUp(
+  /// The `±` step of [field] for the open [song], or null (the button is
+  /// disabled) while the song is not loaded or the step is not allowed
+  /// (PS9).
+  VoidCallback? _keyStep(
+    ParsedSong? song,
+    SongReaderKeyLayers keyLayers,
+    SongKeyField field,
+    int delta,
+  ) {
+    if (song == null || !keyLayers.canStep(song, field, delta)) {
+      return null;
+    }
+    return () => _commands.setTemporaryLayer(
+      keyLayers.temporaryAfterStep(song, field, delta, ownerId: _keyOwnerId),
       ref: ref,
       isScopedMode: _isScopedMode,
       sessionKey: _sessionKey,
@@ -350,15 +361,26 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
         ? ref.watch(songMutationRecordByIdProvider(widget.songId))
         : null;
     final readerResult = readerAsync.value;
+    final song = readerResult?.song;
     final scopedContextResult = scopedContextAsync?.value;
     final resolvedScopedContext =
         scopedContextResult is ResolvedSessionScopedReaderContextResult
         ? scopedContextResult.context
         : null;
     final mutationRecord = mutationRecordAsync?.value;
-    final projection = readerResult == null
+    // The plan layer arrives with the plan wiring; for now only the
+    // temporary layer sits above the song's own key.
+    final keyLayers = SongReaderKeyLayers(
+      temporary: readerState.temporaryLayerFor(_keyOwnerId),
+      isPlanScoped: _isScopedMode,
+    );
+    final projection = song == null
         ? null
-        : SongReaderProjection(song: readerResult.song, state: readerState);
+        : SongReaderProjection(
+            song: song,
+            state: readerState,
+            key: keyLayers.resolveFor(song),
+          );
     final preservedScopedTitle = resolvePreservedScopedTitle(
       scopedContext: resolvedScopedContext,
       warmPlanDetail: widget.warmPlanDetail,
@@ -480,13 +502,14 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
         mutationRecord: mutationRecord,
         resolvedScopedContext: resolvedScopedContext,
         readerState: readerState,
+        keyLayers: keyLayers,
         preservedScopedTitle: preservedScopedTitle,
         onBack: _handleBack,
         onRetry: () => ref.invalidate(songLibraryReaderProvider(widget.songId)),
-        onTransposeDown: _transposeDown,
-        onTransposeUp: _transposeUp,
-        onCapoDown: _capoDown,
-        onCapoUp: _capoUp,
+        onTransposeDown: _keyStep(song, keyLayers, SongKeyField.transpose, -1),
+        onTransposeUp: _keyStep(song, keyLayers, SongKeyField.transpose, 1),
+        onCapoDown: _keyStep(song, keyLayers, SongKeyField.capo, -1),
+        onCapoUp: _keyStep(song, keyLayers, SongKeyField.capo, 1),
         onAdjustSharedFontScale: _adjustSharedFontScale,
         onSetFontScale: _setSharedFontScale,
         onPersistFontScale: _persistFontScale,

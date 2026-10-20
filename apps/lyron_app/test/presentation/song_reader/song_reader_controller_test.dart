@@ -7,8 +7,7 @@ void main() {
     final controller = SongReaderController();
 
     expect(controller.state.viewMode, SongReaderViewMode.chordsAndLyrics);
-    expect(controller.state.transposeOffset, 0);
-    expect(controller.state.capoOffset, 0);
+    expect(controller.state.temporaryLayer, isNull);
     expect(
       controller.state.instrumentDisplayMode,
       SongReaderInstrumentDisplayMode.guitar,
@@ -34,32 +33,32 @@ void main() {
     expect(controller.state.viewMode, SongReaderViewMode.chordsAndLyrics);
   });
 
-  test('adjusts transpose up and down', () {
+  test('sets and clears the temporary key layer', () {
     final controller = SongReaderController();
+    const layer = SongReaderTemporaryLayer(
+      ownerId: 'song-1@0',
+      transpose: 2,
+      capo: 3,
+    );
 
-    controller.transposeUp();
-    controller.transposeUp();
-    controller.transposeDown();
+    controller.setTemporaryLayer(layer);
 
-    expect(controller.state.transposeOffset, 1);
+    expect(controller.state.temporaryLayer, layer);
+
+    controller.setTemporaryLayer(null);
+
+    expect(controller.state.temporaryLayer, isNull);
   });
 
-  test('adjusts capo up and down', () {
+  test('keeps the temporary key layer across unrelated updates', () {
     final controller = SongReaderController();
+    const layer = SongReaderTemporaryLayer(ownerId: 'song-1@0', transpose: 2);
 
-    controller.capoUp();
-    controller.capoUp();
-    controller.capoDown();
+    controller.setTemporaryLayer(layer);
+    controller.toggleViewMode();
+    controller.setSharedFontScale(1.25);
 
-    expect(controller.state.capoOffset, 1);
-  });
-
-  test('keeps capo at zero when decreasing below open capo', () {
-    final controller = SongReaderController();
-
-    controller.capoDown();
-
-    expect(controller.state.capoOffset, -1);
+    expect(controller.state.temporaryLayer, layer);
   });
 
   test('switches instrument display mode', () {
@@ -141,22 +140,27 @@ void main() {
   });
 
   test('preserves UI state through copyWith', () {
-    final state = SongReaderState(
-      instrumentDisplayMode: SongReaderInstrumentDisplayMode.piano,
-      capoOffset: 2,
-      areCompactControlsVisible: true,
-      controlPresentationMode: SongReaderControlPresentationMode.pinned,
-      isAutoFitEnabled: false,
-    );
+    final state =
+        SongReaderState(
+          instrumentDisplayMode: SongReaderInstrumentDisplayMode.piano,
+          areCompactControlsVisible: true,
+          controlPresentationMode: SongReaderControlPresentationMode.pinned,
+          isAutoFitEnabled: false,
+        ).withTemporaryLayer(
+          const SongReaderTemporaryLayer(ownerId: 'song-1@0', capo: 2),
+        );
 
     expect(
       state.copyWith(sharedFontScale: double.nan),
       SongReaderState(
         instrumentDisplayMode: SongReaderInstrumentDisplayMode.piano,
-        capoOffset: 2,
         areCompactControlsVisible: true,
         controlPresentationMode: SongReaderControlPresentationMode.pinned,
         isAutoFitEnabled: false,
+        temporaryLayer: const SongReaderTemporaryLayer(
+          ownerId: 'song-1@0',
+          capo: 2,
+        ),
       ),
     );
   });

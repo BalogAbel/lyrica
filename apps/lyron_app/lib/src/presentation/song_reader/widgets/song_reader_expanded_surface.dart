@@ -36,8 +36,8 @@ class SongReaderExpandedSurface extends StatefulWidget {
   final VoidCallback? onPreviousTap;
   final VoidCallback? onNextTap;
   final int contentColumnCount;
-  final VoidCallback onTransposeDown;
-  final VoidCallback onTransposeUp;
+  final VoidCallback? onTransposeDown;
+  final VoidCallback? onTransposeUp;
   final VoidCallback? onCapoDown;
   final VoidCallback? onCapoUp;
   final VoidCallback onDecreaseFontScale;

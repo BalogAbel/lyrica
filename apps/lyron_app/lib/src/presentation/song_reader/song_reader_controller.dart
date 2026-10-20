@@ -16,20 +16,8 @@ class SongReaderController {
     );
   }
 
-  void transposeUp() {
-    _state = _state.copyWith(transposeOffset: _state.transposeOffset + 1);
-  }
-
-  void transposeDown() {
-    _state = _state.copyWith(transposeOffset: _state.transposeOffset - 1);
-  }
-
-  void capoUp() {
-    _state = _state.copyWith(capoOffset: _state.capoOffset + 1);
-  }
-
-  void capoDown() {
-    _state = _state.copyWith(capoOffset: _state.capoOffset - 1);
+  void setTemporaryLayer(SongReaderTemporaryLayer? layer) {
+    _state = _state.withTemporaryLayer(layer);
   }
 
   void setInstrumentDisplayMode(SongReaderInstrumentDisplayMode mode) {
