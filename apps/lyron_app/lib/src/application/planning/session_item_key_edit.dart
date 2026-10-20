@@ -1,3 +1,5 @@
+import 'package:lyron_app/src/domain/song/song_key_layers.dart';
+
 /// One field of a key edit (PS11, PS14).
 enum SessionItemKeyFieldMode { keep, set, clear }
 
@@ -36,10 +38,10 @@ class SessionItemKeyEdit {
     _checkField('capo', capoMode, capo, minCapo, maxCapo);
   }
 
-  static const minTranspose = -11;
-  static const maxTranspose = 11;
-  static const minCapo = 0;
-  static const maxCapo = 11;
+  static const minTranspose = SongKeyRange.minTranspose;
+  static const maxTranspose = SongKeyRange.maxTranspose;
+  static const minCapo = SongKeyRange.minCapo;
+  static const maxCapo = SongKeyRange.maxCapo;
 
   final SessionItemKeyFieldMode transposeMode;
   final int? transpose;

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/application/planning/session_item_key_edit.dart';
+import 'package:lyron_app/src/domain/song/song_key_layers.dart';
 
 void main() {
   group('SessionItemKeyFieldMode', () {
@@ -17,6 +18,15 @@ void main() {
         () => sessionItemKeyFieldModeFromValue('other'),
         throwsArgumentError,
       );
+    });
+  });
+
+  group('SessionItemKeyEdit bounds', () {
+    test('delegate to the shared SongKeyRange (PS9)', () {
+      expect(SessionItemKeyEdit.minTranspose, SongKeyRange.minTranspose);
+      expect(SessionItemKeyEdit.maxTranspose, SongKeyRange.maxTranspose);
+      expect(SessionItemKeyEdit.minCapo, SongKeyRange.minCapo);
+      expect(SessionItemKeyEdit.maxCapo, SongKeyRange.maxCapo);
     });
   });
 
