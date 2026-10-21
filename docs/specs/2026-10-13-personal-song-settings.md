@@ -3,10 +3,12 @@
 > Status: Accepted (2026-10-13, design gate approved). PR 1 (backend)
 > merged as #94 (`603d69b`, 2026-10-14) and deployed to the hosted project;
 > PR 2 (planning client) merged as #95 (`4cbdacb`); PR 3 (reader) passed
-> its UI design gate on 2026-10-20 and is planned on `feat/song-key-reader`
-> (`docs/plans/2026-10-20-song-key-reader.md`). PS14–PS16 refined on
+> its UI design gate on 2026-10-20 and is implemented on
+> `feat/song-key-reader` (2026-10-21,
+> `docs/plans/2026-10-20-song-key-reader.md`). PS14–PS16 refined on
 > 2026-10-14 (base values, the PS15 state rule, C11); PS5, PS7 and PS9
-> refined and PS25–PS26 added on 2026-10-20 (PR 3 design gate). Amends
+> refined and PS25–PS26 added on 2026-10-20 (PR 3 design gate); PS25 and
+> PS26 refined on 2026-10-21 (PR 3 execution). Amends
 > `docs/specs/2026-04-01-session-scoped-plan-reader-navigation.md`
 > ("Reader-Local State Preservation"). The file keeps the slice's original
 > name, "personal song settings"; the brainstorm replaced the per-user
@@ -196,6 +198,13 @@ that have a plan value. No key name is resolved here (YAGNI).
   plan (icon, only for a member with `canEditSessions` inside a plan), each
   with a tooltip. The rail's size does not change when a field becomes
   temporary.
+- **Refined 2026-10-21 (PR 3 execution): the rail starts below the top bar.**
+  The compact control rail is placed at `top: topBarHeight +
+  viewPadding.top` (`widgets/song_reader_compact_surface.dart`), not at the
+  surface top, so a rail taller than the free height scrolls instead of
+  covering the top bar's overflow menu, where Clear plan value lives. On a
+  short viewport (a 360×640 phone, landscape) the rail with Reset and Save to
+  plan scrolls.
 - **Expanded (tools panel):** each control section's label row shows the
   source as a badge at its end. A button row sits under the capo section and
   above Scale: `Reset` (text button) and `Save to plan` (tonal button, same
@@ -204,6 +213,9 @@ that have a plan value. No key name is resolved here (YAGNI).
   layouts share, after the guitar/piano items and before the theme item, set
   apart by dividers. Shown only inside a plan, for a member with
   `canEditSessions`, while the item has a plan value in either field.
+  **Refined 2026-10-21 (PR 3 execution):** the menu action re-checks this
+  condition when tapped, so a menu opened before the item left the plan (or
+  lost its value) records nothing.
 - **Plan detail (PS8):** a row of small chips under the song title,
   `Transpose +2` and `Capo 2`, one per field that has a plan value. Under the
   title rather than at the row's end, so a phone row keeps its title width
@@ -239,7 +251,11 @@ that have a plan value. No key name is resolved here (YAGNI).
   plan detail uses: the cached `CapabilityResolver.hasCapabilitySync` result
   when there is one (so Save to plan is in place on the first frame), else
   `hasCapability`; fail-closed (unknown or failed means no Save and no
-  Clear). The server enforces the group scope (PS11).
+  Clear). The server enforces the group scope (PS11). **Refined 2026-10-21
+  (PR 3 execution):** the reader's organization-id read
+  (`activePlanningContextProvider`) is wrapped in try/catch, as the reader's
+  existing `editSongs` capability read is, and fails closed (a throw means no
+  Save and no Clear). The `editSongs` read fails open instead.
 - **Save sequence:** build the edit from the resolver output (`set` for each
   temporary field, `keep` otherwise, whatever the instrument view: a capo
   changed in guitar view and still temporary in piano view is saved, as Reset
@@ -252,7 +268,10 @@ that have a plan value. No key name is resolved here (YAGNI).
   it; a `±` tap during the save stays temporary, because it no longer equals
   the plan value. If the write throws, nothing changes. While a write of this
   reader is in flight, Save to plan is disabled and Clear plan value is not
-  offered.
+  offered. **Refined 2026-10-21 (PR 3 execution):** "in flight" lasts until
+  `setSessionItemKey` returns, its sync attempt included. The label already
+  reads `Plan` at `onRecorded`, but Save stays disabled and Clear is not
+  offered for that whole time.
 
 ### Backend (PR 1)
 
@@ -531,7 +550,7 @@ read-only check in PR 1's plan.
 | P5 | organization scope | Planning is already organization-scoped; the organization-switch finding applies to key edits exactly as to every planning mutation and is decided in S5b (PS19). |
 | P6 | absolute or relative | Absolute, for transpose and capo (PS2). |
 | P7 | reuse | The planning pull (ADR-041) gains three columns; ordering is OCC on the item version, no device clock (LF-T6); a resend is a no-op success (LF-T5b, PS12 step 6); conflicts are resolved with Keep mine, not last-write-wins, because the value is shared. |
-| P8 | blast radius | `SongReaderState` (19 `lib/` importers per the roadmap; re-counted 2026-10-20 on `4cbdacb`: 18 `lib/` and 26 `test/` importers, the editor preview among them) loses its offsets; the 2026-04-01 spec is amended in this change; `SongReaderProjection` (hotspot with S8) takes resolved values instead of `base + offset`; the sync popup gets one detail label. |
+| P8 | blast radius | `SongReaderState` (19 `lib/` importers per the roadmap; re-counted 2026-10-20 on `4cbdacb`: 18 `lib/` and 26 `test/` importers, the editor preview among them; re-counted 2026-10-21 after PR 3: 19 `lib/` and 29 `test/` importers, the additions being `song_reader_key_layers.dart` and the tests that exercise it, none removed) loses its offsets; the 2026-04-01 spec is amended in this change; `SongReaderProjection` (hotspot with S8) takes resolved values instead of `base + offset`; the sync popup gets one detail label. |
 
 ## Deferred Entries
 

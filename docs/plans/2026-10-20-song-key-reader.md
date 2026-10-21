@@ -1,6 +1,7 @@
 # Song Key Layers, PR 3 (Reader) Implementation Plan
 
-> Status: Ready for execution (2026-10-20). Covers PR 3 of
+> Status: Implemented on `feat/song-key-reader` (2026-10-21; PR pending).
+> Was ready for execution on 2026-10-20. Covers PR 3 of
 > `docs/specs/2026-10-13-personal-song-settings.md` only (PS1–PS9, PS22,
 > PS24 PR 3 items, PS25–PS26; tests U1–U14). PR 1 (#94) and PR 2 (#95) are
 > merged. The UI design gate was approved on 2026-10-20.
