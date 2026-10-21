@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:collection/collection.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -260,6 +262,9 @@ void main() {
     String initialLocation =
         '/plans/plan-fixture/sessions/main-set/items/songs/song-two',
     Object? planningError,
+    // The live plan detail the reader watches, apart from the warm
+    // [planDetail] the route passes in. Defaults to the warm one.
+    Future<PlanDetail> Function()? loadLiveDetail,
   }) {
     GoRouter.optionURLReflectsImperativeAPIs = true;
 
@@ -329,7 +334,7 @@ void main() {
             return Future<PlanDetail>.error(planningError);
           }
 
-          return Future.value(planDetail);
+          return loadLiveDetail?.call() ?? Future.value(planDetail);
         }),
         songLibraryReaderProvider.overrideWith(
           (ref, songId) async => resultsBySongId[songId]!,
@@ -1873,6 +1878,211 @@ void main() {
     expect(_transposeValue(tester), '+13');
   });
 
+  testWidgets('the reader shows the plan value from the live plan detail', (
+    tester,
+  ) async {
+    await pumpWithViewport(
+      tester,
+      size: const Size(1600, 1200),
+      child: buildScopedReaderApp(
+        planDetail: _multiItemPlanDetail(),
+        loadLiveDetail: () async => _keyedPlanDetail({'item-20': (2, 3)}),
+        resultsBySongId: {
+          'song-1': buildScopedResult('Song One'),
+          'song-2': buildScopedResult('Song Two'),
+          'song-3': buildScopedResult('Song Three'),
+        },
+      ),
+    );
+
+    expect(_transposeValue(tester), '+2');
+    expect(_capoValue(tester), '3');
+    expect(
+      _sourceLabel(tester, 'transpose'),
+      AppStrings.songReaderKeySourcePlan,
+    );
+    expect(_sourceLabel(tester, 'capo'), AppStrings.songReaderKeySourcePlan);
+  });
+
+  testWidgets('next song shows its own plan value', (tester) async {
+    await pumpWithViewport(
+      tester,
+      size: const Size(1600, 1200),
+      child: buildScopedReaderApp(
+        planDetail: _multiItemPlanDetail(),
+        loadLiveDetail: () async =>
+            _keyedPlanDetail({'item-10': (2, null), 'item-20': (-1, null)}),
+        resultsBySongId: {
+          'song-1': buildScopedResult('Song One'),
+          'song-2': buildScopedResult('Song Two'),
+          'song-3': buildScopedResult('Song Three'),
+        },
+        initialLocation: _songOneLocation,
+      ),
+    );
+    expect(_transposeValue(tester), '+2');
+    expect(
+      _sourceLabel(tester, 'transpose'),
+      AppStrings.songReaderKeySourcePlan,
+    );
+
+    await tester.tap(find.byKey(SongReaderExpandedContextPanel.nextSegmentKey));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(AppBar, 'Song Two'), findsOneWidget);
+    expect(_transposeValue(tester), '-1');
+    expect(
+      _sourceLabel(tester, 'transpose'),
+      AppStrings.songReaderKeySourcePlan,
+    );
+    expect(_capoValue(tester), '0');
+    expect(_sourceLabel(tester, 'capo'), AppStrings.songReaderKeySourceSong);
+  });
+
+  testWidgets('an item missing from the live detail has no plan layer', (
+    tester,
+  ) async {
+    await pumpWithViewport(
+      tester,
+      size: const Size(1600, 1200),
+      child: buildScopedReaderApp(
+        planDetail: _keyedPlanDetail({'item-20': (2, null)}),
+        loadLiveDetail: () async =>
+            _keyedPlanDetail(const {}, without: {'item-20'}),
+        resultsBySongId: {
+          'song-1': buildScopedResult('Song One'),
+          'song-2': buildScopedResult('Song Two'),
+          'song-3': buildScopedResult('Song Three'),
+        },
+      ),
+    );
+
+    expect(find.widgetWithText(AppBar, 'Song Two'), findsOneWidget);
+    expect(_transposeValue(tester), '0');
+    expect(
+      _sourceLabel(tester, 'transpose'),
+      AppStrings.songReaderKeySourceSong,
+    );
+  });
+
+  testWidgets('while the live detail loads, the warm item applies', (
+    tester,
+  ) async {
+    await pumpWithViewport(
+      tester,
+      size: const Size(1600, 1200),
+      child: buildScopedReaderApp(
+        planDetail: _keyedPlanDetail({'item-20': (2, null)}),
+        loadLiveDetail: () => Completer<PlanDetail>().future,
+        resultsBySongId: {
+          'song-1': buildScopedResult('Song One'),
+          'song-2': buildScopedResult('Song Two'),
+          'song-3': buildScopedResult('Song Three'),
+        },
+      ),
+    );
+
+    expect(_transposeValue(tester), '+2');
+    expect(
+      _sourceLabel(tester, 'transpose'),
+      AppStrings.songReaderKeySourcePlan,
+    );
+  });
+
+  testWidgets('when the live detail fails, the warm item applies', (
+    tester,
+  ) async {
+    await pumpWithViewport(
+      tester,
+      size: const Size(1600, 1200),
+      child: buildScopedReaderApp(
+        planDetail: _keyedPlanDetail({'item-20': (2, null)}),
+        planningError: StateError('planning unavailable'),
+        resultsBySongId: {
+          'song-1': buildScopedResult('Song One'),
+          'song-2': buildScopedResult('Song Two'),
+          'song-3': buildScopedResult('Song Three'),
+        },
+      ),
+    );
+
+    expect(_transposeValue(tester), '+2');
+    expect(
+      _sourceLabel(tester, 'transpose'),
+      AppStrings.songReaderKeySourcePlan,
+    );
+  });
+
+  testWidgets('a reloading live detail keeps the live plan value, never the '
+      'warm one', (tester) async {
+    var liveLoad = () async => _keyedPlanDetail({'item-20': (2, null)});
+    await pumpWithViewport(
+      tester,
+      size: const Size(1600, 1200),
+      child: buildScopedReaderApp(
+        planDetail: _keyedPlanDetail({'item-20': (5, null)}),
+        loadLiveDetail: () => liveLoad(),
+        resultsBySongId: {
+          'song-1': buildScopedResult('Song One'),
+          'song-2': buildScopedResult('Song Two'),
+          'song-3': buildScopedResult('Song Three'),
+        },
+      ),
+    );
+    expect(_transposeValue(tester), '+2');
+
+    final reload = Completer<PlanDetail>();
+    liveLoad = () => reload.future;
+    ProviderScope.containerOf(
+      tester.element(find.byType(SongReaderScreen)),
+    ).invalidate(planningPlanDetailProvider('plan-1'));
+    await tester.pumpAndSettle();
+    expect(_transposeValue(tester), '+2');
+
+    reload.complete(_keyedPlanDetail({'item-20': (3, null)}));
+    await tester.pumpAndSettle();
+    expect(_transposeValue(tester), '+3');
+  });
+
+  for (final (name, size) in [
+    ('compact', const Size(390, 844)),
+    ('expanded', const Size(1600, 1200)),
+  ]) {
+    testWidgets('a library reader names the source of each key field '
+        '($name)', (tester) async {
+      await pumpWithViewport(
+        tester,
+        size: size,
+        child: buildApp(result: buildResult()),
+      );
+      if (name == 'compact') {
+        await revealCompactChrome(tester);
+      }
+      expect(
+        _sourceLabel(tester, 'transpose'),
+        AppStrings.songReaderKeySourceSong,
+      );
+      expect(_sourceLabel(tester, 'capo'), AppStrings.songReaderKeySourceSong);
+
+      await tester.tap(find.byKey(const Key('song-reader-transpose-up')));
+      await tester.pumpAndSettle();
+      expect(_transposeValue(tester), '+1');
+      expect(
+        _sourceLabel(tester, 'transpose'),
+        AppStrings.songReaderKeySourceTemporary,
+      );
+      expect(_sourceLabel(tester, 'capo'), AppStrings.songReaderKeySourceSong);
+
+      await tester.tap(find.byKey(const Key('song-reader-transpose-down')));
+      await tester.pumpAndSettle();
+      expect(_transposeValue(tester), '0');
+      expect(
+        _sourceLabel(tester, 'transpose'),
+        AppStrings.songReaderKeySourceSong,
+      );
+    });
+  }
+
   testWidgets('invalid scoped context shows explicit scoped error state', (
     tester,
   ) async {
@@ -2744,6 +2954,26 @@ String _transposeValue(WidgetTester tester, {bool skipOffstage = true}) {
       .data!;
 }
 
+/// The text the capo value chip currently shows (a bare number in the
+/// expanded layout).
+String _capoValue(WidgetTester tester) {
+  return tester
+      .widget<Text>(
+        find.descendant(
+          of: find.byKey(const Key('song-reader-capo-value')),
+          matching: find.byType(Text),
+        ),
+      )
+      .data!;
+}
+
+/// The source word under (compact) or next to (expanded) the [field] value.
+String _sourceLabel(WidgetTester tester, String field) {
+  return tester
+      .widget<Text>(find.byKey(Key('song-reader-$field-source')))
+      .data!;
+}
+
 /// Keeps the reader result of [songId] loaded for the rest of the test. A
 /// reader that opens on a result that is already loaded renders its song in
 /// its very first frame -- the only frame in which a stale temporary key could
@@ -2829,6 +3059,38 @@ PlanDetail _multiItemPlanDetail() {
           ),
         ],
       ),
+    ],
+  );
+}
+
+/// [_multiItemPlanDetail] with a plan key per session item id (`(transpose,
+/// capo)`), and without the items in [without].
+PlanDetail _keyedPlanDetail(
+  Map<String, (int?, int?)> keys, {
+  Set<String> without = const {},
+}) {
+  final base = _multiItemPlanDetail();
+  return PlanDetail(
+    plan: base.plan,
+    sessions: [
+      for (final session in base.sessions)
+        SessionSummary(
+          id: session.id,
+          slug: session.slug,
+          name: session.name,
+          position: session.position,
+          items: [
+            for (final item in session.items)
+              if (!without.contains(item.id))
+                SessionItemSummary(
+                  id: item.id,
+                  position: item.position,
+                  song: item.song,
+                  planTranspose: keys[item.id]?.$1,
+                  planCapo: keys[item.id]?.$2,
+                ),
+          ],
+        ),
     ],
   );
 }

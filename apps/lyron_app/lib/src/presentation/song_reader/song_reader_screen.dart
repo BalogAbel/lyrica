@@ -9,10 +9,13 @@ import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyron_app/src/domain/core/capability.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
+import 'package:lyron_app/src/domain/planning/session_item_summary.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
 import 'package:lyron_app/src/domain/song/song_key_layers.dart';
+import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_context.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_context_provider.dart';
+import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_context_resolver.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_runtime_controller.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_commands.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_controller.dart';
@@ -218,6 +221,24 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     );
   }
 
+  /// The open plan item, for its plan key. Read from the live plan detail
+  /// once it has a value (Riverpod keeps the previous value while it reloads
+  /// or when a reload fails, so a refresh never falls back to the warm
+  /// detail), and from the warm detail the route passed in until then, or
+  /// when the live detail never loaded. An item the live detail no longer
+  /// has gives no plan layer, even if the warm detail still lists it.
+  SessionItemSummary? _planItemFrom(AsyncValue<PlanDetail> liveDetail) {
+    final detail = liveDetail.value ?? widget.warmPlanDetail;
+    if (detail == null) {
+      return null;
+    }
+    return findSessionItem(
+      detail,
+      sessionId: widget.sessionId!,
+      sessionItemId: widget.sessionItemId!,
+    );
+  }
+
   void _setInstrumentDisplayMode(SongReaderInstrumentDisplayMode mode) {
     _commands.setInstrumentDisplayMode(
       mode,
@@ -368,11 +389,17 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
         ? scopedContextResult.context
         : null;
     final mutationRecord = mutationRecordAsync?.value;
-    // The plan layer arrives with the plan wiring; for now only the
-    // temporary layer sits above the song's own key.
+    // Watched here, in the same frame the detail changes, and only when the
+    // reader was opened from a plan item: the library path touches no
+    // planning provider.
+    final planItem = _isScopedMode
+        ? _planItemFrom(ref.watch(planningPlanDetailProvider(widget.planId!)))
+        : null;
     final keyLayers = SongReaderKeyLayers(
       temporary: readerState.temporaryLayerFor(_keyOwnerId),
       isPlanScoped: _isScopedMode,
+      planTranspose: planItem?.planTranspose,
+      planCapo: planItem?.planCapo,
     );
     final projection = song == null
         ? null

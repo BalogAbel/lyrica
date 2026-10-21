@@ -139,6 +139,9 @@ class AppStrings {
   static const songReaderDecreaseFontSemantics = 'Decrease text size';
   static const songReaderIncreaseFontSemantics = 'Increase text size';
   static const songReaderKeyLabelPrefix = 'Key: ';
+  static const songReaderKeySourceSong = 'Song';
+  static const songReaderKeySourcePlan = 'Plan';
+  static const songReaderKeySourceTemporary = 'Temporary';
   static const songReaderWarningDialogTitle = 'Reading warnings';
   static const songReaderWarningsSemantics = 'Show reading warnings';
   static const songReaderWarningSingular =

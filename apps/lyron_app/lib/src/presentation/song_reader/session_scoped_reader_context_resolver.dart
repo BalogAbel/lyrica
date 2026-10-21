@@ -64,6 +64,22 @@ SessionScopedReaderContextResult resolveSessionScopedReaderContext({
   );
 }
 
+/// The session item [sessionItemId] of [sessionId] in [detail], or null when
+/// the plan has no such item in that session (it may have been removed, or
+/// belong to another session). The reader reads the plan key layer from it.
+SessionItemSummary? findSessionItem(
+  PlanDetail detail, {
+  required String sessionId,
+  required String sessionItemId,
+}) {
+  final session = detail.sessions
+      .where((candidate) => candidate.id == sessionId)
+      .firstOrNull;
+  return session?.items
+      .where((candidate) => candidate.id == sessionItemId)
+      .firstOrNull;
+}
+
 SessionScopedReaderNeighbor _toNeighbor(SessionItemSummary item) {
   return SessionScopedReaderNeighbor(
     sessionItemId: item.id,

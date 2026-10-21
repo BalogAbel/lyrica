@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:lyron_app/src/app/reader_theme.dart';
+import 'package:lyron_app/src/domain/song/song_key_layers.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_key_source_style.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 /// The reader's floating control rail (spec section 6, "Chrome"). Hidden by
@@ -10,9 +12,11 @@ import 'package:lyron_app/src/shared/app_strings.dart';
 /// `SongReaderCompactSurface`'s `Stack` comment for why floating chrome is
 /// excluded from the fit calculation's available width.
 ///
-/// Vertical groups, top to bottom: transpose −/value/+, capo −/value/+
-/// (guitar only), font A−/A+. The capo group is hidden entirely in piano
-/// mode, driven by `projection.isCapoDirectiveVisible`, exactly as the old
+/// Vertical groups, top to bottom: transpose −/value/source/+, capo
+/// −/value/source/+ (guitar only), font A−/A+. The source caption names the
+/// layer the value comes from (PS25) in a fixed-width slot, so the rail never
+/// changes size with it. The capo group is hidden entirely in piano mode,
+/// driven by `projection.isCapoDirectiveVisible`, exactly as the old
 /// horizontal `SongReaderControlBar` did.
 ///
 /// Floats over scrolling lyric content, so it needs its own background to
@@ -68,6 +72,11 @@ class SongReaderControlRail extends StatelessWidget {
                   _ValueChip(
                     key: const Key('song-reader-transpose-value'),
                     value: _signed(projection.effectiveTranspose),
+                    source: projection.key.transpose.source,
+                  ),
+                  _SourceCaption(
+                    textKey: const Key('song-reader-transpose-source'),
+                    source: projection.key.transpose.source,
                   ),
                   IconButton(
                     key: const Key('song-reader-transpose-up'),
@@ -92,6 +101,11 @@ class SongReaderControlRail extends StatelessWidget {
                       value:
                           '${AppStrings.songReaderCapoDirectivePrefix}'
                           '${projection.effectiveCapo}',
+                      source: projection.key.capo.source,
+                    ),
+                    _SourceCaption(
+                      textKey: const Key('song-reader-capo-source'),
+                      source: projection.key.capo.source,
                     ),
                     IconButton(
                       key: const Key('song-reader-capo-up'),
@@ -163,25 +177,77 @@ class _Divider extends StatelessWidget {
 }
 
 class _ValueChip extends StatelessWidget {
-  const _ValueChip({super.key, required this.value});
+  const _ValueChip({super.key, required this.value, required this.source});
 
   final String value;
+  final SongKeyLayerId source;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colors = songKeySourceColors(theme.colorScheme, source);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest,
+          color: colors.background,
           borderRadius: BorderRadius.circular(999),
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          child: Text(value, style: theme.textTheme.labelLarge),
+          child: Text(
+            value,
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: colors.foreground,
+            ),
+          ),
         ),
+      ),
+    );
+  }
+}
+
+/// The word under a value chip that names its source. A fixed-width slot,
+/// scaled down to fit on one line, so a longer word never grows the rail. It
+/// sits on the rail's own background, so it takes `onSurfaceVariant`: the
+/// `on...Container` colors are made for the chip.
+class _SourceCaption extends StatelessWidget {
+  const _SourceCaption({required this.textKey, required this.source});
+
+  static const _slotWidth = 56.0;
+
+  /// The key of the word itself, which is what tests and callers look up.
+  final Key textKey;
+  final SongKeyLayerId source;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final style = theme.textTheme.labelSmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+
+    return SizedBox(
+      width: _slotWidth,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // An empty line of the same style: it holds the slot at one full
+          // line high, because a word scaled down to fit the width would
+          // otherwise be shorter than the others.
+          Text('', style: style),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              songKeySourceLabel(source),
+              key: textKey,
+              maxLines: 1,
+              softWrap: false,
+              style: style,
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -3,11 +3,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/app/app_theme.dart';
 import 'package:lyron_app/src/app/reader_theme.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
+import 'package:lyron_app/src/domain/song/song_key_layers.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_surface.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_control_rail.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_top_bar.dart';
+import 'package:lyron_app/src/shared/app_strings.dart';
 
 ParsedSong _song({int baseCapo = 2}) {
   return ParsedSong(
@@ -143,6 +145,139 @@ void main() {
     await tester.tap(find.byKey(const Key('song-reader-font-increase')));
     expect(transposeUp, 1);
     expect(fontUp, 1);
+  });
+
+  group('key source captions', () {
+    ResolvedSongKey keyFrom(
+      SongKeyLayerId transposeSource, [
+      SongKeyLayerId capoSource = SongKeyLayerId.song,
+    ]) => ResolvedSongKey(
+      transpose: ResolvedSongKeyField(value: 2, source: transposeSource),
+      capo: ResolvedSongKeyField(value: 2, source: capoSource),
+    );
+
+    SongReaderControlRail rail(
+      ResolvedSongKey key, {
+      SongReaderInstrumentDisplayMode mode =
+          SongReaderInstrumentDisplayMode.guitar,
+    }) => SongReaderControlRail(
+      projection: SongReaderProjection(
+        song: _song(),
+        state: SongReaderState(instrumentDisplayMode: mode),
+        key: key,
+      ),
+      onTransposeDown: () {},
+      onTransposeUp: () {},
+      onCapoDown: () {},
+      onCapoUp: () {},
+      onDecreaseFontScale: () {},
+      onIncreaseFontScale: () {},
+    );
+
+    Text caption(WidgetTester tester, String key) =>
+        tester.widget<Text>(find.byKey(Key(key)));
+
+    testWidgets('each value chip has its source caption below it', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _host(rail(keyFrom(SongKeyLayerId.temporary, SongKeyLayerId.plan))),
+      );
+
+      expect(
+        caption(tester, 'song-reader-transpose-source').data,
+        AppStrings.songReaderKeySourceTemporary,
+      );
+      expect(
+        caption(tester, 'song-reader-capo-source').data,
+        AppStrings.songReaderKeySourcePlan,
+      );
+      for (final field in ['transpose', 'capo']) {
+        expect(
+          tester.getCenter(find.byKey(Key('song-reader-$field-source'))).dy,
+          greaterThan(
+            tester.getCenter(find.byKey(Key('song-reader-$field-value'))).dy,
+          ),
+          reason: '$field caption sits below its chip',
+        );
+      }
+    });
+
+    testWidgets('the caption sits between its chip and the next button', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_host(rail(keyFrom(SongKeyLayerId.song))));
+
+      expect(
+        tester
+            .getCenter(find.byKey(const Key('song-reader-transpose-source')))
+            .dy,
+        lessThan(
+          tester
+              .getCenter(find.byKey(const Key('song-reader-transpose-up')))
+              .dy,
+        ),
+      );
+    });
+
+    testWidgets('the rail keeps its size whichever source a caption shows', (
+      tester,
+    ) async {
+      final surface = find.byKey(const Key('song-reader-control-rail-surface'));
+      await tester.pumpWidget(_host(rail(keyFrom(SongKeyLayerId.song))));
+      final songSize = tester.getSize(surface);
+
+      for (final source in [SongKeyLayerId.temporary, SongKeyLayerId.plan]) {
+        await tester.pumpWidget(_host(rail(keyFrom(source, source))));
+        expect(tester.getSize(surface), songSize, reason: source.name);
+      }
+    });
+
+    testWidgets('the chip colors follow the source from the color scheme', (
+      tester,
+    ) async {
+      final theme = buildLightTheme();
+      await tester.pumpWidget(
+        _host(rail(keyFrom(SongKeyLayerId.temporary)), theme: theme),
+      );
+
+      final chipKey = find.byKey(const Key('song-reader-transpose-value'));
+      final chip = tester.widget<DecoratedBox>(
+        find.descendant(of: chipKey, matching: find.byType(DecoratedBox)),
+      );
+      expect(
+        (chip.decoration as BoxDecoration).color,
+        theme.colorScheme.tertiaryContainer,
+      );
+      expect(
+        tester
+            .widget<Text>(
+              find.descendant(of: chipKey, matching: find.byType(Text)),
+            )
+            .style
+            ?.color,
+        theme.colorScheme.onTertiaryContainer,
+      );
+    });
+
+    testWidgets('the capo caption goes with the capo group in piano mode', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _host(
+          rail(
+            keyFrom(SongKeyLayerId.song),
+            mode: SongReaderInstrumentDisplayMode.piano,
+          ),
+        ),
+      );
+
+      expect(
+        find.byKey(const Key('song-reader-transpose-source')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('song-reader-capo-source')), findsNothing);
+    });
   });
 
   group('floating chrome background', () {

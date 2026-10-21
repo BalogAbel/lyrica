@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:lyron_app/src/domain/song/song_key_layers.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
+import 'package:lyron_app/src/presentation/song_reader/widgets/song_key_source_style.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 const _sectionSpacing = 16.0;
@@ -7,6 +9,9 @@ const _controlSpacing = 12.0;
 const _chipHorizontalPadding = 12.0;
 const _chipVerticalPadding = 8.0;
 const _labelValueGap = 8.0;
+const _labelBadgeGap = 8.0;
+const _badgeHorizontalPadding = 8.0;
+const _badgeVerticalPadding = 2.0;
 
 class SongReaderHeader extends StatelessWidget {
   const SongReaderHeader({
@@ -42,6 +47,10 @@ class SongReaderHeader extends StatelessWidget {
           children: [
             _ControlSection(
               label: AppStrings.songReaderTransposeSectionLabel,
+              badge: _SourceBadge(
+                textKey: const Key('song-reader-transpose-source'),
+                source: projection.key.transpose.source,
+              ),
               child: Wrap(
                 spacing: _controlSpacing,
                 runSpacing: _controlSpacing,
@@ -55,6 +64,7 @@ class SongReaderHeader extends StatelessWidget {
                   _ValueChip(
                     key: const Key('song-reader-transpose-value'),
                     value: _signed(projection.effectiveTranspose),
+                    source: projection.key.transpose.source,
                   ),
                   OutlinedButton(
                     key: const Key('song-reader-transpose-up'),
@@ -68,6 +78,10 @@ class SongReaderHeader extends StatelessWidget {
               const SizedBox(height: _sectionSpacing),
               _ControlSection(
                 label: AppStrings.songReaderCapoSectionLabel,
+                badge: _SourceBadge(
+                  textKey: const Key('song-reader-capo-source'),
+                  source: projection.key.capo.source,
+                ),
                 child: Wrap(
                   spacing: _controlSpacing,
                   runSpacing: _controlSpacing,
@@ -81,6 +95,7 @@ class SongReaderHeader extends StatelessWidget {
                     _ValueChip(
                       key: const Key('song-reader-capo-value'),
                       value: '${projection.effectiveCapo}',
+                      source: projection.key.capo.source,
                     ),
                     OutlinedButton(
                       key: const Key('song-reader-capo-up'),
@@ -121,17 +136,19 @@ class SongReaderHeader extends StatelessWidget {
 }
 
 class _ValueChip extends StatelessWidget {
-  const _ValueChip({super.key, required this.value});
+  const _ValueChip({super.key, required this.value, required this.source});
 
   final String value;
+  final SongKeyLayerId source;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colors = songKeySourceColors(theme.colorScheme, source);
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
+        color: colors.background,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Padding(
@@ -139,17 +156,57 @@ class _ValueChip extends StatelessWidget {
           horizontal: _chipHorizontalPadding,
           vertical: _chipVerticalPadding,
         ),
-        child: Text(value, style: theme.textTheme.labelLarge),
+        child: Text(
+          value,
+          style: theme.textTheme.labelLarge?.copyWith(color: colors.foreground),
+        ),
+      ),
+    );
+  }
+}
+
+/// The word, in the source's colors, that names the layer a value comes from
+/// (PS25).
+class _SourceBadge extends StatelessWidget {
+  const _SourceBadge({required this.textKey, required this.source});
+
+  /// The key of the word itself, which is what tests and callers look up.
+  final Key textKey;
+  final SongKeyLayerId source;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = songKeySourceColors(theme.colorScheme, source);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.background,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: _badgeHorizontalPadding,
+          vertical: _badgeVerticalPadding,
+        ),
+        child: Text(
+          songKeySourceLabel(source),
+          key: textKey,
+          style: theme.textTheme.labelSmall?.copyWith(color: colors.foreground),
+        ),
       ),
     );
   }
 }
 
 class _ControlSection extends StatelessWidget {
-  const _ControlSection({required this.label, required this.child});
+  const _ControlSection({required this.label, required this.child, this.badge});
 
   final String label;
   final Widget child;
+
+  /// Shown at the end of the label row, when the section has one.
+  final Widget? badge;
 
   @override
   Widget build(BuildContext context) {
@@ -158,12 +215,21 @@ class _ControlSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: theme.textTheme.labelMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-            letterSpacing: 0.08,
-          ),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                letterSpacing: 0.08,
+              ),
+            ),
+            if (badge != null) ...[
+              const SizedBox(width: _labelBadgeGap),
+              badge!,
+            ],
+          ],
         ),
         const SizedBox(height: _labelValueGap),
         child,
