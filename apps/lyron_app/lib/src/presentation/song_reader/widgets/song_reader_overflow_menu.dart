@@ -8,6 +8,7 @@ enum SongReaderOverflowAction {
   toggleViewMode,
   guitarView,
   pianoView,
+  clearPlanValue,
   toggleTheme,
   edit,
   delete,
@@ -16,7 +17,8 @@ enum SongReaderOverflowAction {
 /// Overflow (⋮) menu for the song reader app bar.
 ///
 /// Presents the view-mode toggle and instrument display switches
-/// unconditionally, plus edit/delete entries when [canEditSongs] is true.
+/// unconditionally, plus edit/delete entries when [canEditSongs] is true and
+/// Clear plan value when [canClearPlanValue] is true.
 /// This widget does not read any providers — capability checks stay with the
 /// screen, which decides what is available and passes that decision in.
 class SongReaderOverflowMenu extends StatelessWidget {
@@ -25,6 +27,7 @@ class SongReaderOverflowMenu extends StatelessWidget {
     required this.viewMode,
     required this.canEditSongs,
     required this.isDarkActive,
+    this.canClearPlanValue = false,
     required this.onSelected,
   });
 
@@ -35,6 +38,10 @@ class SongReaderOverflowMenu extends StatelessWidget {
   /// read from a provider: this widget stays provider-free, like the rest of
   /// the reader's leaf widgets.
   final bool isDarkActive;
+
+  /// Whether Clear plan value is offered (PS25): decided by the screen, which
+  /// knows the open plan item, the member's rights and any write in flight.
+  final bool canClearPlanValue;
   final void Function(SongReaderOverflowAction action) onSelected;
 
   @override
@@ -61,6 +68,13 @@ class SongReaderOverflowMenu extends StatelessWidget {
           child: Text(AppStrings.songReaderPianoViewAction),
         ),
         const PopupMenuDivider(),
+        if (canClearPlanValue) ...[
+          PopupMenuItem(
+            value: SongReaderOverflowAction.clearPlanValue,
+            child: Text(AppStrings.songReaderClearPlanValueAction),
+          ),
+          const PopupMenuDivider(),
+        ],
         PopupMenuItem(
           value: SongReaderOverflowAction.toggleTheme,
           child: Text(

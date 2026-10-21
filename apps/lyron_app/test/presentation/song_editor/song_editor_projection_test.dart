@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lyron_app/src/domain/song/song_key_layers.dart';
 import 'package:lyron_app/src/presentation/song_editor/song_editor_controller.dart';
 import 'package:lyron_app/src/presentation/song_editor/song_editor_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
@@ -49,8 +50,13 @@ void main() {
 
     final projection = SongEditorProjection(state: controller.state);
 
-    expect(projection.preview.transposeOffset, 0);
-    expect(projection.preview.capoOffset, 0);
+    expect(
+      projection.preview.key,
+      const ResolvedSongKey(
+        transpose: ResolvedSongKeyField(value: 1, source: SongKeyLayerId.song),
+        capo: ResolvedSongKeyField(value: 2, source: SongKeyLayerId.song),
+      ),
+    );
     expect(projection.preview.effectiveTranspose, 1);
     expect(projection.preview.effectiveCapo, 2);
     expect(
@@ -62,6 +68,19 @@ void main() {
       'C#',
     );
     expect(projection.preview.capoDirectiveText, 'Capo 2');
+  });
+
+  test('preview never shows a capo below open capo', () {
+    final controller = SongEditorController(
+      source: '{title: T}\n{capo: -2}\n[A]x\n',
+    );
+
+    final projection = SongEditorProjection(state: controller.state);
+
+    expect(
+      projection.preview.key.capo,
+      const ResolvedSongKeyField(value: 0, source: SongKeyLayerId.song),
+    );
   });
 
   test(

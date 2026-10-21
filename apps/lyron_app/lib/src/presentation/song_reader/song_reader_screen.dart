@@ -5,17 +5,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyron_app/src/app/theme_mode_store.dart';
+import 'package:lyron_app/src/application/planning/session_item_key_edit.dart';
 import 'package:lyron_app/src/application/providers.dart';
 import 'package:lyron_app/src/application/song_library/catalog_refresh_status.dart';
 import 'package:lyron_app/src/domain/core/capability.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
-import 'package:lyron_app/src/domain/song/parse_diagnostic.dart';
+import 'package:lyron_app/src/domain/planning/session_item_summary.dart';
+import 'package:lyron_app/src/domain/song/parsed_song.dart';
+import 'package:lyron_app/src/domain/song/song_key_layers.dart';
+import 'package:lyron_app/src/presentation/planning/planning_providers.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_context.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_context_provider.dart';
+import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_context_resolver.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_runtime_controller.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_commands.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_controller.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_immersive_mode.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_key_actions.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_key_layers.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_layout.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_preferences_store.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
@@ -55,9 +62,30 @@ class SongReaderScreen extends ConsumerStatefulWidget {
 }
 
 class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
+  static int _nextReaderVisit = 0;
+
+  /// One id per opened reader (assigned once per `State`): a reader opened
+  /// again gets a new one, scoped previous/next inside one reader keeps it.
+  /// Part of [_keyOwnerId], so a temporary key left in a runtime state that
+  /// outlives the screen never shows in a reader opened later (PS5).
+  late final int _readerVisit = _nextReaderVisit++;
+
   late final SongReaderController _controller = SongReaderController();
   final _immersiveMode = SongReaderImmersiveMode();
   final _zoomPersistence = SongReaderZoomPersistence();
+
+  /// The session items with a plan-key write of this reader running (PS26):
+  /// from the tap to the end of the write, sync attempt included. A write
+  /// belongs to the item it was started on, so scoped previous/next inside
+  /// this one State neither carries it to another item nor lets a second
+  /// write for the same item start (a second tap before the rebuild is
+  /// refused).
+  final Set<String> _planKeyWriteItemIds = {};
+
+  /// Whether a plan-key write for the open item is running: Save to plan and
+  /// Clear plan value are unavailable meanwhile.
+  bool get _isPlanKeyWriteInFlight =>
+      _isScopedMode && _planKeyWriteItemIds.contains(widget.sessionItemId);
 
   // Rebuilt on every access (it is a cheap, stateless const-constructed value
   // holder) so it always reflects the current widget.songId — this state can
@@ -93,6 +121,13 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
 
   String get _sessionKey => '${widget.planId}:${widget.sessionId}';
 
+  /// Who owns the temporary key layer (PS5): the open plan item (or the song
+  /// outside a plan) in this reader visit. A layer owned by anyone else is
+  /// not shown, so the frames before the post-frame `startSession` of a new
+  /// item or visit never render the old temporary key.
+  String get _keyOwnerId =>
+      '${_isScopedMode ? widget.sessionItemId! : widget.songId}@$_readerVisit';
+
   @override
   void initState() {
     super.initState();
@@ -110,6 +145,12 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
   @override
   void didUpdateWidget(covariant SongReaderScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.songId != widget.songId && !_isScopedMode) {
+      // PS5: any route to another song ends the temporary key. The owner
+      // check already hides it; clearing keeps a return to the first song
+      // from reviving it.
+      _controller.setTemporaryLayer(null);
+    }
     if (oldWidget.songId != widget.songId ||
         oldWidget.planId != widget.planId ||
         oldWidget.sessionId != widget.sessionId) {
@@ -175,36 +216,214 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     );
   }
 
-  void _transposeDown() {
-    _commands.transposeDown(
+  /// The `±` step of [field] for the open [song], or null (the button is
+  /// disabled) while the song is not loaded or the step is not allowed
+  /// (PS9).
+  VoidCallback? _keyStep(
+    ParsedSong? song,
+    SongReaderKeyLayers keyLayers,
+    SongKeyField field,
+    int delta,
+  ) {
+    if (song == null || !keyLayers.canStep(song, field, delta)) {
+      return null;
+    }
+    return () => _commands.setTemporaryLayer(
+      keyLayers.temporaryAfterStep(song, field, delta, ownerId: _keyOwnerId),
       ref: ref,
       isScopedMode: _isScopedMode,
       sessionKey: _sessionKey,
     );
   }
 
-  void _transposeUp() {
-    _commands.transposeUp(
-      ref: ref,
-      isScopedMode: _isScopedMode,
-      sessionKey: _sessionKey,
+  /// The open plan item, for its plan key. Read from the live plan detail
+  /// once it has a value (Riverpod keeps the previous value while it reloads
+  /// or when a reload fails, so a refresh never falls back to the warm
+  /// detail), and from the warm detail the route passed in until then, or
+  /// when the live detail never loaded. An item the live detail no longer
+  /// has gives no plan layer, even if the warm detail still lists it.
+  SessionItemSummary? _planItemFrom(AsyncValue<PlanDetail> liveDetail) {
+    final detail = liveDetail.value ?? widget.warmPlanDetail;
+    if (detail == null) {
+      return null;
+    }
+    return findSessionItem(
+      detail,
+      sessionId: widget.sessionId!,
+      sessionItemId: widget.sessionItemId!,
     );
   }
 
-  void _capoDown() {
-    _commands.capoDown(
-      ref: ref,
-      isScopedMode: _isScopedMode,
-      sessionKey: _sessionKey,
+  /// The layers the key of the open reader resolves from, for [readerState]
+  /// and the open [planItem].
+  SongReaderKeyLayers _keyLayersFor(
+    SongReaderState readerState,
+    SessionItemSummary? planItem,
+  ) {
+    return SongReaderKeyLayers(
+      temporary: readerState.temporaryLayerFor(_keyOwnerId),
+      isPlanScoped: _isScopedMode,
+      planTranspose: planItem?.planTranspose,
+      planCapo: planItem?.planCapo,
     );
   }
 
-  void _capoUp() {
-    _commands.capoUp(
-      ref: ref,
-      isScopedMode: _isScopedMode,
-      sessionKey: _sessionKey,
+  /// PS5, "drops" meaning leaving the state: removes from the temporary layer
+  /// the fields that now resolve to a lower layer, so a later change of that
+  /// layer cannot bring the old temporary value back. Runs when the song or
+  /// the live plan detail changes (a sync, an edit of the song, the user's
+  /// own Save), never during a build; it writes only when something drops.
+  void _pruneTemporaryKey() {
+    if (!mounted) {
+      return;
+    }
+    final song = ref.read(songLibraryReaderProvider(widget.songId)).value?.song;
+    if (song == null) {
+      return;
+    }
+    final readerState = _isScopedMode
+        ? ref
+              .read(sessionScopedReaderRuntimeControllerProvider(_sessionKey))
+              .state
+              .readerState
+        : _controller.state;
+    final temporary = readerState.temporaryLayerFor(_keyOwnerId);
+    if (temporary == null) {
+      return;
+    }
+    final planItem = _isScopedMode
+        ? _planItemFrom(ref.read(planningPlanDetailProvider(widget.planId!)))
+        : null;
+    final pruned = _keyLayersFor(readerState, planItem).prunedTemporary(song);
+    if (pruned != temporary) {
+      _commands.setTemporaryLayer(
+        pruned,
+        ref: ref,
+        isScopedMode: _isScopedMode,
+        sessionKey: _sessionKey,
+      );
+    }
+  }
+
+  /// The organization of the active planning context, which Save to plan
+  /// needs. Null when there is none or it cannot be read: fail-closed, the way
+  /// the capability checks are.
+  String? _planningOrganizationId() {
+    try {
+      return ref.watch(activePlanningContextProvider)?.organizationId;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Whether the member may edit sessions of [organizationId] (PS26), which
+  /// gates Save to plan. The resolver's cached answer when it has one, so the
+  /// button is in place on the first frame; else the asynchronous read.
+  /// Fail-closed: an unknown or failed answer is no.
+  bool _canEditSessions(String organizationId) {
+    bool? cached;
+    try {
+      cached = ref
+          .watch(capabilityResolverProvider)
+          .hasCapabilitySync(organizationId, Capability.editSessions);
+    } catch (_) {}
+    return cached ??
+        ref.watch(readerCanEditSessionsProvider(organizationId)).value ??
+        false;
+  }
+
+  /// Reset and Save to plan for the reader's current [key] (PS7). Both stay in
+  /// place and are enabled only while they apply. Save to plan exists when
+  /// [canWritePlanKey]: the open item is in the live plan and the member may
+  /// edit it.
+  SongReaderKeyActions _keyActionsFor(
+    ResolvedSongKey key, {
+    required bool canWritePlanKey,
+  }) {
+    final saveEdit = canWritePlanKey && !_isPlanKeyWriteInFlight
+        ? planKeyEditFor(key)
+        : null;
+    return SongReaderKeyActions(
+      isSaveToPlanAvailable: canWritePlanKey,
+      onReset: key.hasSource(SongKeyLayerId.temporary)
+          ? () => _commands.setTemporaryLayer(
+              null,
+              ref: ref,
+              isScopedMode: _isScopedMode,
+              sessionKey: _sessionKey,
+            )
+          : null,
+      onSaveToPlan: saveEdit == null ? null : () => _saveKeyToPlan(saveEdit),
     );
+  }
+
+  void _saveKeyToPlan(SessionItemKeyEdit edit) {
+    final container = ProviderScope.containerOf(context, listen: false);
+    final planId = widget.planId!;
+    final sessionId = widget.sessionId!;
+    final sessionItemId = widget.sessionItemId!;
+    unawaited(
+      _runPlanKeyWrite(
+        sessionItemId,
+        () => const SongReaderPlanKeyWriter().saveToPlan(
+          container,
+          planId: planId,
+          sessionId: sessionId,
+          sessionItemId: sessionItemId,
+          edit: edit,
+        ),
+      ),
+    );
+  }
+
+  /// Clears both plan fields of the open item (PS7): the song base applies
+  /// again. The temporary layer is not touched.
+  void _clearPlanValue() {
+    final container = ProviderScope.containerOf(context, listen: false);
+    final planId = widget.planId!;
+    final sessionId = widget.sessionId!;
+    final sessionItemId = widget.sessionItemId!;
+    unawaited(
+      _runPlanKeyWrite(
+        sessionItemId,
+        () => const SongReaderPlanKeyWriter().clearPlanValue(
+          container,
+          planId: planId,
+          sessionId: sessionId,
+          sessionItemId: sessionItemId,
+        ),
+      ),
+    );
+  }
+
+  /// Runs one plan-key [write] for [sessionItemId], one at a time per item.
+  /// Nothing is shown for a failure (PS25: no dialog, no snackbar; a recorded
+  /// edit that fails to sync shows in the sync popup): the temporary key stays
+  /// and Save to plan is enabled again. The error is reported, not rethrown,
+  /// because nothing awaits this future.
+  Future<void> _runPlanKeyWrite(
+    String sessionItemId,
+    Future<bool> Function() write,
+  ) async {
+    if (_planKeyWriteItemIds.contains(sessionItemId)) {
+      return;
+    }
+    setState(() => _planKeyWriteItemIds.add(sessionItemId));
+    try {
+      await write();
+    } catch (error, stackTrace) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'song reader plan key',
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _planKeyWriteItemIds.remove(sessionItemId));
+      }
+    }
   }
 
   void _setInstrumentDisplayMode(SongReaderInstrumentDisplayMode mode) {
@@ -307,6 +526,19 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     final readerAsync = ref.watch(songLibraryReaderProvider(widget.songId));
     final catalogState = ref.watch(catalogSnapshotStateProvider);
 
+    // Prune the temporary key when a lower layer changes to equal it. The
+    // library path listens to the song alone: it touches no planning provider.
+    ref.listen(
+      songLibraryReaderProvider(widget.songId),
+      (_, _) => _pruneTemporaryKey(),
+    );
+    if (_isScopedMode) {
+      ref.listen(
+        planningPlanDetailProvider(widget.planId!),
+        (_, _) => _pruneTemporaryKey(),
+      );
+    }
+
     // Resolve edit capability synchronously (cache hit) for the overflow menu.
     // Fail-open when org context or resolver are unavailable.
     final orgId = catalogState.context?.organizationId;
@@ -350,15 +582,47 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
         ? ref.watch(songMutationRecordByIdProvider(widget.songId))
         : null;
     final readerResult = readerAsync.value;
+    final song = readerResult?.song;
     final scopedContextResult = scopedContextAsync?.value;
     final resolvedScopedContext =
         scopedContextResult is ResolvedSessionScopedReaderContextResult
         ? scopedContextResult.context
         : null;
     final mutationRecord = mutationRecordAsync?.value;
-    final projection = readerResult == null
+    // Watched here, in the same frame the detail changes, and only when the
+    // reader was opened from a plan item: the library path touches no
+    // planning provider.
+    final planItem = _isScopedMode
+        ? _planItemFrom(ref.watch(planningPlanDetailProvider(widget.planId!)))
+        : null;
+    final keyLayers = _keyLayersFor(readerState, planItem);
+    final resolvedKey = song == null ? null : keyLayers.resolveFor(song);
+    final projection = song == null
         ? null
-        : SongReaderProjection(song: readerResult.song, state: readerState);
+        : SongReaderProjection(
+            song: song,
+            state: readerState,
+            key: resolvedKey,
+          );
+    // Save to plan needs the open item in the live plan and the right to edit
+    // it. Only a plan reader asks: the library path watches no planning or
+    // capability provider for it.
+    final planningOrganizationId = _isScopedMode
+        ? _planningOrganizationId()
+        : null;
+    final canWritePlanKey =
+        planItem != null &&
+        planningOrganizationId != null &&
+        _canEditSessions(planningOrganizationId);
+    // Clear plan value (PS25, PS26): there is a plan value to clear, the
+    // member may edit it, and no write for the open item is running.
+    final canClearPlanValue =
+        canWritePlanKey &&
+        !_isPlanKeyWriteInFlight &&
+        (planItem.planTranspose != null || planItem.planCapo != null);
+    final keyActions = resolvedKey == null
+        ? SongReaderKeyActions.none
+        : _keyActionsFor(resolvedKey, canWritePlanKey: canWritePlanKey);
     final preservedScopedTitle = resolvePreservedScopedTitle(
       scopedContext: resolvedScopedContext,
       warmPlanDetail: widget.warmPlanDetail,
@@ -412,6 +676,13 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
         case SongReaderOverflowAction.pianoView:
           _setInstrumentDisplayMode(SongReaderInstrumentDisplayMode.piano);
           break;
+        case SongReaderOverflowAction.clearPlanValue:
+          // The menu was built when it opened; what it offered may have gone
+          // since (the item left the plan, a sync cleared its values).
+          if (canClearPlanValue) {
+            _clearPlanValue();
+          }
+          break;
         case SongReaderOverflowAction.toggleTheme:
           unawaited(
             ref
@@ -452,6 +723,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       viewMode: readerState.viewMode,
       canEditSongs: canEditSongs,
       isDarkActive: Theme.of(context).brightness == Brightness.dark,
+      canClearPlanValue: canClearPlanValue,
       onOverflowAction: handleOverflowAction,
     );
 
@@ -465,6 +737,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       viewMode: readerState.viewMode,
       canEditSongs: canEditSongs,
       isDarkActive: Theme.of(context).brightness == Brightness.dark,
+      canClearPlanValue: canClearPlanValue,
       onOverflowAction: handleOverflowAction,
     );
 
@@ -480,13 +753,15 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
         mutationRecord: mutationRecord,
         resolvedScopedContext: resolvedScopedContext,
         readerState: readerState,
+        keyLayers: keyLayers,
+        keyActions: keyActions,
         preservedScopedTitle: preservedScopedTitle,
         onBack: _handleBack,
         onRetry: () => ref.invalidate(songLibraryReaderProvider(widget.songId)),
-        onTransposeDown: _transposeDown,
-        onTransposeUp: _transposeUp,
-        onCapoDown: _capoDown,
-        onCapoUp: _capoUp,
+        onTransposeDown: _keyStep(song, keyLayers, SongKeyField.transpose, -1),
+        onTransposeUp: _keyStep(song, keyLayers, SongKeyField.transpose, 1),
+        onCapoDown: _keyStep(song, keyLayers, SongKeyField.capo, -1),
+        onCapoUp: _keyStep(song, keyLayers, SongKeyField.capo, 1),
         onAdjustSharedFontScale: _adjustSharedFontScale,
         onSetFontScale: _setSharedFontScale,
         onPersistFontScale: _persistFontScale,

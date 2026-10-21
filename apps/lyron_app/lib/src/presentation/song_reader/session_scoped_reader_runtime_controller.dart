@@ -27,7 +27,10 @@ class SessionScopedReaderRuntimeController extends ChangeNotifier {
       planId: planId,
       sessionId: sessionId,
       songId: songId,
-      readerState: isSameSession ? _state.readerState : SongReaderState(),
+      // The temporary key is per open item (PS5): a new item, or the same
+      // item opened again, always starts without it.
+      readerState: (isSameSession ? _state.readerState : SongReaderState())
+          .withTemporaryLayer(null),
     );
     notifyListeners();
   }
@@ -42,28 +45,8 @@ class SessionScopedReaderRuntimeController extends ChangeNotifier {
     );
   }
 
-  void transposeUp() {
-    _updateReaderState(
-      (state) => state.copyWith(transposeOffset: state.transposeOffset + 1),
-    );
-  }
-
-  void transposeDown() {
-    _updateReaderState(
-      (state) => state.copyWith(transposeOffset: state.transposeOffset - 1),
-    );
-  }
-
-  void capoUp() {
-    _updateReaderState(
-      (state) => state.copyWith(capoOffset: state.capoOffset + 1),
-    );
-  }
-
-  void capoDown() {
-    _updateReaderState(
-      (state) => state.copyWith(capoOffset: state.capoOffset - 1),
-    );
+  void setTemporaryLayer(SongReaderTemporaryLayer? layer) {
+    _updateReaderState((state) => state.withTemporaryLayer(layer));
   }
 
   void setInstrumentDisplayMode(SongReaderInstrumentDisplayMode mode) {

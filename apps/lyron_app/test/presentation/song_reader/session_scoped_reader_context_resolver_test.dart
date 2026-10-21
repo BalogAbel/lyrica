@@ -156,6 +156,61 @@ void main() {
     );
   });
 
+  group('findSessionItem', () {
+    test('returns the item with its plan key', () {
+      final item = findSessionItem(
+        _keyedPlanDetail(),
+        sessionId: 'session-1',
+        sessionItemId: 'item-20',
+      );
+
+      expect(item?.id, 'item-20');
+      expect(item?.planTranspose, 2);
+      expect(item?.planCapo, 3);
+    });
+
+    test('returns null for an unknown item id', () {
+      expect(
+        findSessionItem(
+          _keyedPlanDetail(),
+          sessionId: 'session-1',
+          sessionItemId: 'item-999',
+        ),
+        isNull,
+      );
+    });
+
+    test('returns null for an item id that lives in another session', () {
+      expect(
+        findSessionItem(
+          _keyedPlanDetail(),
+          sessionId: 'session-1',
+          sessionItemId: 'item-90',
+        ),
+        isNull,
+      );
+      expect(
+        findSessionItem(
+          _keyedPlanDetail(),
+          sessionId: 'session-2',
+          sessionItemId: 'item-90',
+        )?.id,
+        'item-90',
+      );
+    });
+
+    test('returns null for an unknown session id', () {
+      expect(
+        findSessionItem(
+          _keyedPlanDetail(),
+          sessionId: 'session-999',
+          sessionItemId: 'item-20',
+        ),
+        isNull,
+      );
+    });
+  });
+
   group('SessionScopedReaderContext equality', () {
     test('contexts differing only in position are not equal', () {
       final a = _contextWithPositionAndCount(position: 1, itemCount: 3);
@@ -225,6 +280,51 @@ PlanDetail _planDetail() {
             id: 'item-30',
             position: 30,
             song: SongSummary(id: 'song-3', title: 'Harmadik'),
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+PlanDetail _keyedPlanDetail() {
+  return PlanDetail(
+    plan: PlanSummary(
+      id: 'plan-1',
+      name: 'Plan',
+      description: 'Desc',
+      scheduledFor: DateTime(2026, 4, 1, 10),
+      updatedAt: DateTime(2026, 4, 1, 9),
+    ),
+    sessions: const [
+      SessionSummary(
+        id: 'session-1',
+        name: 'Main',
+        position: 10,
+        items: [
+          SessionItemSummary(
+            id: 'item-10',
+            position: 10,
+            song: SongSummary(id: 'song-1', title: 'Elso'),
+          ),
+          SessionItemSummary(
+            id: 'item-20',
+            position: 20,
+            song: SongSummary(id: 'song-2', title: 'Masodik'),
+            planTranspose: 2,
+            planCapo: 3,
+          ),
+        ],
+      ),
+      SessionSummary(
+        id: 'session-2',
+        name: 'Other',
+        position: 20,
+        items: [
+          SessionItemSummary(
+            id: 'item-90',
+            position: 10,
+            song: SongSummary(id: 'song-9', title: 'Kilencedik'),
           ),
         ],
       ),

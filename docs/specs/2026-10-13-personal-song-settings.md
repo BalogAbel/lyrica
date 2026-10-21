@@ -2,10 +2,13 @@
 
 > Status: Accepted (2026-10-13, design gate approved). PR 1 (backend)
 > merged as #94 (`603d69b`, 2026-10-14) and deployed to the hosted project;
-> PR 2 implemented on `feat/song-key-planning-client`
-> (`docs/plans/2026-10-14-song-key-planning-client.md`), PR 3
-> not yet (see "PR Boundaries"). PS14–PS16 refined on 2026-10-14 (base
-> values, the PS15 state rule, C11). Amends
+> PR 2 (planning client) merged as #95 (`4cbdacb`); PR 3 (reader) passed
+> its UI design gate on 2026-10-20 and is implemented on
+> `feat/song-key-reader` (2026-10-21, PR #96,
+> `docs/plans/2026-10-20-song-key-reader.md`). PS14–PS16 refined on
+> 2026-10-14 (base values, the PS15 state rule, C11); PS5, PS7 and PS9
+> refined and PS25–PS26 added on 2026-10-20 (PR 3 design gate); PS25 and
+> PS26 refined on 2026-10-21 (PR 3 execution and final review). Amends
 > `docs/specs/2026-04-01-session-scoped-plan-reader-navigation.md`
 > ("Reader-Local State Preservation"). The file keeps the slice's original
 > name, "personal song settings"; the brainstorm replaced the per-user
@@ -15,7 +18,7 @@
 - Roadmap slice: S3 (`docs/plans/2026-10-01-delivery-roadmap.md`)
 - Branches: `feat/personal-settings-backend` (PR 1), then one branch per PR
 - ADR: ADR-042 (song key layers). PR 1 amends ADR-038; PR 2 amends ADR-028 D3.
-- Decision IDs: PS1–PS24.
+- Decision IDs: PS1–PS26.
 - Hard dependencies (merged): S1 (ADR-039 grant model), S2 (one consistent
   ChordPro base, `docs/specs/2026-10-12-chordpro-base-directives.md`).
 - Next slice: S5b, because S3 re-enters the planning mutation state machine
@@ -107,6 +110,21 @@ cascade, and a song played in two sessions could not have two keys.
 - A field counts as temporary only while its temporary value differs from the
   value the layers below would give. Stepping back to that value drops the
   temporary value, and the field's source label returns to `Plan` or `Song`.
+  The resolver applies the same rule when a lower layer changes to equal the
+  temporary value (a sync, or the user's own Save).
+- **Refined 2026-10-20 (PR 3 design gate).** The temporary layer records whom
+  it belongs to: the session item inside a plan, the song otherwise, plus the
+  reader visit (one per reader screen opened). A reader showing another item
+  or song, or the same item reopened, reads no temporary value. This also
+  covers the frame between a song change or a reopen and the runtime reset
+  (`startSession` runs in a post-frame callback, and the plan reader's
+  runtime state outlives the screen), and a library reader whose screen
+  state is reused for another song.
+- **Refined 2026-10-20.** "Drops" means the value leaves the reader state,
+  not only the label: when a lower layer changes to equal a temporary value
+  (a sync, or the user's own Save), the reader removes that field from the
+  temporary layer, so a later change of the lower layer cannot bring the old
+  temporary value back.
 
 ### Reader UX
 
@@ -134,6 +152,14 @@ members' screens.
 - No dialog anywhere in this flow. Save and Clear work offline: they record a
   planning mutation (PS14) and sync later. The reader shows the merged plan
   value (the projection plus the user's own pending edit) at once.
+- **Refined 2026-10-20 (PR 3 design gate): present, enabled while
+  applicable.** Reset and Save to plan do not appear and disappear; they are
+  always present where they apply (Reset in every reader, Save to plan for a
+  member with `canEditSessions` inside a plan) and are enabled only while a
+  field is temporary (Save to plan: and every temporary field is inside the
+  PS9 range). Reason: the compact control rail is vertically centered, so a
+  rail that grew after the first `±` tap would move the buttons under the
+  musician's finger.
 - The editor preview reuses `SongReaderState`; it must render the base only,
   with no temporary or plan layer.
 
@@ -153,6 +179,125 @@ that have a plan value. No key name is resolved here (YAGNI).
   below 0.
 - **Save to plan** is disabled while a temporary field is out of range. It
   never writes an out-of-range value.
+- **Refined 2026-10-20 (PR 3 design gate).** The step rules apply to `±` in
+  every reader, the library included, so every temporary value can be saved
+  once it is back in range. A disabled step is a disabled button. A negative
+  song base capo counts as 0, as the reader already renders it; `±` starts
+  from 0.
+
+**PS25. Reader UI placement (added 2026-10-20, PR 3 design gate).**
+
+- **Source label colors:** `Song` uses the value chip's current neutral
+  color (`surfaceContainerHighest`), `Plan` uses `primaryContainer`,
+  `Temporary` uses `tertiaryContainer` (each with its `on…` foreground). The
+  word is always shown; color never carries the source alone.
+- **Compact (control rail):** the value chip takes the source color, and a
+  caption under it reads `Song`, `Plan` or `Temporary`, in a fixed-width slot
+  that scales the text down rather than widening the rail. A new rail group
+  sits between the capo group and the font group: Reset (icon), then Save to
+  plan (icon, only for a member with `canEditSessions` inside a plan), each
+  with a tooltip. The rail's size does not change when a field becomes
+  temporary.
+- **Refined 2026-10-21 (PR 3 execution): the rail starts below the top bar.**
+  The compact control rail is placed at `top: topBarHeight +
+  viewPadding.top`
+  (`apps/lyron_app/lib/src/presentation/song_reader/widgets/song_reader_compact_surface.dart`),
+  not at the surface top, so a rail taller than the free height scrolls
+  instead of covering the top bar's overflow menu, where Clear plan value
+  lives. **Refined 2026-10-21 (PR 3 final review):** the rail with Reset and
+  Save to plan is about 547 px tall (about 410 px without them), and the free
+  height under the top bar is about 531 px on a 375×667 phone and about
+  476 px on a 360×640 phone in portrait. On those small portrait phones the
+  font group sits partly below the fold and the rail scrolls, and it scrolls
+  in landscape too; on a taller phone (390×844) it fits.
+- **Expanded (tools panel):** each control section's label row shows the
+  source as a badge at its end. A button row sits under the capo section and
+  above Scale: `Reset` (text button) and `Save to plan` (tonal button, same
+  condition as above).
+- **Clear plan value:** an item in the reader's overflow menu, which both
+  layouts share, after the guitar/piano items and before the theme item, set
+  apart by dividers. Shown only inside a plan, for a member with
+  `canEditSessions`, while the item has a plan value in either field.
+  **Refined 2026-10-21 (PR 3 execution):** the menu action re-checks this
+  condition when tapped, so a menu opened before the item left the plan (or
+  lost its value) records nothing. **Refined 2026-10-21 (PR 3 final
+  review):** the re-check is of the full offer condition (the item is in the
+  live plan, the member has `canEditSessions`, a plan value exists in either
+  field, and no plan-key write for the open item is in flight), as of the
+  reader's last build.
+- **Plan detail (PS8):** a row of small chips under the song title,
+  `Transpose +2` and `Capo 2`, one per field that has a plan value. Under the
+  title rather than at the row's end, so a phone row keeps its title width
+  next to the drag handle, the chevron and the delete button. A row without
+  a plan value is unchanged.
+- **No other feedback:** no snackbar and no dialog. The label change to
+  `Plan` is the confirmation; a pending or failed edit shows in the sync
+  popup (PS18). The bottom bar is unchanged.
+
+**PS26. Reader wiring (added 2026-10-20, PR 3 design gate).**
+
+- **Resolver (PS1, PS22):** a pure domain function over an ordered layer
+  list (`resolveSongKey` in `lib/src/domain/song/song_key_layers.dart`). A
+  layer has an id (`temporary`, `plan`, `song`), nullable values, and a
+  transient flag; a transient layer claims a field only while its value
+  differs from what the layers below give (the PS5 rule). The last layer must
+  give both fields. The PS9 step rules live next to it. The reader builds the
+  list in one place (`SongReaderKeyLayers`): temporary (transient), plan
+  (only inside a plan), song (base values, capo floored at 0). A new layer is
+  a new entry there and a new id with its label.
+- **State:** `SongReaderState` drops `transposeOffset` and `capoOffset` and
+  holds the temporary layer (owner id plus nullable absolute values).
+  `SongReaderProjection` takes the resolved key; without one it renders the
+  song base (the editor preview).
+- **Plan value source:** the live merged plan detail
+  (`planningPlanDetailProvider`, read directly, not through a derived async
+  provider that would lag it by a frame), never the route's warm plan
+  detail, which a route may keep passing along on previous/next without
+  refreshing it after a Save. The warm detail's item is used only while the
+  live read has no value yet. When the live detail has no such item, the
+  reader has no plan layer and no Save to plan or Clear plan value.
+  **Refined 2026-10-21 (PR 3 final review).** The live read stays required:
+  the screen must not depend on the route's rebuild timing, and a harness or
+  another entry point may pass a stale detail. The production route does not:
+  `PlanSessionSongSlugRouteResolver`
+  (`apps/lyron_app/lib/src/router/slug_route_resolvers.dart`) passes the
+  live detail as `warmPlanDetail` on every rebuild and ignores the
+  navigation `extra`. An item removed from the live plan also unmounts the
+  reader there (route not found) before the in-reader "no plan layer" path
+  runs; that path is reached only by an entry point that keeps the reader
+  mounted. The resolver keeps the reader mounted through a reload or a
+  failed reload of its inputs (song list, plan list, plan detail) once each
+  has a value, because the reader State owns the temporary key layer (PS5): a
+  remount, for example on a catalog refresh, would drop it.
+- **Capability:** the same organization-level `canEditSessions` check the
+  plan detail uses: the cached `CapabilityResolver.hasCapabilitySync` result
+  when there is one (so Save to plan is in place on the first frame), else
+  `hasCapability`; fail-closed (unknown or failed means no Save and no
+  Clear). The server enforces the group scope (PS11). **Refined 2026-10-21
+  (PR 3 execution):** the reader's organization-id read
+  (`activePlanningContextProvider`) is wrapped in try/catch, as the reader's
+  existing `editSongs` capability read is, and fails closed (a throw means no
+  Save and no Clear). The `editSongs` read fails open instead.
+- **Save sequence:** build the edit from the resolver output (`set` for each
+  temporary field, `keep` otherwise, whatever the instrument view: a capo
+  changed in guitar view and still temporary in piano view is saved, as Reset
+  also clears it); record it through `PlanningWriteService.setSessionItemKey`,
+  which calls the reader back once the edit is recorded and before its sync
+  attempt (the sync can take seconds online and longer offline); refresh the
+  plan detail at that point, through a provider container captured before the
+  write, so a reader closed in between still refreshes the plan detail. The
+  temporary value then drops by the PS5 rule as soon as the plan layer shows
+  it; a `±` tap during the save stays temporary, because it no longer equals
+  the plan value. If the write throws, nothing changes. While a write of this
+  reader is in flight, Save to plan is disabled and Clear plan value is not
+  offered. **Refined 2026-10-21 (PR 3 execution):** "in flight" lasts until
+  `setSessionItemKey` returns, its sync attempt included. The label already
+  reads `Plan` at `onRecorded`, but Save stays disabled and Clear is not
+  offered for that whole time. **Refined 2026-10-21 (PR 3 final review):** "a
+  write of this reader" is a write for the open item. Scoped previous/next
+  reuses the reader State across items, so the marker is kept per item: a
+  slow write on item A blocks Save, Clear and a repeated write on A only, and
+  item B is free at once.
 
 ### Backend (PR 1)
 
@@ -431,7 +576,7 @@ read-only check in PR 1's plan.
 | P5 | organization scope | Planning is already organization-scoped; the organization-switch finding applies to key edits exactly as to every planning mutation and is decided in S5b (PS19). |
 | P6 | absolute or relative | Absolute, for transpose and capo (PS2). |
 | P7 | reuse | The planning pull (ADR-041) gains three columns; ordering is OCC on the item version, no device clock (LF-T6); a resend is a no-op success (LF-T5b, PS12 step 6); conflicts are resolved with Keep mine, not last-write-wins, because the value is shared. |
-| P8 | blast radius | `SongReaderState` (19 `lib/` importers per the roadmap; re-count in PR 3, the editor preview among them) loses its offsets; the 2026-04-01 spec is amended in this change; `SongReaderProjection` (hotspot with S8) takes resolved values instead of `base + offset`; the sync popup gets one detail label. |
+| P8 | blast radius | `SongReaderState` (19 `lib/` importers per the roadmap; re-counted 2026-10-20 on `4cbdacb`: 18 `lib/` and 26 `test/` importers, the editor preview among them; re-counted 2026-10-21 after PR 3: 19 `lib/` and 29 `test/` importers, the additions being `song_reader_key_layers.dart` and the tests that exercise it, none removed) loses its offsets; the 2026-04-01 spec is amended in this change; `SongReaderProjection` (hotspot with S8) takes resolved values instead of `base + offset`; the sync popup gets one detail label. |
 
 ## Deferred Entries
 
@@ -543,10 +688,12 @@ Contract tests (all calls as `authenticated` with the caller's claims):
 - `SessionScopedReaderRuntimeController` clears the temporary layer on every
   song change and keeps the other reader state (PS5).
 - Source labels, Reset, Save to plan, Clear plan value, capability gating,
-  bounds (PS6, PS7, PS9); the plan detail key (PS8).
+  bounds (PS6, PS7, PS9); the plan detail key (PS8); placement and wiring as
+  decided at the design gate (PS25, PS26).
 - The editor preview renders the base only (PS7).
 - Widget and golden tests for both layouts (compact and expanded), the editor
-  preview unchanged, and the session navigation reset.
+  preview unchanged, and the session navigation reset. Test IDs U1–U14 and
+  the task order are in `docs/plans/2026-10-20-song-key-reader.md`.
 
 ## Non-Goals
 

@@ -445,9 +445,14 @@ class PlanningWriteService {
     await _scheduleSync(context);
   }
 
+  /// Records a key edit of one session item. [onRecorded] runs once, right
+  /// after the edit is recorded and before the sync attempt, whose duration
+  /// this call otherwise waits for: a caller that must refresh at once (the
+  /// reader's Save to plan) cannot wait for it.
   Future<void> setSessionItemKey({
     required PlanningWriteContext context,
     required SessionItemKeyDraft draft,
+    void Function()? onRecorded,
   }) async {
     await _requireMatchingContext(context);
     final detail = await _repository.getPlanDetail(draft.planId);
@@ -473,6 +478,7 @@ class PlanningWriteService {
         originSnapshot: _sessionItemSnapshot(item),
       ),
     );
+    onRecorded?.call();
     await _scheduleSync(context);
   }
 

@@ -16,7 +16,7 @@ import 'package:lyron_app/src/domain/song/song_summary.dart';
 import 'package:lyron_app/src/presentation/planning/widgets/plan_song_item_row.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
-PlanDetail _planDetailFixture() {
+PlanDetail _planDetailFixture({int? planTranspose, int? planCapo}) {
   return PlanDetail(
     plan: PlanSummary(
       id: 'plan-1',
@@ -26,7 +26,7 @@ PlanDetail _planDetailFixture() {
       scheduledFor: null,
       updatedAt: DateTime(2026, 1, 1),
     ),
-    sessions: const [
+    sessions: [
       SessionSummary(
         id: 'session-1',
         slug: 'warm-up',
@@ -36,11 +36,13 @@ PlanDetail _planDetailFixture() {
           SessionItemSummary(
             id: 'item-1',
             position: 10,
-            song: SongSummary(
+            song: const SongSummary(
               id: 'song-1',
               slug: 'zulu-song',
               title: 'Zulu Song',
             ),
+            planTranspose: planTranspose,
+            planCapo: planCapo,
           ),
         ],
       ),
@@ -256,8 +258,15 @@ class _AllowAllCapabilityGateway implements CapabilityGateway {
       Capability.values.toSet();
 }
 
-Widget _harness({required PlanningWriteService writeService}) {
-  final planDetail = _planDetailFixture();
+Widget _harness({
+  required PlanningWriteService writeService,
+  int? planTranspose,
+  int? planCapo,
+}) {
+  final planDetail = _planDetailFixture(
+    planTranspose: planTranspose,
+    planCapo: planCapo,
+  );
   final session = planDetail.sessions.single;
   final item = session.items.single;
 
@@ -314,5 +323,129 @@ void main() {
     expect(writeService.deletedDraft?.sessionItemId, 'item-1');
     expect(writeService.deletedDraft?.sessionId, 'session-1');
     expect(writeService.deletedDraft?.planId, 'plan-1');
+  });
+
+  group('plan key chips (PS8)', () {
+    const transposeKey = ValueKey('plan-session-item-transpose-item-1');
+    const capoKey = ValueKey('plan-session-item-capo-item-1');
+
+    testWidgets('shows transpose and capo chips below the title', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _harness(
+          writeService: _FakePlanningWriteService(),
+          planTranspose: 2,
+          planCapo: 3,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.widget<Text>(find.byKey(transposeKey)).data,
+        'Transpose +2',
+      );
+      expect(tester.widget<Text>(find.byKey(capoKey)).data, 'Capo 3');
+
+      final titleY = tester.getCenter(find.text('10. Zulu Song')).dy;
+      expect(
+        tester.getCenter(find.byKey(transposeKey)).dy,
+        greaterThan(titleY),
+      );
+      expect(tester.getCenter(find.byKey(capoKey)).dy, greaterThan(titleY));
+    });
+
+    testWidgets('a negative transpose shows only the transpose chip', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _harness(writeService: _FakePlanningWriteService(), planTranspose: -3),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.widget<Text>(find.byKey(transposeKey)).data,
+        'Transpose -3',
+      );
+      expect(find.byKey(capoKey), findsNothing);
+    });
+
+    testWidgets('a zero capo is a plan value and shows only the capo chip', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _harness(writeService: _FakePlanningWriteService(), planCapo: 0),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<Text>(find.byKey(capoKey)).data, 'Capo 0');
+      expect(find.byKey(transposeKey), findsNothing);
+    });
+
+    testWidgets('a zero transpose is a plan value and reads Transpose 0', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _harness(writeService: _FakePlanningWriteService(), planTranspose: 0),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<Text>(find.byKey(transposeKey)).data, 'Transpose 0');
+      expect(find.byKey(capoKey), findsNothing);
+    });
+
+    testWidgets('a row without plan values has no chips and keeps its title', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _harness(writeService: _FakePlanningWriteService()),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(transposeKey), findsNothing);
+      expect(find.byKey(capoKey), findsNothing);
+      expect(find.byType(Wrap), findsNothing);
+      expect(find.text('10. Zulu Song'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('plan-session-item-item-1')),
+          matching: find.text('10. Zulu Song'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('the chips use the colour scheme, not literals', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _harness(
+          writeService: _FakePlanningWriteService(),
+          planTranspose: 2,
+          planCapo: 1,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final scheme = Theme.of(
+        tester.element(find.byKey(transposeKey)),
+      ).colorScheme;
+      for (final key in [transposeKey, capoKey]) {
+        final text = tester.widget<Text>(find.byKey(key));
+        expect(text.style?.color, scheme.onPrimaryContainer);
+        final box = tester.widget<DecoratedBox>(
+          find
+              .ancestor(
+                of: find.byKey(key),
+                matching: find.byType(DecoratedBox),
+              )
+              .first,
+        );
+        expect(
+          (box.decoration as BoxDecoration).color,
+          scheme.primaryContainer,
+        );
+      }
+    });
   });
 }

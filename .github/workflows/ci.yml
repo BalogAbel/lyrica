@@ -6,6 +6,14 @@ on:
     branches:
       - main
 
+# The Supabase CLI pulls the local stack's images from public.ecr.aws by
+# default, whose anonymous data limit the shared GitHub runner IPs exhaust
+# ("toomanyrequests: Data limit exceeded"). Supabase mirrors the same tags to
+# GHCR, which runners reach without that limit. See
+# docs/workflows/development-workflow.md, "Local Tooling".
+env:
+  SUPABASE_INTERNAL_IMAGE_REGISTRY: ghcr.io
+
 jobs:
   verify:
     runs-on: ubuntu-latest

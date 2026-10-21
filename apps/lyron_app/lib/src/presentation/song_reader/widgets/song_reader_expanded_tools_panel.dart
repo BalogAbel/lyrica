@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_key_actions.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_header.dart';
 
@@ -12,15 +13,17 @@ class SongReaderExpandedToolsPanel extends StatelessWidget {
     this.onCapoUp,
     required this.onDecreaseFontScale,
     required this.onIncreaseFontScale,
+    this.keyActions = SongReaderKeyActions.none,
   });
 
   final SongReaderProjection projection;
-  final VoidCallback onTransposeDown;
-  final VoidCallback onTransposeUp;
+  final VoidCallback? onTransposeDown;
+  final VoidCallback? onTransposeUp;
   final VoidCallback? onCapoDown;
   final VoidCallback? onCapoUp;
   final VoidCallback onDecreaseFontScale;
   final VoidCallback onIncreaseFontScale;
+  final SongReaderKeyActions keyActions;
 
   @override
   Widget build(BuildContext context) {
@@ -32,6 +35,7 @@ class SongReaderExpandedToolsPanel extends StatelessWidget {
       onCapoUp: onCapoUp,
       onDecreaseFontScale: onDecreaseFontScale,
       onIncreaseFontScale: onIncreaseFontScale,
+      keyActions: keyActions,
     );
   }
 }

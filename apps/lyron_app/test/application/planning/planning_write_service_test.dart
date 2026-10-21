@@ -577,6 +577,50 @@ void main() {
         expect(syncCalls, 1);
       });
 
+      test('onRecorded runs once, after the edit is recorded and before the '
+          'sync attempt', () async {
+        await seedProjection();
+        final order = <String>[];
+        Future<PlanningMutationRecord?>? readInCallback;
+        final ordered = PlanningWriteService(
+          repository,
+          mutationStore: mutationStore,
+          activeContextReader: () async => activeContext,
+          syncScheduler: (_) async {
+            order.add('sync');
+          },
+        );
+
+        await ordered.setSessionItemKey(
+          context: context,
+          draft: SessionItemKeyDraft(
+            planId: 'plan-1',
+            sessionId: 'session-1',
+            sessionItemId: 'item-1',
+            edit: SessionItemKeyEdit(
+              transposeMode: SessionItemKeyFieldMode.set,
+              transpose: 2,
+              capoMode: SessionItemKeyFieldMode.keep,
+            ),
+          ),
+          onRecorded: () {
+            order.add('recorded');
+            // Started here, so it only sees the row when the edit is already
+            // recorded.
+            readInCallback = mutationStore.readMutation(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              aggregateType:
+                  PlanningMutationKind.sessionItemKeyEdit.aggregateType,
+              aggregateId: 'item-1',
+            );
+          },
+        );
+
+        expect(order, ['recorded', 'sync']);
+        expect((await readInCallback)?.keyEdit?.transpose, 2);
+      });
+
       test('the base is the merged item version and key, not null', () async {
         await localStore.replaceActiveProjection(
           userId: 'user-1',

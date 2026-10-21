@@ -1,60 +1,75 @@
 import 'package:lyron_app/src/domain/song/chord_symbol.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
+import 'package:lyron_app/src/domain/song/song_key_layers.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_key_layers.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
 
 typedef SongChordTransposer = String Function(String chord, int semitoneOffset);
 
 class SongReaderProjection {
+  /// [key] is the key the layers resolved to (see [SongReaderKeyLayers]);
+  /// without it the song's own base key renders.
   SongReaderProjection({
     required ParsedSong song,
     required SongReaderState state,
+    ResolvedSongKey? key,
     SongChordTransposer transposeChord = _transposeChord,
-  }) : title = song.title,
-       subtitle = song.subtitle,
-       sourceKey = song.sourceKey,
-       instrumentDisplayMode = state.instrumentDisplayMode,
-       diagnostics = List.unmodifiable(song.diagnostics),
-       viewMode = state.viewMode,
-       transposeOffset = state.transposeOffset,
-       capoOffset = state.capoOffset,
-       effectiveTranspose = song.baseTranspose + state.transposeOffset,
-       effectiveCapo = SongReaderProjection.effectiveCapoValue(song, state),
-       isCapoDirectiveVisible =
-           state.instrumentDisplayMode ==
-           SongReaderInstrumentDisplayMode.guitar,
-       capoDirectiveText =
-           state.instrumentDisplayMode ==
-                   SongReaderInstrumentDisplayMode.guitar &&
-               SongReaderProjection.effectiveCapoValue(song, state) > 0
-           ? '${AppStrings.songReaderCapoDirectivePrefix}${SongReaderProjection.effectiveCapoValue(song, state)}'
-           : null,
-       effectiveKey = SongReaderProjection._effectiveKey(
+  }) : this._(
          song,
          state,
+         key ?? SongReaderKeyLayers.baseOnly.resolveFor(song),
          transposeChord,
-       ),
-       sharedFontScale = state.sharedFontScale,
-       sections = List.unmodifiable(
-         song.sections
-             .map(
-               (section) => SongReaderSectionProjection(
-                 kind: section.kind,
-                 label: section.label,
-                 number: section.number,
-                 isUnknown: section.kind == SongSectionKind.unknown,
-                 lines: List.unmodifiable(
-                   section.lines
-                       .map(
-                         (line) =>
-                             _projectLine(line, state, song, transposeChord),
-                       )
-                       .toList(growable: false),
-                 ),
-               ),
-             )
-             .toList(growable: false),
        );
+
+  SongReaderProjection._(
+    ParsedSong song,
+    SongReaderState state,
+    this.key,
+    SongChordTransposer transposeChord,
+  ) : title = song.title,
+      subtitle = song.subtitle,
+      sourceKey = song.sourceKey,
+      instrumentDisplayMode = state.instrumentDisplayMode,
+      diagnostics = List.unmodifiable(song.diagnostics),
+      viewMode = state.viewMode,
+      effectiveTranspose = key.transpose.value,
+      effectiveCapo = key.capo.value,
+      isCapoDirectiveVisible =
+          state.instrumentDisplayMode == SongReaderInstrumentDisplayMode.guitar,
+      capoDirectiveText =
+          state.instrumentDisplayMode ==
+                  SongReaderInstrumentDisplayMode.guitar &&
+              key.capo.value > 0
+          ? '${AppStrings.songReaderCapoDirectivePrefix}${key.capo.value}'
+          : null,
+      effectiveKey = SongReaderProjection._effectiveKey(
+        song,
+        state,
+        key,
+        transposeChord,
+      ),
+      sharedFontScale = state.sharedFontScale,
+      sections = List.unmodifiable(
+        song.sections
+            .map(
+              (section) => SongReaderSectionProjection(
+                kind: section.kind,
+                label: section.label,
+                number: section.number,
+                isUnknown: section.kind == SongSectionKind.unknown,
+                lines: List.unmodifiable(
+                  section.lines
+                      .map(
+                        (line) =>
+                            _projectLine(line, state, key, transposeChord),
+                      )
+                      .toList(growable: false),
+                ),
+              ),
+            )
+            .toList(growable: false),
+      );
 
   final String title;
   final String? subtitle;
@@ -62,8 +77,7 @@ class SongReaderProjection {
   final SongReaderInstrumentDisplayMode instrumentDisplayMode;
   final List<ParseDiagnostic> diagnostics;
   final SongReaderViewMode viewMode;
-  final int transposeOffset;
-  final int capoOffset;
+  final ResolvedSongKey key;
   final int effectiveTranspose;
   final int effectiveCapo;
   final bool isCapoDirectiveVisible;
@@ -75,7 +89,7 @@ class SongReaderProjection {
   static String? _displayChord(
     String? leadingChord,
     SongReaderState state,
-    ParsedSong song,
+    ResolvedSongKey key,
     SongChordTransposer transposeChord,
   ) {
     if (state.viewMode == SongReaderViewMode.lyricsOnly ||
@@ -84,15 +98,12 @@ class SongReaderProjection {
     }
 
     try {
-      final soundingChord = transposeChord(
-        leadingChord,
-        song.baseTranspose + state.transposeOffset,
-      );
+      final soundingChord = transposeChord(leadingChord, key.transpose.value);
       if (state.instrumentDisplayMode ==
           SongReaderInstrumentDisplayMode.piano) {
         return soundingChord;
       }
-      return transposeChord(soundingChord, -effectiveCapoValue(song, state));
+      return transposeChord(soundingChord, -key.capo.value);
     } on FormatException {
       return leadingChord;
     }
@@ -101,6 +112,7 @@ class SongReaderProjection {
   static String? _effectiveKey(
     ParsedSong song,
     SongReaderState state,
+    ResolvedSongKey key,
     SongChordTransposer transposeChord,
   ) {
     final source = song.sourceKey;
@@ -109,23 +121,15 @@ class SongReaderProjection {
     }
 
     try {
-      final sounding = transposeChord(
-        source,
-        song.baseTranspose + state.transposeOffset,
-      );
+      final sounding = transposeChord(source, key.transpose.value);
       if (state.instrumentDisplayMode ==
           SongReaderInstrumentDisplayMode.piano) {
         return sounding;
       }
-      return transposeChord(sounding, -effectiveCapoValue(song, state));
+      return transposeChord(sounding, -key.capo.value);
     } on FormatException {
       return source;
     }
-  }
-
-  static int effectiveCapoValue(ParsedSong song, SongReaderState state) {
-    final capo = song.baseCapo + state.capoOffset;
-    return capo < 0 ? 0 : capo;
   }
 }
 
@@ -191,7 +195,7 @@ class SongReaderSegmentProjection {
 SongReaderSectionItemProjection _projectLine(
   SongLine line,
   SongReaderState state,
-  ParsedSong song,
+  ResolvedSongKey key,
   SongChordTransposer transposeChord,
 ) {
   return switch (line) {
@@ -203,7 +207,7 @@ SongReaderSectionItemProjection _projectLine(
                 displayChord: SongReaderProjection._displayChord(
                   segment.leadingChord,
                   state,
-                  song,
+                  key,
                   transposeChord,
                 ),
                 text: segment.text,

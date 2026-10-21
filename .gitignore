@@ -26,6 +26,9 @@ supabase/.branches/
 tooling/supabase/node_modules/
 scripts/manual-validation/.supabase-env
 
+# Flutter golden failure output (a failing local golden run writes these)
+apps/lyron_app/test/**/failures/
+
 # Generated platform artifacts
 apps/lyron_app/ios/Flutter/Generated.xcconfig
 apps/lyron_app/ios/Flutter/flutter_export_environment.sh

@@ -14,6 +14,10 @@ The review found no silent loss and no absorbed foreign write after its two
 fixes. These are the residuals it rated non-blocking. Each ends in a visible
 state (a failed row or one visible conflict), never in a wrong silent write.
 
+**Triage (2026-10-20):** R1 and R3 are scheduled in roadmap slice S5b
+(`docs/plans/2026-10-01-delivery-roadmap.md`), next to the other planning
+mutation gaps. R2 and R4 stay here, unscheduled.
+
 ## R1. Discarding a failed item create orphans its key-edit row
 
 **What.** Discarding a FAILED `session_item` create through `clearMutation`

@@ -139,6 +139,12 @@ class AppStrings {
   static const songReaderDecreaseFontSemantics = 'Decrease text size';
   static const songReaderIncreaseFontSemantics = 'Increase text size';
   static const songReaderKeyLabelPrefix = 'Key: ';
+  static const songReaderKeySourceSong = 'Song';
+  static const songReaderKeySourcePlan = 'Plan';
+  static const songReaderKeySourceTemporary = 'Temporary';
+  static const songReaderResetKeyAction = 'Reset';
+  static const songReaderSaveToPlanAction = 'Save to plan';
+  static const songReaderClearPlanValueAction = 'Clear plan value';
   static const songReaderWarningDialogTitle = 'Reading warnings';
   static const songReaderWarningsSemantics = 'Show reading warnings';
   static const songReaderWarningSingular =
@@ -211,6 +217,11 @@ class AppStrings {
   static const sessionItemMoveUpAction = 'Move item up';
   static const sessionItemMoveDownAction = 'Move item down';
   static const sessionItemDeleteAction = 'Delete item';
+  // Plan key chips on a session song row (S3 PR 3, PS8). Signs match the
+  // reader's transpose display: `+n`, `-n` (ASCII hyphen), `0`.
+  static String planItemTransposeLabel(int value) =>
+      'Transpose ${value > 0 ? '+$value' : '$value'}';
+  static String planItemCapoLabel(int value) => 'Capo $value';
   static const sessionItemSongPickerTitle = 'Add song to session';
   static const sessionItemSongUnavailableMessage =
       'Offline song add is unavailable until a local song catalog is available.';

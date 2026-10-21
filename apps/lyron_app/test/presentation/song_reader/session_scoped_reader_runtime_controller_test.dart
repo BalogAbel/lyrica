@@ -2,6 +2,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_runtime_controller.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 
+const _layer = SongReaderTemporaryLayer(
+  ownerId: 'item-1@0',
+  transpose: 1,
+  capo: 1,
+);
+
 void main() {
   test('starts with the current default reader settings', () {
     final controller = SessionScopedReaderRuntimeController();
@@ -27,8 +33,7 @@ void main() {
     );
 
     controller.toggleViewMode();
-    controller.transposeUp();
-    controller.capoUp();
+    controller.setTemporaryLayer(_layer);
     controller.setInstrumentDisplayMode(SongReaderInstrumentDisplayMode.piano);
     controller.setSharedFontScale(1.25);
     controller.showCompactControls();
@@ -41,8 +46,7 @@ void main() {
       controller.state.readerState.viewMode,
       SongReaderViewMode.lyricsOnly,
     );
-    expect(controller.state.readerState.transposeOffset, 1);
-    expect(controller.state.readerState.capoOffset, 1);
+    expect(controller.state.readerState.temporaryLayer, _layer);
     expect(
       controller.state.readerState.instrumentDisplayMode,
       SongReaderInstrumentDisplayMode.piano,
@@ -56,7 +60,7 @@ void main() {
     expect(controller.state.readerState.isAutoFitEnabled, false);
   });
 
-  test('keeps scoped capo at zero when decreasing below open capo', () {
+  test('sets and clears the temporary key layer', () {
     final controller = SessionScopedReaderRuntimeController();
     controller.startSession(
       planId: 'plan-1',
@@ -64,9 +68,11 @@ void main() {
       songId: 'song-1',
     );
 
-    controller.capoDown();
+    controller.setTemporaryLayer(_layer);
+    expect(controller.state.readerState.temporaryLayer, _layer);
 
-    expect(controller.state.readerState.capoOffset, -1);
+    controller.setTemporaryLayer(null);
+    expect(controller.state.readerState.temporaryLayer, isNull);
   });
 
   test('toggles compact controls without disturbing other reader state', () {
@@ -85,7 +91,8 @@ void main() {
     expect(controller.state.readerState, SongReaderState());
   });
 
-  test('preserves settings when selected song changes in the same session', () {
+  test('preserves settings but drops the temporary key when the selected '
+      'song changes in the same session', () {
     final controller = SessionScopedReaderRuntimeController();
     controller.startSession(
       planId: 'plan-1',
@@ -93,11 +100,12 @@ void main() {
       songId: 'song-1',
     );
     controller.toggleViewMode();
-    controller.transposeUp();
-    controller.capoUp();
-    controller.setSharedFontScale(1.25);
+    controller.setInstrumentDisplayMode(SongReaderInstrumentDisplayMode.piano);
+    controller.setTemporaryLayer(_layer);
+    controller.setSharedFontScale(1.4);
     controller.showCompactControls();
     controller.disableAutoFit();
+    final before = controller.state.readerState;
 
     controller.startSession(
       planId: 'plan-1',
@@ -106,15 +114,39 @@ void main() {
     );
 
     expect(controller.state.songId, 'song-2');
+    expect(controller.state.readerState.temporaryLayer, isNull);
+    expect(controller.state.readerState, before.withTemporaryLayer(null));
     expect(
       controller.state.readerState.viewMode,
       SongReaderViewMode.lyricsOnly,
     );
-    expect(controller.state.readerState.transposeOffset, 1);
-    expect(controller.state.readerState.capoOffset, 1);
-    expect(controller.state.readerState.sharedFontScale, 1.25);
+    expect(
+      controller.state.readerState.instrumentDisplayMode,
+      SongReaderInstrumentDisplayMode.piano,
+    );
+    expect(controller.state.readerState.sharedFontScale, 1.4);
     expect(controller.state.readerState.areCompactControlsVisible, true);
     expect(controller.state.readerState.isAutoFitEnabled, false);
+  });
+
+  test('drops the temporary key when the same song starts again', () {
+    final controller = SessionScopedReaderRuntimeController();
+    controller.startSession(
+      planId: 'plan-1',
+      sessionId: 'session-1',
+      songId: 'song-1',
+    );
+    controller.setTemporaryLayer(_layer);
+    controller.setSharedFontScale(1.25);
+
+    controller.startSession(
+      planId: 'plan-1',
+      sessionId: 'session-1',
+      songId: 'song-1',
+    );
+
+    expect(controller.state.readerState.temporaryLayer, isNull);
+    expect(controller.state.readerState.sharedFontScale, 1.25);
   });
 
   test('resets when a different scoped reader session starts', () {
@@ -125,7 +157,7 @@ void main() {
       songId: 'song-1',
     );
     controller.toggleViewMode();
-    controller.transposeUp();
+    controller.setTemporaryLayer(_layer);
     controller.setSharedFontScale(1.25);
 
     controller.startSession(
