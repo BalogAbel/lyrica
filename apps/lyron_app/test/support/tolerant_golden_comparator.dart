@@ -8,7 +8,9 @@ import 'package:flutter_test/flutter_test.dart';
 /// `ubuntu-latest` CI runner. The same widget tree anti-aliases rounded corners
 /// and icon edges slightly differently there, so an exact comparison would
 /// fail for no real change. [maxDiffPercent] is the share of differing pixels
-/// that still passes, as a fraction: `0.005` is 0.5%.
+/// that still passes, as a fraction: `0.005` is 0.5%. It never exceeds `0.01`
+/// (1%): a larger difference is a real change to investigate, not a tolerance
+/// to raise.
 ///
 /// Set it per test file in `setUpAll`, never globally, so only the goldens
 /// that need the tolerance get it:
@@ -31,11 +33,12 @@ import 'package:flutter_test/flutter_test.dart';
 /// pixel comparison reports it as a full difference).
 class TolerantGoldenComparator extends LocalFileComparator {
   /// Golden keys are interpreted relative to the directory of [testFile], as
-  /// in [LocalFileComparator]. [maxDiffPercent] must be a fraction in 0..1.
+  /// in [LocalFileComparator]. [maxDiffPercent] must be a fraction in
+  /// 0..0.01.
   TolerantGoldenComparator(super.testFile, {required this.maxDiffPercent})
     : assert(
-        maxDiffPercent >= 0 && maxDiffPercent <= 1,
-        'maxDiffPercent is a fraction in 0..1, not a percentage',
+        maxDiffPercent >= 0 && maxDiffPercent <= 0.01,
+        'maxDiffPercent is a fraction (0.005 is 0.5%) and never above 0.01',
       );
 
   /// The largest share of differing pixels that still passes, as a fraction.
