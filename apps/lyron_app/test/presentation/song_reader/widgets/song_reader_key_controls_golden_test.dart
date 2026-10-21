@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lyron_app/src/app/app_theme.dart';
@@ -25,8 +27,10 @@ import '../../../support/tolerant_golden_comparator.dart';
 // image), so that flip is pinned by the rail and tools panel widget tests,
 // which assert `onPressed` null or non-null. So are the words and the icons.
 //
-// Regenerate with `flutter test --update-goldens <this file>` and review the
-// changed PNGs as images in the pull request.
+// Goldens are generated and compared on Linux/amd64 only, the platform CI
+// runs on: other hosts anti-alias a little differently, so this file skips
+// itself there. Regenerate with `./scripts/update-goldens.sh` (Docker) and
+// review the changed PNGs as images in the pull request.
 
 /// Fixed surfaces at a device pixel ratio of 1, so the PNGs are the same size
 /// on every machine. The control is pinned to the top of its surface, so a
@@ -41,13 +45,20 @@ const _surfaceMargin = 20.0;
 const _songTranspose = 2;
 const _songCapo = 2;
 
+/// Null on Linux; elsewhere the reason this file is skipped.
+final Object? _skipOffLinux = Platform.isLinux
+    ? null
+    : 'goldens are generated and compared on Linux only '
+          '(./scripts/update-goldens.sh)';
+
 void main() {
   late GoldenFileComparator previousComparator;
 
   setUpAll(() {
     previousComparator = goldenFileComparator;
-    // Anti-aliasing differs a little between the macOS the goldens are made on
-    // and the Linux CI runs on. Only this file gets the tolerance.
+    // Generated and compared on the same platform (Linux/amd64), so a match
+    // is near exact; the small tolerance absorbs renderer noise between a
+    // native and an emulated amd64 host. Only this file gets it.
     goldenFileComparator = TolerantGoldenComparator(
       (previousComparator as LocalFileComparator).basedir.resolve(
         'song_reader_key_controls_golden_test.dart',
@@ -134,7 +145,7 @@ void main() {
 
       await _expectGolden('compact_out_of_range.png');
     });
-  });
+  }, skip: _skipOffLinux);
 
   group('expanded tools panel', () {
     testWidgets('library song: Song / Song, Reset disabled, no Save to plan', (
@@ -182,7 +193,7 @@ void main() {
 
       await _expectGolden('expanded_temporary_dark.png');
     });
-  });
+  }, skip: _skipOffLinux);
 }
 
 /// The path is relative to this file; [TolerantGoldenComparator] resolves it
