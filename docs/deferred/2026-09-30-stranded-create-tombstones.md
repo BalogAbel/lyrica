@@ -144,3 +144,5 @@ overrides the recommended defaults:
   that would also pull in LF-T5b.
 - **For session items, accept the visible conflict noise** of a creation-time
   base of 1.
+
+S5b spec (2026-10-21): option (a), item base b + 1, song side included (MG6, MG7 of `docs/specs/2026-10-21-planning-mutation-gaps.md`); resolved by S5b PR 2.

@@ -254,3 +254,37 @@ migration `supabase/migrations/202610130001_session_item_key.sql`.
   sent edit applied to the sent base values, PS15). Any other response's
   content version is discarded: the projection lags and a stale plan delete
   conflicts, the fail-safe direction.
+
+## Amendment: rule 1a placement and the retry rule (2026-10-21, S5b)
+
+**Status:** Proposed (S5b design gate pending). Item 1 is implemented by S5b
+PR 1, item 2 by S5b PR 2.
+**Spec:** `docs/specs/2026-10-21-planning-mutation-gaps.md` (MG4, MG8).
+
+1. **Rule 1a runs only after a successful reconcile of the same record
+   (MG4).** Decision 4's projection advance (D7 rule 1a) leaves the
+   accepted-write effects. It runs only in the refresh-failed branch, for a
+   record whose run context is still the active one, right after that
+   record's reconcile completed without throwing. The effects call keeps
+   rules 1b, 2 and 3, which rebase the run's own pending deletes, and stays
+   where it was, unconditional. Before, a context switch or a reconcile
+   failure between the advance and the reconcile cleared or failed the
+   accepted row without bringing the write W into the projection, which left
+   the projection at R without W and broke I7
+   (`docs/deferred/2026-09-30-content-version-advance-on-context-switch.md`).
+   A delete recorded mid-run reads R - 1 and is rebased by rule 1b at batch
+   end, so nothing depended on the early advance. Consequence (already
+   listed under "Narrow crash windows"): a crash after the RPC leaves the
+   projection at R - 1 until the next refresh, so a later delete can show
+   one visible false conflict.
+2. **Retry rebases only from a visible conflict, for every kind that
+   overwrites a shared value (MG8).** Decision 5's conflict-only rebase now
+   covers `planEdit`, `sessionRename`, `sessionReorder` and
+   `sessionItemReorder`, next to the cascade deletes and the key edit. A
+   retry from any other status resends the original bases. The automatic
+   sync never rebases, so a Retry that did would silently overwrite a
+   foreign value the user's own overlay hid; now it surfaces as a conflict
+   that Keep mine resolves knowingly. Creates and `sessionItemDelete` keep
+   rebasing in any status (they add or remove the user's own object). The
+   session-rename lookup (`_currentBaseVersionFor` keyed on `sessionId`,
+   which a session row does not set) resolves the session by `aggregateId`.

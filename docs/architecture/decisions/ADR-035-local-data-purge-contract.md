@@ -667,3 +667,42 @@ to data durability, not to sync); no rework of
 and snapshot-write decision; no multi-account support; no server-side soft
 delete or undo (D5's confirmation gate is local only, and defers a purge
 rather than making one reversible).
+
+## Amendment: organization switch, import runs and purge ownership (2026-10-21, S5b)
+
+**Status:** Proposed (S5b design gate pending). MG1 is implemented by S5b
+PR 1, MG10 and MG11 by S5b PR 3.
+**Spec:** `docs/specs/2026-10-21-planning-mutation-gaps.md` (MG1, MG10,
+MG11).
+
+1. **An organization switch is not a purge reason (MG1).** A boundary change
+   of the active planning context deletes nothing. Before this amendment
+   `PlanningSyncController.handleActiveContextChanged` deleted the previous
+   organization's projection and pending mutations through
+   `PlanningLocalStore.deletePlanningData`, outside the D7 gate and without
+   a `PurgeReason`, while the membership was intact (verified by a red test
+   on 2026-10-21). The previous organization's planning data now stays on
+   the device, as its song catalog already did, until one of the four
+   reasons above purges the user. `deletePlanningData` is removed, so the
+   gate's primitives are again the only planning deletes. Accepted gap:
+   while another organization is active, that pending work is visible only
+   to the user-wide pending-work count (sign-out warning, different-user
+   wipe, D5 purge), not in the sync popup.
+2. **The membership-revocation purge refuses while an import may write the
+   user's work (MG11).** `maybePurgeForMembershipRevocation` checks
+   `ImportRunTracker.isRunningFor(userId)` before its first count and again
+   synchronously before the deletion, after the recount. Either check true
+   declines: nothing is deleted, the marker stays, and
+   `MembershipRevocationPurgeDeclineReason.importRunning` is recorded. This
+   is RW3 of `docs/specs/2026-10-11-reauth-wipe-recount.md` applied to D5.4:
+   an import writes rows that no count has seen. The user-agnostic
+   `ImportRunTracker.isRunning` is removed.
+3. **A completed D5 purge resets only the current user's planning state
+   (MG10).** The planning holders reset after a purge only when
+   `CurrentUserOwnership.allows(userId)` holds for the purged user, so a
+   purge for A that completes after B became current leaves B's planning
+   context and sync state alone (O3 of
+   `docs/deferred/2026-10-05-gate-cross-user-leaks.md`). D5.5 rule 5 ("no
+   caller may act on another user's row") now also covers in-memory state.
+
+No new `PurgeReason`, no new purge, and the four reasons are unchanged.

@@ -129,3 +129,5 @@ key edit whose reconcile is skipped by a context switch leaves the projection
 one version behind, and the next key edit on that item shows one visible false
 conflict (Keep mine resolves it). S5b, now scheduled right after S3, covers the
 new kind with the same rule (`docs/specs/2026-10-13-personal-song-settings.md`).
+
+S5b spec (2026-10-21): option (a), refined: rule 1a moves to batch end inside the reconcile decision (MG4 of `docs/specs/2026-10-21-planning-mutation-gaps.md`); resolved by S5b PR 1.

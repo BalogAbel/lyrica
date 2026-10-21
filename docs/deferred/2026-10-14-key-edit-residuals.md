@@ -70,3 +70,5 @@ base the draft was built from. Inherited shape of the other planning writes.
 
 **Where.** `PlanningWriteService.setSessionItemKey`: resolve the base inside
 the mutation store's record transaction.
+
+S5b spec (2026-10-21): R3 decided as MG5 (S5b PR 1), R1 as MG9 (S5b PR 2) of `docs/specs/2026-10-21-planning-mutation-gaps.md`; R2 and R4 stay here.

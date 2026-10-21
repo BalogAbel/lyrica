@@ -276,3 +276,5 @@ mutation sync controller; O3 with the next change to the D5 purge
 coordinator. Any of them earlier if reported from the field.
 
 Roadmap (2026-10-12): scheduled in S5b (O2, O3); C4, F5, N1 and N2 stay trigger-gated (S9).
+
+S5b spec (2026-10-21): O2 decided as MG2/MG3 (S5b PR 1), O3 as MG10 (S5b PR 3) of `docs/specs/2026-10-21-planning-mutation-gaps.md`.

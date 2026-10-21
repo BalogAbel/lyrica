@@ -80,3 +80,5 @@ the next slice that re-enters planning sync.
   mutations and follow whatever rule S5b chooses for planning, with no
   separate handling.
 - **Update or remove this entry** in the same change.
+
+S5b spec (2026-10-21): verified red; decided as keep (MG1 of `docs/specs/2026-10-21-planning-mutation-gaps.md`); resolved by S5b PR 1.
