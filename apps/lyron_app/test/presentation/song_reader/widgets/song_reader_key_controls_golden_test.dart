@@ -19,10 +19,11 @@ import '../../../support/tolerant_golden_comparator.dart';
 // They pin chrome only, in the default test font: every glyph renders as a
 // square box (Ahem), so the labels show their length and position, not their
 // letters. `flutter test` does not load the Material icon font either, so an
-// icon is a hollow box: which icon a button has is not pinned, its place, size
-// and enabled or disabled color are. The words and the icons are asserted in
-// the widget tests next to the widgets; these catch layout, color and
-// enabled-versus-disabled regressions that an assertion on keys does not.
+// icon is a hollow box: which icon a button has is not pinned. These pin the
+// colors, the sources and the rough placement. The tolerance below is wider
+// than one compact icon changing from enabled to disabled (about 0.3% of the
+// image), so that flip is pinned by the rail and tools panel widget tests,
+// which assert `onPressed` null or non-null. So are the words and the icons.
 //
 // Regenerate with `flutter test --update-goldens <this file>` and review the
 // changed PNGs as images in the pull request.
