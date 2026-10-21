@@ -174,6 +174,11 @@ class PlanSessionSongSlugRouteResolver extends ConsumerWidget {
       );
     }
 
+    // The reader State owns the temporary key layer (PS5), so a reload or a
+    // failed reload of an input that already has a value (a catalog refresh,
+    // a foreground resume, a post-sync invalidation) must keep the reader
+    // mounted; a scaffold here would remount it and drop the musician's
+    // temporary transpose/capo.
     final plansAsync = ref.watch(planningPlanListProvider);
     final songsAsync = ref.watch(songLibraryListProvider);
     if (plansAsync.isLoading && !plansAsync.hasValue) {
@@ -182,17 +187,21 @@ class PlanSessionSongSlugRouteResolver extends ConsumerWidget {
       );
     }
 
-    if (plansAsync.hasError) {
+    if (plansAsync.hasError && !plansAsync.hasValue) {
       return const _RouteStateScaffold(
         message: AppStrings.planDetailLoadFailureMessage,
       );
     }
-    if (catalogState.context != null && songsAsync.isLoading) {
+    if (catalogState.context != null &&
+        songsAsync.isLoading &&
+        !songsAsync.hasValue) {
       return const _RouteStateScaffold(
         message: AppStrings.songReaderLoadingMessage,
       );
     }
-    if (catalogState.context != null && songsAsync.hasError) {
+    if (catalogState.context != null &&
+        songsAsync.hasError &&
+        !songsAsync.hasValue) {
       return const _RouteStateScaffold(
         message: AppStrings.songReaderLoadFailureMessage,
       );
@@ -210,6 +219,7 @@ class PlanSessionSongSlugRouteResolver extends ConsumerWidget {
     final detailAsync = ref.watch(planningPlanDetailProvider(plan.id));
     return detailAsync.when(
       skipLoadingOnReload: true,
+      skipError: true,
       loading: () => const _RouteStateScaffold(
         message: AppStrings.planDetailLoadingMessage,
       ),
