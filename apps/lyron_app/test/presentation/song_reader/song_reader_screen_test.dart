@@ -2305,6 +2305,81 @@ void main() {
         expect(harness.recorded, hasLength(1));
       });
 
+      testWidgets('a write in flight for one item does not block the next '
+          'item (PS26: a write for the open item)', (tester) async {
+        // item-20 and item-30 both have a plan value, so Clear applies to
+        // both once the plan item is the open one.
+        final harness = PlanKeyWriteHarness(
+          detail: _keyedPlanDetail({
+            'item-20': (2, null),
+            'item-30': (5, null),
+          }),
+        )..recordGate = Completer<void>();
+        addTearDown(() {
+          if (!harness.syncGate.isCompleted) {
+            harness.syncGate.complete();
+          }
+        });
+        Future<bool> clearOffered() async {
+          await tester.tap(find.byIcon(Icons.more_horiz));
+          await tester.pumpAndSettle();
+          final offered = find
+              .text(AppStrings.songReaderClearPlanValueAction)
+              .evaluate()
+              .isNotEmpty;
+          await tester.tapAt(Offset.zero);
+          await tester.pumpAndSettle();
+          return offered;
+        }
+
+        await pumpKeyReader(tester, harness);
+        await tapUp(tester, 'transpose');
+        await tester.tap(find.byKey(saveKey));
+        await tester.pumpAndSettle();
+        expect(harness.recorded, hasLength(1));
+        expect(harness.recorded.single.sessionItemId, 'item-20');
+        expect(_isEnabled(tester, find.byKey(saveKey)), isFalse);
+
+        // Next: the write of item-20 is still held open.
+        await tester.tap(
+          find.byKey(SongReaderExpandedContextPanel.nextSegmentKey),
+        );
+        await tester.pumpAndSettle();
+        expect(find.widgetWithText(AppBar, 'Song Three'), findsOneWidget);
+        await tapUp(tester, 'transpose');
+        expect(_transposeValue(tester), '+6');
+        expect(
+          _isEnabled(tester, find.byKey(saveKey)),
+          isTrue,
+          reason: 'the held write belongs to item-20, not to the open item',
+        );
+        expect(await clearOffered(), isTrue);
+
+        // Back: item-20's own write is still held, so it stays blocked.
+        await tester.tap(
+          find.byKey(SongReaderExpandedContextPanel.previousSegmentKey),
+        );
+        await tester.pumpAndSettle();
+        expect(find.widgetWithText(AppBar, 'Song Two'), findsOneWidget);
+        await tapUp(tester, 'transpose');
+        expect(_transposeValue(tester), '+3');
+        expect(_isEnabled(tester, find.byKey(saveKey)), isFalse);
+        expect(await clearOffered(), isFalse);
+        expect(harness.recorded, hasLength(1));
+
+        harness.recordGate!.complete();
+        harness.syncGate.complete();
+        await tester.pumpAndSettle();
+        // item-20's write is done: its edit (+3) is the plan value now, so the
+        // equal temporary value left the state, and Clear is offered again.
+        expect(
+          _sourceLabel(tester, 'transpose'),
+          AppStrings.songReaderKeySourcePlan,
+        );
+        expect(await clearOffered(), isTrue);
+        expect(harness.recorded, hasLength(1));
+      });
+
       testWidgets('a failed write changes nothing and enables Save again', (
         tester,
       ) async {

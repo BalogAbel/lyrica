@@ -74,10 +74,18 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
   final _immersiveMode = SongReaderImmersiveMode();
   final _zoomPersistence = SongReaderZoomPersistence();
 
-  /// Whether a plan-key write of this reader is running (PS26): from the tap
-  /// to the end of the write, sync attempt included. Save to plan is disabled
-  /// meanwhile, and a second tap before the rebuild is refused.
-  bool _isPlanKeyWriteInFlight = false;
+  /// The session items with a plan-key write of this reader running (PS26):
+  /// from the tap to the end of the write, sync attempt included. A write
+  /// belongs to the item it was started on, so scoped previous/next inside
+  /// this one State neither carries it to another item nor lets a second
+  /// write for the same item start (a second tap before the rebuild is
+  /// refused).
+  final Set<String> _planKeyWriteItemIds = {};
+
+  /// Whether a plan-key write for the open item is running: Save to plan and
+  /// Clear plan value are unavailable meanwhile.
+  bool get _isPlanKeyWriteInFlight =>
+      _isScopedMode && _planKeyWriteItemIds.contains(widget.sessionItemId);
 
   // Rebuilt on every access (it is a cheap, stateless const-constructed value
   // holder) so it always reflects the current widget.songId — this state can
@@ -356,6 +364,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     final sessionItemId = widget.sessionItemId!;
     unawaited(
       _runPlanKeyWrite(
+        sessionItemId,
         () => const SongReaderPlanKeyWriter().saveToPlan(
           container,
           planId: planId,
@@ -376,6 +385,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     final sessionItemId = widget.sessionItemId!;
     unawaited(
       _runPlanKeyWrite(
+        sessionItemId,
         () => const SongReaderPlanKeyWriter().clearPlanValue(
           container,
           planId: planId,
@@ -386,16 +396,19 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     );
   }
 
-  /// Runs one plan-key [write] of this reader, one at a time. Nothing is shown
-  /// for a failure (PS25: no dialog, no snackbar; a recorded edit that fails
-  /// to sync shows in the sync popup): the temporary key stays and Save to
-  /// plan is enabled again. The error is reported, not rethrown, because
-  /// nothing awaits this future.
-  Future<void> _runPlanKeyWrite(Future<bool> Function() write) async {
-    if (_isPlanKeyWriteInFlight) {
+  /// Runs one plan-key [write] for [sessionItemId], one at a time per item.
+  /// Nothing is shown for a failure (PS25: no dialog, no snackbar; a recorded
+  /// edit that fails to sync shows in the sync popup): the temporary key stays
+  /// and Save to plan is enabled again. The error is reported, not rethrown,
+  /// because nothing awaits this future.
+  Future<void> _runPlanKeyWrite(
+    String sessionItemId,
+    Future<bool> Function() write,
+  ) async {
+    if (_planKeyWriteItemIds.contains(sessionItemId)) {
       return;
     }
-    setState(() => _isPlanKeyWriteInFlight = true);
+    setState(() => _planKeyWriteItemIds.add(sessionItemId));
     try {
       await write();
     } catch (error, stackTrace) {
@@ -408,7 +421,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       );
     } finally {
       if (mounted) {
-        setState(() => _isPlanKeyWriteInFlight = false);
+        setState(() => _planKeyWriteItemIds.remove(sessionItemId));
       }
     }
   }
@@ -602,7 +615,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
         planningOrganizationId != null &&
         _canEditSessions(planningOrganizationId);
     // Clear plan value (PS25, PS26): there is a plan value to clear, the
-    // member may edit it, and no write of this reader is running.
+    // member may edit it, and no write for the open item is running.
     final canClearPlanValue =
         canWritePlanKey &&
         !_isPlanKeyWriteInFlight &&
