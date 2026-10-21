@@ -63,6 +63,8 @@ When a deferred item touches the same workflow, state machine, or backend contra
   - `./scripts/manual-validation/go-online.sh`
   - `./scripts/manual-validation/print-checklist.sh`
 - Repository scripts should call the wrapper rather than direct `supabase` or ad hoc `npx` commands.
+- CI pulls the local Supabase images from GHCR (`SUPABASE_INTERNAL_IMAGE_REGISTRY: ghcr.io` in `.github/workflows/ci.yml`). The CLI's default registry, `public.ecr.aws`, has an anonymous data limit that the shared GitHub runner IPs exhaust (`toomanyrequests: Data limit exceeded`, 2026-10-21); Supabase publishes the same image tags to GHCR. Locally the default registry stays; set the same variable if a local pull hits that limit.
+- Widget goldens are generated and compared on Linux only: `./scripts/update-goldens.sh` (Docker, `tooling/goldens/Dockerfile`); see `docs/testing/testing-strategy.md`.
 
 ## Hosted Migration Deployment
 
