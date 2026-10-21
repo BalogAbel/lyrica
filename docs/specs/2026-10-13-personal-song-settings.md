@@ -8,7 +8,7 @@
 > `docs/plans/2026-10-20-song-key-reader.md`). PS14–PS16 refined on
 > 2026-10-14 (base values, the PS15 state rule, C11); PS5, PS7 and PS9
 > refined and PS25–PS26 added on 2026-10-20 (PR 3 design gate); PS25 and
-> PS26 refined on 2026-10-21 (PR 3 execution). Amends
+> PS26 refined on 2026-10-21 (PR 3 execution and final review). Amends
 > `docs/specs/2026-04-01-session-scoped-plan-reader-navigation.md`
 > ("Reader-Local State Preservation"). The file keeps the slice's original
 > name, "personal song settings"; the brainstorm replaced the per-user
@@ -200,11 +200,16 @@ that have a plan value. No key name is resolved here (YAGNI).
   temporary.
 - **Refined 2026-10-21 (PR 3 execution): the rail starts below the top bar.**
   The compact control rail is placed at `top: topBarHeight +
-  viewPadding.top` (`widgets/song_reader_compact_surface.dart`), not at the
-  surface top, so a rail taller than the free height scrolls instead of
-  covering the top bar's overflow menu, where Clear plan value lives. On a
-  short viewport (a 360×640 phone, landscape) the rail with Reset and Save to
-  plan scrolls.
+  viewPadding.top`
+  (`apps/lyron_app/lib/src/presentation/song_reader/widgets/song_reader_compact_surface.dart`),
+  not at the surface top, so a rail taller than the free height scrolls
+  instead of covering the top bar's overflow menu, where Clear plan value
+  lives. **Refined 2026-10-21 (PR 3 final review):** the rail with Reset and
+  Save to plan is about 547 px tall (about 410 px without them), and the free
+  height under the top bar is about 531 px on a 375×667 phone and about
+  476 px on a 360×640 phone in portrait. On those small portrait phones the
+  font group sits partly below the fold and the rail scrolls, and it scrolls
+  in landscape too; on a taller phone (390×844) it fits.
 - **Expanded (tools panel):** each control section's label row shows the
   source as a badge at its end. A button row sits under the capo section and
   above Scale: `Reset` (text button) and `Save to plan` (tonal button, same
@@ -215,7 +220,11 @@ that have a plan value. No key name is resolved here (YAGNI).
   `canEditSessions`, while the item has a plan value in either field.
   **Refined 2026-10-21 (PR 3 execution):** the menu action re-checks this
   condition when tapped, so a menu opened before the item left the plan (or
-  lost its value) records nothing.
+  lost its value) records nothing. **Refined 2026-10-21 (PR 3 final
+  review):** the re-check is of the full offer condition (the item is in the
+  live plan, the member has `canEditSessions`, a plan value exists in either
+  field, and no plan-key write for the open item is in flight), as of the
+  reader's last build.
 - **Plan detail (PS8):** a row of small chips under the song title,
   `Transpose +2` and `Capo 2`, one per field that has a plan value. Under the
   title rather than at the row's end, so a phone row keeps its title width
@@ -243,10 +252,23 @@ that have a plan value. No key name is resolved here (YAGNI).
 - **Plan value source:** the live merged plan detail
   (`planningPlanDetailProvider`, read directly, not through a derived async
   provider that would lag it by a frame), never the route's warm plan
-  detail, which the reader keeps passing along on previous/next and which is
-  not refreshed after a Save. The warm detail's item is used only while the
+  detail, which a route may keep passing along on previous/next without
+  refreshing it after a Save. The warm detail's item is used only while the
   live read has no value yet. When the live detail has no such item, the
   reader has no plan layer and no Save to plan or Clear plan value.
+  **Refined 2026-10-21 (PR 3 final review).** The live read stays required:
+  the screen must not depend on the route's rebuild timing, and a harness or
+  another entry point may pass a stale detail. The production route does not:
+  `PlanSessionSongSlugRouteResolver`
+  (`apps/lyron_app/lib/src/router/slug_route_resolvers.dart`) passes the
+  live detail as `warmPlanDetail` on every rebuild and ignores the
+  navigation `extra`. An item removed from the live plan also unmounts the
+  reader there (route not found) before the in-reader "no plan layer" path
+  runs; that path is reached only by an entry point that keeps the reader
+  mounted. The resolver keeps the reader mounted through a reload or a
+  failed reload of its inputs (song list, plan list, plan detail) once each
+  has a value, because the reader State owns the temporary key layer (PS5): a
+  remount, for example on a catalog refresh, would drop it.
 - **Capability:** the same organization-level `canEditSessions` check the
   plan detail uses: the cached `CapabilityResolver.hasCapabilitySync` result
   when there is one (so Save to plan is in place on the first frame), else
@@ -271,7 +293,11 @@ that have a plan value. No key name is resolved here (YAGNI).
   offered. **Refined 2026-10-21 (PR 3 execution):** "in flight" lasts until
   `setSessionItemKey` returns, its sync attempt included. The label already
   reads `Plan` at `onRecorded`, but Save stays disabled and Clear is not
-  offered for that whole time.
+  offered for that whole time. **Refined 2026-10-21 (PR 3 final review):** "a
+  write of this reader" is a write for the open item. Scoped previous/next
+  reuses the reader State across items, so the marker is kept per item: a
+  slow write on item A blocks Save, Clear and a repeated write on A only, and
+  item B is free at once.
 
 ### Backend (PR 1)
 
