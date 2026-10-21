@@ -2726,6 +2726,335 @@ void main() {
         );
       });
     });
+
+    group('Clear plan value', () {
+      final clearItem = find.text(AppStrings.songReaderClearPlanValueAction);
+      final clearCleared = SessionItemKeyEdit(
+        transposeMode: SessionItemKeyFieldMode.clear,
+        capoMode: SessionItemKeyFieldMode.clear,
+      );
+
+      Future<void> openOverflowMenu(WidgetTester tester) async {
+        await tester.tap(find.byIcon(Icons.more_horiz));
+        await tester.pumpAndSettle();
+      }
+
+      Future<void> closeOverflowMenu(WidgetTester tester) async {
+        await tester.tapAt(Offset.zero);
+        await tester.pumpAndSettle();
+      }
+
+      /// Opens the overflow menu, reports whether Clear plan value is in it,
+      /// and closes it again.
+      Future<bool> clearIsOffered(WidgetTester tester) async {
+        await openOverflowMenu(tester);
+        expect(
+          find.text(AppStrings.songReaderPianoViewAction),
+          findsOneWidget,
+          reason: 'the menu is open',
+        );
+        final offered = clearItem.evaluate().isNotEmpty;
+        await closeOverflowMenu(tester);
+        return offered;
+      }
+
+      for (final (layout, size) in [
+        ('compact', const Size(390, 844)),
+        ('expanded', const Size(1600, 1200)),
+      ]) {
+        testWidgets('$layout: clears both plan fields, and the song base '
+            'applies again', (tester) async {
+          // The compact chip says `Capo 1`, the expanded one just `1`.
+          String capoText(int capo) =>
+              layout == 'compact' ? 'Capo $capo' : '$capo';
+          final harness = newHarness(planTranspose: 2, planCapo: 1);
+          await pumpWithViewport(tester, size: size, child: keyReader(harness));
+          if (layout == 'compact') {
+            await revealCompactChrome(tester);
+          }
+          expect(_transposeValue(tester), '+2');
+          expect(
+            _sourceLabel(tester, 'transpose'),
+            AppStrings.songReaderKeySourcePlan,
+          );
+          expect(_capoValue(tester), capoText(1));
+          expect(
+            _sourceLabel(tester, 'capo'),
+            AppStrings.songReaderKeySourcePlan,
+          );
+
+          await openOverflowMenu(tester);
+          expect(clearItem, findsOneWidget);
+          await tester.tap(clearItem);
+          await tester.pumpAndSettle();
+
+          expect(harness.recorded, hasLength(1));
+          expect(harness.recorded.single.sessionItemId, 'item-20');
+          expect(harness.recorded.single.edit, clearCleared);
+          expect(
+            harness.syncGate.isCompleted,
+            isFalse,
+            reason: 'the sync attempt is still running',
+          );
+          expect(_transposeValue(tester), '0');
+          expect(
+            _sourceLabel(tester, 'transpose'),
+            AppStrings.songReaderKeySourceSong,
+          );
+          expect(_capoValue(tester), capoText(0));
+          expect(
+            _sourceLabel(tester, 'capo'),
+            AppStrings.songReaderKeySourceSong,
+          );
+          expect(find.byType(SnackBar), findsNothing);
+          expect(find.byType(AlertDialog), findsNothing);
+        });
+      }
+
+      testWidgets('is offered for a capo-only plan value', (tester) async {
+        await pumpKeyReader(tester, newHarness(planCapo: 2));
+
+        expect(await clearIsOffered(tester), isTrue);
+      });
+
+      testWidgets('is not offered for an item without a plan value', (
+        tester,
+      ) async {
+        await pumpKeyReader(tester, newHarness());
+
+        expect(await clearIsOffered(tester), isFalse);
+      });
+
+      testWidgets('is not offered to a member without canEditSessions', (
+        tester,
+      ) async {
+        await pumpKeyReader(
+          tester,
+          newHarness(planTranspose: 2),
+          canEdit: () async => false,
+        );
+
+        expect(await clearIsOffered(tester), isFalse);
+      });
+
+      testWidgets('is not offered while the capability is unanswered', (
+        tester,
+      ) async {
+        await pumpKeyReader(
+          tester,
+          newHarness(planTranspose: 2),
+          canEdit: () => Completer<bool>().future,
+        );
+
+        expect(await clearIsOffered(tester), isFalse);
+      });
+
+      testWidgets('is not offered when the capability read fails', (
+        tester,
+      ) async {
+        await pumpKeyReader(
+          tester,
+          newHarness(planTranspose: 2),
+          canEdit: () => Future<bool>.error(StateError('offline')),
+        );
+
+        expect(await clearIsOffered(tester), isFalse);
+      });
+
+      testWidgets('is not offered without an active planning context', (
+        tester,
+      ) async {
+        await pumpKeyReader(
+          tester,
+          newHarness(planTranspose: 2),
+          hasPlanningContext: false,
+        );
+
+        expect(await clearIsOffered(tester), isFalse);
+      });
+
+      testWidgets('is not offered in the library', (tester) async {
+        await pumpWithViewport(
+          tester,
+          size: const Size(1600, 1200),
+          child: buildApp(result: buildResult()),
+        );
+
+        expect(await clearIsOffered(tester), isFalse);
+      });
+
+      testWidgets('is not offered for an item missing from the live plan '
+          'detail, although the warm detail lists its plan value', (
+        tester,
+      ) async {
+        final harness = newHarness(planTranspose: 2);
+        await pumpWithViewport(
+          tester,
+          size: const Size(1600, 1200),
+          child: buildScopedReaderApp(
+            planDetail: harness.detail,
+            loadLiveDetail: () async =>
+                _keyedPlanDetail(const {}, without: {'item-20'}),
+            planningContext: harness.context,
+            planningWriteService: harness.service,
+            loadCanEditSessions: () async => true,
+            resultsBySongId: {
+              'song-1': buildScopedResult('Song One'),
+              'song-2': buildScopedResult('Song Two'),
+              'song-3': buildScopedResult('Song Three'),
+            },
+          ),
+        );
+
+        expect(await clearIsOffered(tester), isFalse);
+      });
+
+      testWidgets('is not offered while a Save of this reader is in flight, '
+          'and is offered again after it', (tester) async {
+        final harness = newHarness(planTranspose: 2)
+          ..recordGate = Completer<void>();
+        await pumpKeyReader(tester, harness);
+        expect(await clearIsOffered(tester), isTrue);
+        await tapUp(tester, 'transpose');
+
+        await tester.tap(find.byKey(saveKey));
+        await tester.pumpAndSettle();
+        expect(harness.recorded, hasLength(1));
+        expect(await clearIsOffered(tester), isFalse);
+
+        harness.recordGate!.complete();
+        await tester.pumpAndSettle();
+        expect(
+          await clearIsOffered(tester),
+          isFalse,
+          reason: 'the call has not completed: the sync attempt is running',
+        );
+
+        harness.syncGate.complete();
+        await tester.pumpAndSettle();
+        expect(await clearIsOffered(tester), isTrue);
+        expect(harness.recorded, hasLength(1));
+      });
+
+      testWidgets('is not offered while a Clear of this reader is in flight', (
+        tester,
+      ) async {
+        final harness = newHarness(planTranspose: 2)
+          ..recordGate = Completer<void>();
+        await pumpKeyReader(tester, harness);
+
+        await openOverflowMenu(tester);
+        await tester.tap(clearItem);
+        await tester.pumpAndSettle();
+        expect(harness.recorded, hasLength(1));
+        expect(await clearIsOffered(tester), isFalse);
+        expect(
+          _sourceLabel(tester, 'transpose'),
+          AppStrings.songReaderKeySourcePlan,
+          reason: 'nothing is recorded yet',
+        );
+
+        harness.recordGate!.complete();
+        harness.syncGate.complete();
+        await tester.pumpAndSettle();
+
+        expect(harness.recorded, hasLength(1));
+        expect(
+          _sourceLabel(tester, 'transpose'),
+          AppStrings.songReaderKeySourceSong,
+        );
+        expect(await clearIsOffered(tester), isFalse);
+      });
+
+      testWidgets('a failed Clear changes nothing and is offered again', (
+        tester,
+      ) async {
+        final harness = newHarness(planTranspose: 2)
+          ..recordError = StateError('item gone');
+        await pumpKeyReader(tester, harness);
+
+        await openOverflowMenu(tester);
+        await tester.tap(clearItem);
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isStateError);
+        expect(harness.recorded, hasLength(1));
+        expect(_transposeValue(tester), '+2');
+        expect(
+          _sourceLabel(tester, 'transpose'),
+          AppStrings.songReaderKeySourcePlan,
+        );
+        expect(find.byType(SnackBar), findsNothing);
+        expect(find.byType(AlertDialog), findsNothing);
+        expect(await clearIsOffered(tester), isTrue);
+      });
+
+      testWidgets('a menu opened before the item left the live plan records '
+          'nothing', (tester) async {
+        final harness = newHarness(planTranspose: 2);
+        await pumpKeyReader(tester, harness);
+        await openOverflowMenu(tester);
+        expect(clearItem, findsOneWidget);
+
+        // Another device removes the item while the menu is open.
+        harness.detail = _keyedPlanDetail(const {}, without: {'item-20'});
+        containerOf(tester).invalidate(planningPlanDetailProvider('plan-1'));
+        await tester.pumpAndSettle();
+        await tester.tap(clearItem);
+        await tester.pumpAndSettle();
+
+        expect(harness.recorded, isEmpty);
+        expect(tester.takeException(), isNull);
+        expect(await clearIsOffered(tester), isFalse);
+      });
+
+      testWidgets('keeps a temporary key above the cleared plan value', (
+        tester,
+      ) async {
+        final harness = newHarness(planTranspose: 2);
+        await pumpKeyReader(tester, harness);
+        await tapUp(tester, 'transpose');
+        expect(_transposeValue(tester), '+3');
+
+        await openOverflowMenu(tester);
+        await tester.tap(clearItem);
+        await tester.pumpAndSettle();
+
+        expect(harness.recorded.single.edit, clearCleared);
+        expect(_transposeValue(tester), '+3');
+        expect(
+          _sourceLabel(tester, 'transpose'),
+          AppStrings.songReaderKeySourceTemporary,
+        );
+        expect(runtimeTemporaryLayer(tester)?.transpose, 3);
+      });
+
+      testWidgets('a temporary key equal to the song base leaves the state '
+          'once the plan value is cleared', (tester) async {
+        final harness = newHarness(planTranspose: 2);
+        await pumpKeyReader(tester, harness);
+        await tester.tap(find.byKey(const Key('song-reader-transpose-down')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('song-reader-transpose-down')));
+        await tester.pumpAndSettle();
+        expect(_transposeValue(tester), '0');
+        expect(
+          _sourceLabel(tester, 'transpose'),
+          AppStrings.songReaderKeySourceTemporary,
+        );
+
+        await openOverflowMenu(tester);
+        await tester.tap(clearItem);
+        await tester.pumpAndSettle();
+
+        expect(_transposeValue(tester), '0');
+        expect(
+          _sourceLabel(tester, 'transpose'),
+          AppStrings.songReaderKeySourceSong,
+        );
+        expect(runtimeTemporaryLayer(tester), isNull);
+      });
+    });
   });
 
   testWidgets('invalid scoped context shows explicit scoped error state', (

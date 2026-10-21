@@ -41,6 +41,7 @@ class SongReaderTopBar extends StatelessWidget {
     required this.viewMode,
     required this.canEditSongs,
     required this.isDarkActive,
+    this.canClearPlanValue = false,
     this.onOverflowAction,
   });
 
@@ -52,6 +53,7 @@ class SongReaderTopBar extends StatelessWidget {
   final SongReaderViewMode viewMode;
   final bool canEditSongs;
   final bool isDarkActive;
+  final bool canClearPlanValue;
   final void Function(SongReaderOverflowAction action)? onOverflowAction;
 
   @override
@@ -132,6 +134,7 @@ class SongReaderTopBar extends StatelessWidget {
                       viewMode: viewMode,
                       canEditSongs: canEditSongs,
                       isDarkActive: isDarkActive,
+                      canClearPlanValue: canClearPlanValue,
                       onSelected: onOverflowAction!,
                     ),
                   const SizedBox(width: 4),

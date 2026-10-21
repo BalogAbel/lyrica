@@ -367,6 +367,25 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
     );
   }
 
+  /// Clears both plan fields of the open item (PS7): the song base applies
+  /// again. The temporary layer is not touched.
+  void _clearPlanValue() {
+    final container = ProviderScope.containerOf(context, listen: false);
+    final planId = widget.planId!;
+    final sessionId = widget.sessionId!;
+    final sessionItemId = widget.sessionItemId!;
+    unawaited(
+      _runPlanKeyWrite(
+        () => const SongReaderPlanKeyWriter().clearPlanValue(
+          container,
+          planId: planId,
+          sessionId: sessionId,
+          sessionItemId: sessionItemId,
+        ),
+      ),
+    );
+  }
+
   /// Runs one plan-key [write] of this reader, one at a time. Nothing is shown
   /// for a failure (PS25: no dialog, no snackbar; a recorded edit that fails
   /// to sync shows in the sync popup): the temporary key stays and Save to
@@ -582,6 +601,12 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
         planItem != null &&
         planningOrganizationId != null &&
         _canEditSessions(planningOrganizationId);
+    // Clear plan value (PS25, PS26): there is a plan value to clear, the
+    // member may edit it, and no write of this reader is running.
+    final canClearPlanValue =
+        canWritePlanKey &&
+        !_isPlanKeyWriteInFlight &&
+        (planItem.planTranspose != null || planItem.planCapo != null);
     final keyActions = resolvedKey == null
         ? SongReaderKeyActions.none
         : _keyActionsFor(resolvedKey, canWritePlanKey: canWritePlanKey);
@@ -638,6 +663,13 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
         case SongReaderOverflowAction.pianoView:
           _setInstrumentDisplayMode(SongReaderInstrumentDisplayMode.piano);
           break;
+        case SongReaderOverflowAction.clearPlanValue:
+          // The menu was built when it opened; what it offered may have gone
+          // since (the item left the plan, a sync cleared its values).
+          if (canClearPlanValue) {
+            _clearPlanValue();
+          }
+          break;
         case SongReaderOverflowAction.toggleTheme:
           unawaited(
             ref
@@ -678,6 +710,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       viewMode: readerState.viewMode,
       canEditSongs: canEditSongs,
       isDarkActive: Theme.of(context).brightness == Brightness.dark,
+      canClearPlanValue: canClearPlanValue,
       onOverflowAction: handleOverflowAction,
     );
 
@@ -691,6 +724,7 @@ class _SongReaderScreenState extends ConsumerState<SongReaderScreen> {
       viewMode: readerState.viewMode,
       canEditSongs: canEditSongs,
       isDarkActive: Theme.of(context).brightness == Brightness.dark,
+      canClearPlanValue: canClearPlanValue,
       onOverflowAction: handleOverflowAction,
     );
 
