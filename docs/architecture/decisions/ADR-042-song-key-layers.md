@@ -1,7 +1,7 @@
 # ADR-042: Song Key Layers
 
 **Status:** Accepted (2026-10-13, S3 design gate). Implemented by S3 PRs 1–3
-(PR 1 backend #94, PR 2 planning client #95, PR 3 reader, 2026-10-21).
+(PR 1 backend #94, PR 2 planning client #95, PR 3 reader #96, 2026-10-21).
 **Context spec:** `docs/specs/2026-10-13-personal-song-settings.md` (PS1–PS26)
 **Builds on:** S2's single ChordPro base
 (`docs/specs/2026-10-12-chordpro-base-directives.md`), ADR-038 (plan content

@@ -4,7 +4,7 @@
 > merged as #94 (`603d69b`, 2026-10-14) and deployed to the hosted project;
 > PR 2 (planning client) merged as #95 (`4cbdacb`); PR 3 (reader) passed
 > its UI design gate on 2026-10-20 and is implemented on
-> `feat/song-key-reader` (2026-10-21,
+> `feat/song-key-reader` (2026-10-21, PR #96,
 > `docs/plans/2026-10-20-song-key-reader.md`). PS14–PS16 refined on
 > 2026-10-14 (base values, the PS15 state rule, C11); PS5, PS7 and PS9
 > refined and PS25–PS26 added on 2026-10-20 (PR 3 design gate); PS25 and

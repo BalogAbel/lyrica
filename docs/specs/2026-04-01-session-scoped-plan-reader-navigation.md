@@ -3,7 +3,7 @@
 > Status: Implemented; partially superseded by `docs/specs/2026-04-03-slug-based-routing-for-songs-plans-sessions.md`
 > Amended 2026-10-13 by `docs/specs/2026-10-13-personal-song-settings.md`
 > (PS5, ADR-042): the transpose (and capo) no longer carry over between songs.
-> Implemented in S3 PR 3.
+> Implemented in S3 PR 3 (#96).
 
 ## Goal
 
@@ -216,7 +216,7 @@ over. A `±` change in the reader is a temporary value that is cleared on every
 song change, previous and next included; each song opens with its plan value
 (the session item's shared transpose and capo, when set) or its song base.
 View mode, instrument display mode, the shared font scale and the other reader
-state keep the preservation above. Implemented in S3 PR 3. Spec:
+state keep the preservation above. Implemented in S3 PR 3 (#96). Spec:
 `docs/specs/2026-10-13-personal-song-settings.md` (PS1, PS5).
 
 ## Data Resolution And Failure Rules
