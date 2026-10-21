@@ -4,6 +4,7 @@ import 'package:lyron_app/src/app/app_theme.dart';
 import 'package:lyron_app/src/app/reader_theme.dart';
 import 'package:lyron_app/src/domain/song/parsed_song.dart';
 import 'package:lyron_app/src/domain/song/song_key_layers.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_key_actions.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_compact_surface.dart';
@@ -280,6 +281,169 @@ void main() {
     });
   });
 
+  group('key actions', () {
+    const resetKey = Key('song-reader-key-reset');
+    const saveKey = Key('song-reader-key-save-to-plan');
+
+    SongReaderControlRail rail(
+      SongReaderKeyActions keyActions, {
+      SongReaderInstrumentDisplayMode mode =
+          SongReaderInstrumentDisplayMode.guitar,
+    }) => SongReaderControlRail(
+      projection: SongReaderProjection(
+        song: _song(),
+        state: SongReaderState(instrumentDisplayMode: mode),
+      ),
+      onTransposeDown: () {},
+      onTransposeUp: () {},
+      onCapoDown: () {},
+      onCapoUp: () {},
+      onDecreaseFontScale: () {},
+      onIncreaseFontScale: () {},
+      keyActions: keyActions,
+    );
+
+    VoidCallback? onPressed(WidgetTester tester, Key key) =>
+        tester.widget<IconButton>(find.byKey(key)).onPressed;
+
+    testWidgets('without actions Reset is there and disabled, Save to plan '
+        'is not there', (tester) async {
+      await tester.pumpWidget(_host(rail(SongReaderKeyActions.none)));
+
+      expect(find.byKey(resetKey), findsOneWidget);
+      expect(onPressed(tester, resetKey), isNull);
+      expect(find.byKey(saveKey), findsNothing);
+      expect(find.byTooltip(AppStrings.songReaderResetKeyAction), findsOne);
+    });
+
+    testWidgets('when Save to plan is available both buttons are there, Reset '
+        'above Save, between the capo group and the font group', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _host(rail(const SongReaderKeyActions(isSaveToPlanAvailable: true))),
+      );
+
+      expect(find.byKey(resetKey), findsOneWidget);
+      expect(find.byKey(saveKey), findsOneWidget);
+      expect(onPressed(tester, resetKey), isNull);
+      expect(onPressed(tester, saveKey), isNull);
+      expect(find.byTooltip(AppStrings.songReaderSaveToPlanAction), findsOne);
+      double centerY(Key key) => tester.getCenter(find.byKey(key)).dy;
+      expect(
+        centerY(const Key('song-reader-capo-up')),
+        lessThan(centerY(resetKey)),
+      );
+      expect(centerY(resetKey), lessThan(centerY(saveKey)));
+      expect(
+        centerY(saveKey),
+        lessThan(centerY(const Key('song-reader-font-decrease'))),
+      );
+    });
+
+    testWidgets('the group stays in place in piano mode', (tester) async {
+      await tester.pumpWidget(
+        _host(
+          rail(
+            const SongReaderKeyActions(isSaveToPlanAvailable: true),
+            mode: SongReaderInstrumentDisplayMode.piano,
+          ),
+        ),
+      );
+
+      double centerY(Key key) => tester.getCenter(find.byKey(key)).dy;
+      expect(
+        centerY(const Key('song-reader-transpose-up')),
+        lessThan(centerY(resetKey)),
+      );
+      expect(
+        centerY(saveKey),
+        lessThan(centerY(const Key('song-reader-font-decrease'))),
+      );
+    });
+
+    testWidgets('enabling the callbacks does not change the rail size', (
+      tester,
+    ) async {
+      final surface = find.byKey(const Key('song-reader-control-rail-surface'));
+      await tester.pumpWidget(
+        _host(rail(const SongReaderKeyActions(isSaveToPlanAvailable: true))),
+      );
+      final disabledSize = tester.getSize(surface);
+      final resetCenter = tester.getCenter(find.byKey(resetKey));
+
+      await tester.pumpWidget(
+        _host(
+          rail(
+            SongReaderKeyActions(
+              isSaveToPlanAvailable: true,
+              onReset: () {},
+              onSaveToPlan: () {},
+            ),
+          ),
+        ),
+      );
+
+      expect(onPressed(tester, resetKey), isNotNull);
+      expect(onPressed(tester, saveKey), isNotNull);
+      expect(tester.getSize(surface), disabledSize);
+      expect(tester.getCenter(find.byKey(resetKey)), resetCenter);
+    });
+
+    testWidgets('the callbacks run on tap', (tester) async {
+      var resets = 0;
+      var saves = 0;
+      await tester.pumpWidget(
+        _host(
+          rail(
+            SongReaderKeyActions(
+              isSaveToPlanAvailable: true,
+              onReset: () => resets += 1,
+              onSaveToPlan: () => saves += 1,
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byKey(resetKey));
+      await tester.tap(find.byKey(saveKey));
+
+      expect(resets, 1);
+      expect(saves, 1);
+    });
+
+    testWidgets('in a landscape phone viewport Reset and Save are reachable '
+        'in the rail scroll view', (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(800, 360);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      var resets = 0;
+      var saves = 0;
+      await tester.pumpWidget(
+        _host(
+          rail(
+            SongReaderKeyActions(
+              isSaveToPlanAvailable: true,
+              onReset: () => resets += 1,
+              onSaveToPlan: () => saves += 1,
+            ),
+          ),
+        ),
+      );
+
+      await tester.ensureVisible(find.byKey(resetKey));
+      await tester.pump();
+      await tester.tap(find.byKey(resetKey));
+      await tester.ensureVisible(find.byKey(saveKey));
+      await tester.pump();
+      await tester.tap(find.byKey(saveKey));
+
+      expect(resets, 1);
+      expect(saves, 1);
+    });
+  });
+
   group('floating chrome background', () {
     SongReaderControlRail rail() {
       return SongReaderControlRail(
@@ -402,5 +566,22 @@ void main() {
         expect(find.byType(SongReaderTopBar), findsNothing);
       },
     );
+
+    testWidgets('a rail taller than the free height starts below the top '
+        'bar, so it never covers the bar\'s controls', (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(800, 360);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(host(areControlsVisible: true));
+
+      expect(
+        tester.getRect(find.byType(SongReaderControlRail)).top,
+        greaterThanOrEqualTo(
+          tester.getRect(find.byType(SongReaderTopBar)).bottom,
+        ),
+      );
+    });
   });
 }

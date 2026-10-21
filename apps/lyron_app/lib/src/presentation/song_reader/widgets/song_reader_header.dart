@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:lyron_app/src/domain/song/song_key_layers.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_key_actions.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_key_source_style.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
@@ -23,6 +24,7 @@ class SongReaderHeader extends StatelessWidget {
     this.onCapoUp,
     required this.onDecreaseFontScale,
     required this.onIncreaseFontScale,
+    this.keyActions = SongReaderKeyActions.none,
   });
 
   final SongReaderProjection projection;
@@ -32,6 +34,7 @@ class SongReaderHeader extends StatelessWidget {
   final VoidCallback? onCapoUp;
   final VoidCallback onDecreaseFontScale;
   final VoidCallback onIncreaseFontScale;
+  final SongReaderKeyActions keyActions;
 
   @override
   Widget build(BuildContext context) {
@@ -106,6 +109,25 @@ class SongReaderHeader extends StatelessWidget {
                 ),
               ),
             ],
+            const SizedBox(height: _sectionSpacing),
+            Wrap(
+              spacing: _controlSpacing,
+              runSpacing: _controlSpacing,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                TextButton(
+                  key: const Key('song-reader-key-reset'),
+                  onPressed: keyActions.onReset,
+                  child: const Text(AppStrings.songReaderResetKeyAction),
+                ),
+                if (keyActions.isSaveToPlanAvailable)
+                  FilledButton.tonal(
+                    key: const Key('song-reader-key-save-to-plan'),
+                    onPressed: keyActions.onSaveToPlan,
+                    child: const Text(AppStrings.songReaderSaveToPlanAction),
+                  ),
+              ],
+            ),
             const SizedBox(height: _sectionSpacing),
             _ControlSection(
               label: AppStrings.songReaderScaleSectionLabel,

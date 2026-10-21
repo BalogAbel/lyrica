@@ -142,6 +142,8 @@ class AppStrings {
   static const songReaderKeySourceSong = 'Song';
   static const songReaderKeySourcePlan = 'Plan';
   static const songReaderKeySourceTemporary = 'Temporary';
+  static const songReaderResetKeyAction = 'Reset';
+  static const songReaderSaveToPlanAction = 'Save to plan';
   static const songReaderWarningDialogTitle = 'Reading warnings';
   static const songReaderWarningsSemantics = 'Show reading warnings';
   static const songReaderWarningSingular =

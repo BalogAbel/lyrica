@@ -6,6 +6,7 @@ import 'package:lyron_app/src/application/song_library/song_reader_result.dart';
 import 'package:lyron_app/src/domain/song/song_access_denied_exception.dart';
 import 'package:lyron_app/src/domain/song/song_not_found_exception.dart';
 import 'package:lyron_app/src/presentation/song_reader/session_scoped_reader_context.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_key_actions.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_key_layers.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_layout.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
@@ -35,6 +36,7 @@ class SongReaderBodyShell extends StatelessWidget {
     required this.resolvedScopedContext,
     required this.readerState,
     this.keyLayers = SongReaderKeyLayers.baseOnly,
+    this.keyActions = SongReaderKeyActions.none,
     required this.preservedScopedTitle,
     required this.onBack,
     required this.onRetry,
@@ -68,6 +70,10 @@ class SongReaderBodyShell extends StatelessWidget {
   /// The layers [readerState] and the open item resolve the song's key from;
   /// the projection renders the key they give.
   final SongReaderKeyLayers keyLayers;
+
+  /// Reset and Save to plan, decided by the screen; this widget only passes
+  /// them on.
+  final SongReaderKeyActions keyActions;
 
   /// Preserved title to show in the deleted-song tombstone. Precomputed by
   /// the screen (pure, cheap) since the tombstone widget itself takes only
@@ -286,6 +292,7 @@ class SongReaderBodyShell extends StatelessWidget {
                                 onAdjustSharedFontScale(0.1),
                             onSetFontScale: onSetFontScale,
                             onPersistFontScale: onPersistFontScale,
+                            keyActions: keyActions,
                             onPreviousTap: resolveNeighborTap(
                               context,
                               resolvedScopedContext?.previousItem,
@@ -317,6 +324,7 @@ class SongReaderBodyShell extends StatelessWidget {
                                 onAdjustSharedFontScale(0.1),
                             onSetFontScale: onSetFontScale,
                             onPersistFontScale: onPersistFontScale,
+                            keyActions: keyActions,
                             onPreviousTap: resolveNeighborTap(
                               context,
                               resolvedScopedContext?.previousItem,

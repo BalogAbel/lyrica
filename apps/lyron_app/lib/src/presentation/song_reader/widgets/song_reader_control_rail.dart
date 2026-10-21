@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lyron_app/src/app/reader_theme.dart';
 import 'package:lyron_app/src/domain/song/song_key_layers.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_key_actions.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_key_source_style.dart';
 import 'package:lyron_app/src/shared/app_strings.dart';
@@ -13,11 +14,14 @@ import 'package:lyron_app/src/shared/app_strings.dart';
 /// excluded from the fit calculation's available width.
 ///
 /// Vertical groups, top to bottom: transpose −/value/source/+, capo
-/// −/value/source/+ (guitar only), font A−/A+. The source caption names the
-/// layer the value comes from (PS25) in a fixed-width slot, so the rail never
-/// changes size with it. The capo group is hidden entirely in piano mode,
-/// driven by `projection.isCapoDirectiveVisible`, exactly as the old
-/// horizontal `SongReaderControlBar` did.
+/// −/value/source/+ (guitar only), Reset and Save to plan, font A−/A+. The
+/// source caption names the layer the value comes from (PS25) in a fixed-width
+/// slot, so the rail never changes size with it. The Reset and Save to plan
+/// buttons are always there where they apply and only enabled while they do
+/// (PS7), so the rail, which is vertically centered, never grows under the
+/// musician's finger. The capo group is hidden entirely in piano mode, driven
+/// by `projection.isCapoDirectiveVisible`, exactly as the old horizontal
+/// `SongReaderControlBar` did.
 ///
 /// Floats over scrolling lyric content, so it needs its own background to
 /// stay legible in both themes -- taken from
@@ -36,6 +40,7 @@ class SongReaderControlRail extends StatelessWidget {
     this.onCapoUp,
     required this.onDecreaseFontScale,
     required this.onIncreaseFontScale,
+    this.keyActions = SongReaderKeyActions.none,
   });
 
   final SongReaderProjection projection;
@@ -45,6 +50,7 @@ class SongReaderControlRail extends StatelessWidget {
   final VoidCallback? onCapoUp;
   final VoidCallback onDecreaseFontScale;
   final VoidCallback onIncreaseFontScale;
+  final SongReaderKeyActions keyActions;
 
   @override
   Widget build(BuildContext context) {
@@ -116,6 +122,24 @@ class SongReaderControlRail extends StatelessWidget {
                   ],
                 ),
               ],
+              const _Divider(),
+              _Group(
+                children: [
+                  IconButton(
+                    key: const Key('song-reader-key-reset'),
+                    tooltip: AppStrings.songReaderResetKeyAction,
+                    onPressed: keyActions.onReset,
+                    icon: const Icon(Icons.restart_alt),
+                  ),
+                  if (keyActions.isSaveToPlanAvailable)
+                    IconButton(
+                      key: const Key('song-reader-key-save-to-plan'),
+                      tooltip: AppStrings.songReaderSaveToPlanAction,
+                      onPressed: keyActions.onSaveToPlan,
+                      icon: const Icon(Icons.playlist_add_check),
+                    ),
+                ],
+              ),
               const _Divider(),
               _Group(
                 children: [

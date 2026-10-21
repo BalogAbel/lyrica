@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_char_metrics.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_fit.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_key_actions.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_expanded_context_panel.dart';
@@ -27,6 +28,7 @@ class SongReaderExpandedSurface extends StatefulWidget {
     required this.contentPadding,
     this.onSetFontScale,
     this.onPersistFontScale,
+    this.keyActions = SongReaderKeyActions.none,
   });
 
   final SongReaderProjection projection;
@@ -42,6 +44,9 @@ class SongReaderExpandedSurface extends StatefulWidget {
   final VoidCallback? onCapoUp;
   final VoidCallback onDecreaseFontScale;
   final VoidCallback onIncreaseFontScale;
+
+  /// Reset and Save to plan, shown by the tools panel.
+  final SongReaderKeyActions keyActions;
 
   /// Padding applied around the song content grid inside the scroll view.
   final EdgeInsetsGeometry contentPadding;
@@ -272,6 +277,7 @@ class _SongReaderExpandedSurfaceState extends State<SongReaderExpandedSurface> {
             onCapoUp: widget.onCapoUp,
             onDecreaseFontScale: widget.onDecreaseFontScale,
             onIncreaseFontScale: widget.onIncreaseFontScale,
+            keyActions: widget.keyActions,
           ),
         ),
       ],

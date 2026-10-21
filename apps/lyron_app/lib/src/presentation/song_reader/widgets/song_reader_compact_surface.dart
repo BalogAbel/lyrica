@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_char_metrics.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_chrome_metrics.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_fit.dart';
+import 'package:lyron_app/src/presentation/song_reader/song_reader_key_actions.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_projection.dart';
 import 'package:lyron_app/src/presentation/song_reader/song_reader_state.dart';
 import 'package:lyron_app/src/presentation/song_reader/widgets/song_reader_bottom_bar.dart';
@@ -40,6 +41,7 @@ class SongReaderCompactSurface extends StatefulWidget {
     this.itemCount,
     required this.maxContentWidth,
     required this.contentPadding,
+    this.keyActions = SongReaderKeyActions.none,
   });
 
   final SongReaderProjection projection;
@@ -76,6 +78,9 @@ class SongReaderCompactSurface extends StatefulWidget {
   final VoidCallback? onCapoUp;
   final VoidCallback onDecreaseFontScale;
   final VoidCallback onIncreaseFontScale;
+
+  /// Reset and Save to plan, shown by the control rail.
+  final SongReaderKeyActions keyActions;
 
   /// Called continuously during a two-finger pinch with the new absolute scale.
   final ValueChanged<double>? onSetFontScale;
@@ -489,7 +494,12 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
                             ),
                           if (widget.areControlsVisible)
                             Positioned(
-                              top: 0,
+                              // Below the top bar, so a rail taller than the
+                              // free height scrolls instead of covering the
+                              // bar's trailing controls (the overflow menu).
+                              top:
+                                  chromeMetrics.topBarHeight +
+                                  MediaQuery.viewPaddingOf(context).top,
                               bottom: 0,
                               // Plus the right safe-area inset: with no
                               // ancestor SafeArea, a landscape notch would
@@ -508,6 +518,7 @@ class _SongReaderCompactSurfaceState extends State<SongReaderCompactSurface> {
                                       widget.onDecreaseFontScale,
                                   onIncreaseFontScale:
                                       widget.onIncreaseFontScale,
+                                  keyActions: widget.keyActions,
                                 ),
                               ),
                             ),
