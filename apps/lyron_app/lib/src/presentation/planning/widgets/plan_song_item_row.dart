@@ -58,7 +58,7 @@ class PlanSongItemRow extends ConsumerWidget {
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Row(
                 children: [
-                  Expanded(child: Text('${item.position}. ${item.song.title}')),
+                  Expanded(child: _title()),
                   const Icon(Icons.chevron_right),
                 ],
               ),
@@ -75,6 +75,41 @@ class PlanSongItemRow extends ConsumerWidget {
             tooltip:
                 '${AppStrings.sessionItemDeleteAction}: ${item.song.title}',
           ),
+        ),
+      ],
+    );
+  }
+
+  /// The row title; with a plan key it also carries the key chips below it
+  /// (PS8), so a phone row keeps its title width. A row without a plan value
+  /// renders the bare title as before.
+  Widget _title() {
+    final title = Text('${item.position}. ${item.song.title}');
+    final planTranspose = item.planTranspose;
+    final planCapo = item.planCapo;
+    if (planTranspose == null && planCapo == null) {
+      return title;
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        title,
+        Wrap(
+          spacing: 6,
+          runSpacing: 4,
+          children: [
+            if (planTranspose != null)
+              _PlanKeyChip(
+                labelKey: ValueKey('plan-session-item-transpose-${item.id}'),
+                label: AppStrings.planItemTransposeLabel(planTranspose),
+              ),
+            if (planCapo != null)
+              _PlanKeyChip(
+                labelKey: ValueKey('plan-session-item-capo-${item.id}'),
+                label: AppStrings.planItemCapoLabel(planCapo),
+              ),
+          ],
         ),
       ],
     );
@@ -102,5 +137,36 @@ class PlanSongItemRow extends ConsumerWidget {
     ref.invalidate(planningMutationEntriesProvider);
     ref.invalidate(planningPlanListProvider);
     ref.invalidate(planningPlanDetailProvider(planDetail.plan.id));
+  }
+}
+
+/// A small plan-value chip. [labelKey] sits on the label [Text], so the keyed
+/// widget carries the chip's text itself.
+class _PlanKeyChip extends StatelessWidget {
+  const _PlanKeyChip({required this.labelKey, required this.label});
+
+  final Key labelKey;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.primaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        child: Text(
+          label,
+          key: labelKey,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: scheme.onPrimaryContainer,
+          ),
+        ),
+      ),
+    );
   }
 }
