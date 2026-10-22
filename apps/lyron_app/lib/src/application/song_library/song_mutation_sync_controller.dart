@@ -69,7 +69,6 @@ class SongMutationSyncController {
 
   final SongMutationStore _store;
   final SongMutationRemoteRepository _remoteRepository;
-  // ignore: unused_field
   final SongRunContextGuard _isContextActive;
   final SongCatalogRefresh? _refreshCatalog;
 
@@ -126,6 +125,14 @@ class SongMutationSyncController {
           record.syncStatus == SongSyncStatus.pendingCreate ||
           record.syncStatus == SongSyncStatus.sending;
 
+      // MG3 C1: the run belongs to one `(userId, organizationId)` catalog
+      // context. When the active context has moved, this song and every later
+      // one stay as they are for the next run in their own context; nothing
+      // is marked terminal.
+      if (!_isContextActive(context)) {
+        break;
+      }
+
       var expectedRevision = record.localRevision;
       if (isCreate) {
         // D1: durably mark this row `sending` BEFORE the remote call, so a
@@ -146,6 +153,23 @@ class SongMutationSyncController {
           continue;
         }
         expectedRevision = sendingRevision;
+      }
+
+      // MG3 C2: the `sending` write above yielded, so the context may have
+      // moved during it. This check is the last synchronous statement before
+      // `syncSong`: nothing may be awaited between it and the call, or the
+      // call could leave for a context that is no longer active. On a move
+      // the call is known not to have left, so a create goes back to
+      // `pendingCreate` (gated on the `sending` revision) and the run stops.
+      if (!_isContextActive(context)) {
+        if (isCreate) {
+          await _resetCreateAfterMove(
+            context,
+            songId: record.id,
+            expectedRevision: expectedRevision,
+          );
+        }
+        break;
       }
 
       try {
@@ -183,6 +207,22 @@ class SongMutationSyncController {
           );
         }
       } on SongMutationSyncException catch (error) {
+        // MG3 C6: a failure answered after the context moved is not this
+        // row's verdict (it may have been produced under another identity),
+        // so no failure status -- `conflict` included -- is written. A
+        // create goes back to `pendingCreate`; an update or delete keeps the
+        // pending status it already has. The run stops.
+        if (!_isContextActive(context)) {
+          if (isCreate) {
+            await _resetCreateAfterMove(
+              context,
+              songId: record.id,
+              expectedRevision: expectedRevision,
+            );
+          }
+          break;
+        }
+
         final effectiveSyncStatus = record.effectiveSyncStatus;
         if (error.code == SongMutationSyncErrorCode.remoteDeleted &&
             effectiveSyncStatus == SongSyncStatus.pendingDelete) {
@@ -295,6 +335,32 @@ class SongMutationSyncController {
         }
       }
     }
+  }
+
+  /// Puts a create whose send did not complete under this context back to
+  /// `pendingCreate` (MG3 C2/C6). A tombstone (a delete landed while the
+  /// create was `sending`) is resolved as not created; otherwise the reset is
+  /// gated on the `sending` revision, so a miss means a local edit already
+  /// reset the row.
+  Future<void> _resetCreateAfterMove(
+    SongMutationContext context, {
+    required String songId,
+    required int expectedRevision,
+  }) async {
+    final resolvedTombstone = await _store.resolveCancelledSongCreate(
+      userId: context.userId,
+      organizationId: context.organizationId,
+      songId: songId,
+      created: false,
+    );
+    if (resolvedTombstone) return;
+    await _store.saveSyncAttemptResult(
+      userId: context.userId,
+      organizationId: context.organizationId,
+      songId: songId,
+      syncStatus: SongSyncStatus.pendingCreate,
+      expectedRevision: expectedRevision,
+    );
   }
 
   /// Overwrites the remote record with the local one for a conflicted song.

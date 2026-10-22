@@ -599,6 +599,86 @@ void main() {
       },
     );
 
+    test('a context change after the sending marker sends nothing and resets '
+        'the create', () async {
+      var active = true;
+      final store = _FakeSongMutationStore(
+        pendingSongs: const [
+          SongMutationRecord(
+            id: 'song-1',
+            organizationId: 'org-1',
+            slug: 'alpha',
+            title: 'Alpha',
+            chordproSource: '{title: Alpha}',
+            version: 1,
+            baseVersion: null,
+            syncStatus: SongSyncStatus.pendingCreate,
+          ),
+        ],
+      );
+      store.onMarkCreateSending = () => active = false;
+      final repository = _FakeSongMutationRemoteRepository(
+        syncHandler: (record) async =>
+            record.copyWith(syncStatus: SongSyncStatus.synced),
+      );
+      final controller = SongMutationSyncController(
+        isContextActive: (_) => active,
+        store: store,
+        remoteRepository: repository,
+      );
+
+      await controller.syncPendingSongs(
+        const SongMutationContext(userId: 'user-1', organizationId: 'org-1'),
+      );
+
+      expect(repository.syncedSongIds, isEmpty);
+      expect(store.resolveCancelledCreatedArgs, [false]);
+      expect(store.lastSavedStatus, SongSyncStatus.pendingCreate);
+      expect(store.lastSavedStatus, isNot(SongSyncStatus.sending));
+      final row = await store.readById(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        songId: 'song-1',
+      );
+      expect(row!.syncStatus, SongSyncStatus.pendingCreate);
+    });
+
+    test('a context that has already moved writes no sending marker for a '
+        'create', () async {
+      final store = _FakeSongMutationStore(
+        pendingSongs: const [
+          SongMutationRecord(
+            id: 'song-1',
+            organizationId: 'org-1',
+            slug: 'alpha',
+            title: 'Alpha',
+            chordproSource: '{title: Alpha}',
+            version: 1,
+            baseVersion: null,
+            syncStatus: SongSyncStatus.pendingCreate,
+          ),
+        ],
+      );
+      final repository = _FakeSongMutationRemoteRepository(
+        syncHandler: (record) async =>
+            record.copyWith(syncStatus: SongSyncStatus.synced),
+      );
+      final controller = SongMutationSyncController(
+        isContextActive: (_) => false,
+        store: store,
+        remoteRepository: repository,
+      );
+
+      await controller.syncPendingSongs(
+        const SongMutationContext(userId: 'user-1', organizationId: 'org-1'),
+      );
+
+      expect(store.markCreateSendingCalls, 0);
+      expect(repository.syncedSongIds, isEmpty);
+      expect(store.lastSavedStatus, isNull);
+      expect(store.resolveCancelledCreatedArgs, isEmpty);
+    });
+
     test('stops syncing later records after a connectivity failure', () async {
       final store = _FakeSongMutationStore(
         pendingSongs: const [
@@ -945,6 +1025,12 @@ class _FakeSongMutationStore implements SongMutationStore {
   String? deletedSongId;
   String? clearedSongMutationId;
 
+  // Called right after markCreateSending's own write, so a test can move the
+  // catalog context exactly between the marker and the send (MG3 C2).
+  void Function()? onMarkCreateSending;
+  final List<bool> resolveCancelledCreatedArgs = [];
+  int markCreateSendingCalls = 0;
+
   @override
   Future<SongMutationRecord?> readById({
     required String userId,
@@ -1094,6 +1180,7 @@ class _FakeSongMutationStore implements SongMutationStore {
     required String songId,
     required int expectedRevision,
   }) async {
+    markCreateSendingCalls += 1;
     final existing = _mutations[songId];
     if (existing == null) return null;
     final updated = existing.copyWith(
@@ -1101,6 +1188,7 @@ class _FakeSongMutationStore implements SongMutationStore {
       localRevision: existing.localRevision + 1,
     );
     _mutations[songId] = updated;
+    onMarkCreateSending?.call();
     return updated.localRevision;
   }
 
@@ -1112,6 +1200,7 @@ class _FakeSongMutationStore implements SongMutationStore {
     required bool created,
     int? acceptedVersion,
   }) async {
+    resolveCancelledCreatedArgs.add(created);
     final existing = _mutations[songId];
     if (existing == null || existing.syncStatus != SongSyncStatus.cancelling) {
       return false;
