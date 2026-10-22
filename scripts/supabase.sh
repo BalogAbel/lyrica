@@ -31,6 +31,11 @@ start_retry_delay=${SUPABASE_START_RETRY_DELAY:-30}
 case "$start_retry_delay" in
 '' | *[!0-9]*) start_retry_delay=30 ;;
 esac
+# Drop leading zeros so "08" is not read as an illegal octal number.
+while [ "${start_retry_delay#0}" != "$start_retry_delay" ]; do
+  start_retry_delay=${start_retry_delay#0}
+done
+start_retry_delay=${start_retry_delay:-0}
 
 if [ "${1:-}" != "start" ] || [ "$start_retries" -eq 0 ]; then
   exec npx --prefix "$TOOLING_DIR" supabase "$@"
@@ -62,6 +67,6 @@ while :; do
 
   attempt=$((attempt + 1))
   sleep_seconds=$((start_retry_delay * attempt))
-  echo "[supabase.sh] retrying supabase start (attempt $attempt/$start_retries) after GHCR rate limit, sleeping ${sleep_seconds}s" >&2
+  echo "[supabase.sh] retrying supabase start (attempt $attempt/$start_retries) after a registry rate limit, sleeping ${sleep_seconds}s" >&2
   sleep "$sleep_seconds"
 done
