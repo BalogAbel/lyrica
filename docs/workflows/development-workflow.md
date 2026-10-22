@@ -64,6 +64,8 @@ When a deferred item touches the same workflow, state machine, or backend contra
   - `./scripts/manual-validation/print-checklist.sh`
 - Repository scripts should call the wrapper rather than direct `supabase` or ad hoc `npx` commands.
 - CI pulls the local Supabase images from GHCR (`SUPABASE_INTERNAL_IMAGE_REGISTRY: ghcr.io` in `.github/workflows/ci.yml`). The CLI's default registry, `public.ecr.aws`, has an anonymous data limit that the shared GitHub runner IPs exhaust (`toomanyrequests: Data limit exceeded`, 2026-10-21); Supabase publishes the same image tags to GHCR. Locally the default registry stays; set the same variable if a local pull hits that limit.
+  - Anonymous GHCR pulls hit `toomanyrequests` as well, so CI also logs in to GHCR with `GITHUB_TOKEN` (`docker/login-action` in the `verify`, `backend_write_contracts`, and `migrations` jobs; `continue-on-error`, because it is an optimization, not a gate). The Supabase CLI reads the credentials from the Docker config, so its pulls are authenticated.
+  - `./scripts/supabase.sh start` retries when its output contains `toomanyrequests` and `SUPABASE_START_RETRIES` is a positive integer (CI sets 4). It waits `SUPABASE_START_RETRY_DELAY` seconds (default 30) times the attempt number between tries, and any other failure returns immediately with the CLI's own exit code. Off by default locally; every other command keeps the plain `exec` path. Covered by `scripts/tests/supabase-start-retry-test.sh`, which `./scripts/verify.sh` runs.
 - Widget goldens are generated and compared on Linux only: `./scripts/update-goldens.sh` (Docker, `tooling/goldens/Dockerfile`); see `docs/testing/testing-strategy.md`.
 
 ## Hosted Migration Deployment

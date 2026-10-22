@@ -6,13 +6,21 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+  packages: read
+
 # The Supabase CLI pulls the local stack's images from public.ecr.aws by
 # default, whose anonymous data limit the shared GitHub runner IPs exhaust
 # ("toomanyrequests: Data limit exceeded"). Supabase mirrors the same tags to
-# GHCR, which runners reach without that limit. See
-# docs/workflows/development-workflow.md, "Local Tooling".
+# GHCR, which runners reach without that limit. Anonymous GHCR pulls hit
+# "toomanyrequests" too, so CI logs in with GITHUB_TOKEN and retries
+# `supabase start` with backoff (SUPABASE_START_RETRIES, handled by
+# scripts/supabase.sh). See docs/workflows/development-workflow.md, "Local
+# Tooling".
 env:
   SUPABASE_INTERNAL_IMAGE_REGISTRY: ghcr.io
+  SUPABASE_START_RETRIES: 4
 
 jobs:
   verify:
@@ -21,6 +29,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        # Authenticated pulls raise the rate limit; an optimization, not a
+        # gate, so a failed login (for example on a fork PR) must not fail CI.
+        continue-on-error: true
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -76,6 +94,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Log in to GHCR
+        # Authenticated pulls raise the rate limit; an optimization, not a
+        # gate, so a failed login (for example on a fork PR) must not fail CI.
+        continue-on-error: true
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -95,6 +123,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        # Authenticated pulls raise the rate limit; an optimization, not a
+        # gate, so a failed login (for example on a fork PR) must not fail CI.
+        continue-on-error: true
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
