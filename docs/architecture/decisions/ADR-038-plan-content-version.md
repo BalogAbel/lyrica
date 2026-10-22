@@ -274,6 +274,14 @@ S5b PR 2.
    accepted row without bringing the write W into the projection, which left
    the projection at R without W and broke I7 (the deferred entry for
    review gate 4's F6 finding, removed when this item was implemented).
+   This now cannot happen: a context switch, a failed or skipped reconcile
+   never leaves the projection at R without W. One race stays, pre-existing
+   and not closed here (F1): a pull for the same context stored between C5
+   and the reconcile, after which the reconcile writes the older W over the
+   pull's newer content while the projection keeps the pull's content
+   version. I7 holds except for it; the fix (reconcile and advance in one
+   transaction, only at exactly R - 1) is scheduled for PR 2, see
+   `docs/deferred/2026-10-22-content-version-ahead-of-content.md`.
    A delete recorded earlier in the run reads R - 1 and is still rebased by
    rule 1b at batch end. Accepted narrow window (refresh-failed branch
    only): a `planDelete` recorded between a record's batch-end effects call

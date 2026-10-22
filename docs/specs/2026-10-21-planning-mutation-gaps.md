@@ -80,7 +80,10 @@ Unchanged, restated because every decision below is checked against them:
   stale: a stale base conflicts (fail-safe), an over-advanced base absorbs a
   foreign write (fail-open, never acceptable).
 - **I7.** The projection's `contentVersion` never runs ahead of the content
-  it reflects.
+  it reflects, except for the F1 race (a pull for the same context stored
+  between C5 and the reconcile, then the older accepted write written over
+  it; pre-existing, scheduled for PR 2:
+  `docs/deferred/2026-10-22-content-version-ahead-of-content.md`).
 - **ADR-019 exactly-once.** An `accepted` row is never resent.
 - **ADR-030 D2/D3.** Every write that concludes a remote exchange is gated on
   the revision that was sent; a miss is not an error.
@@ -218,7 +221,11 @@ song side.)
   - The projection therefore takes W first and the advance second. Between
     the two it holds W at R - 1 (behind its content, which I7 allows). A
     failed or skipped reconcile (C5 false, `ReconcileFieldError`, any other
-    exception) means no advance: the projection never sits at R without W.
+    exception) means no advance: a context switch or a failed or skipped
+    reconcile never leaves the projection at R without W. It does not cover
+    the F1 race (a pull for the same context stored between C5 and the
+    reconcile, then W written over it; pre-existing, fix scheduled for PR 2:
+    `docs/deferred/2026-10-22-content-version-ahead-of-content.md`).
   - A failed advance (an `Exception`, swallowed like the effects call) leaves
     the projection behind: at most one visible false conflict later.
 - In the refreshed branch the refresh stored a pull that started after the
@@ -532,7 +539,9 @@ every task.
 
 ### PR 2 — rows that never resolve (`fix/planning-unresolved-rows`)
 
-- MG6, MG7, MG8, MG9.
+- MG6, MG7, MG8, MG9, and the F1 fix (reconcile and rule-1a advance in one
+  local-store transaction, only at exactly R - 1;
+  `docs/deferred/2026-10-22-content-version-ahead-of-content.md`).
 - Files: `drift_planning_mutation_store.dart`, `budgeted_planning_mutation_store.dart`,
   `planning_mutation_sync_types.dart`, `planning_local_database.dart`
   (schema 9), `planning_mutation_sync_controller.dart` (run start, discard),
@@ -547,9 +556,10 @@ every task.
   `planEdit`, rename and both reorders resends the original base; discarding
   a failed item, session and plan create removes the dependents and keeps an
   in-flight one's.
-- Docs: ADR-030 amendment (MG6, MG7), ADR-038 amendment (MG8), ADR-028 D3
+- Docs: ADR-030 amendment (MG6, MG7), ADR-038 amendment (MG8, F1), ADR-028 D3
   table (`discardMutation`), the deferred entries for stranded tombstones,
-  session rename and R1.
+  session rename, R1 and F1. The F1 tests in
+  `planning_content_version_ahead_test.dart` lose their `skip:`.
 
 ### PR 3 — purge and pull guards (`fix/purge-and-pull-guards`)
 
@@ -577,6 +587,7 @@ every task.
 | `2026-10-14-key-edit-residuals.md` | R3 removed by PR 1, R1 by PR 2; R2, R4 stay |
 | `2026-09-30-stranded-create-tombstones.md` | removed by PR 2 |
 | `2026-09-30-session-rename-retry-never-rebases.md` | removed by PR 2 |
+| `2026-10-22-content-version-ahead-of-content.md` | added by PR 1 (F1); removed by PR 2 |
 | `2026-10-11-membership-purge-import-gap.md` | removed by PR 3 |
 | `2026-10-12-paged-pull-residuals.md` | R2 removed by PR 3; R1, R3, R4 stay |
 | `2026-10-11-session-transition-coordinator.md` | not triggered (no new writer or purge) |
@@ -588,7 +599,8 @@ every task.
   rows and projection survive a switch and sync when it is active again.
 - No run sends a candidate after its context moved, in either controller.
 - After a mid-run switch, no projection holds a `contentVersion` ahead of its
-  content.
+  content, except for the F1 race (pre-existing, scheduled for PR 2; two
+  skipped tests state the intended behavior).
 - An after-write refresh never reuses a pull that started before the write.
 - No `cancelling` row survives the next run of its context.
 - Keep mine works for a conflicted rename; no Retry overwrites a foreign value

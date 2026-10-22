@@ -498,8 +498,14 @@ class PlanningMutationSyncController {
           if (_isRunContextActive(context)) {
             await _reconcileAcceptedMutation(context, synced);
             // MG4 rule 1a: only right after this record's reconcile
-            // completed without throwing, so the projection never sits at
-            // the write's content version without the write (I7). This is
+            // completed without throwing, so a context switch or a failed or
+            // skipped reconcile never leaves the projection at the write's
+            // content version without the write (I7). Not covered: the F1
+            // race (a pull for this context stored between C5 and the
+            // reconcile, then the older write reconciled over it;
+            // pre-existing, scheduled for S5b PR 2,
+            // docs/deferred/2026-10-22-content-version-ahead-of-content.md).
+            // This is
             // what carries a `planCreate` and its accepted children to their
             // final content version when the refresh failed: the reconciler
             // needs no rule-1a code of its own.

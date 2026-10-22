@@ -820,8 +820,12 @@ abstract interface class PlanningMutationStore {
   /// based on a version that already contains it. The caller (the sync
   /// controller's refresh-failed branch) calls it only for a record whose run
   /// context is still active and right after that record's reconcile
-  /// completed without throwing; the projection therefore never sits at the
-  /// write's content version without the write itself (I7).
+  /// completed without throwing; a context switch or a failed or skipped
+  /// reconcile therefore never leaves the projection at the write's content
+  /// version without the write itself (I7). Exception: the F1 race, a pull for
+  /// the same context stored between C5 and the reconcile, then the older
+  /// write reconciled over it (pre-existing; scheduled for S5b PR 2,
+  /// docs/deferred/2026-10-22-content-version-ahead-of-content.md).
   ///
   /// Does nothing when the kind does not bump plan content or the response
   /// carried no content version (the PS15 own-write gate nulls it for a key
