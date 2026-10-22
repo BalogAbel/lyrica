@@ -314,6 +314,84 @@ void main() {
       expect(controller.state.refreshStatus, PlanningRefreshStatus.idle);
     });
 
+    group('refreshPlanningAfterWrite (MG5)', () {
+      const ctx1 = ActivePlanningReadContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      Future<PlanningSyncController> establishedController() async {
+        final controller = PlanningSyncController(
+          localStore: () => store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: () => remoteRepository,
+          authSessionReader: () => session,
+        );
+        await controller.handleActiveContextChanged(ctx1, refresh: false);
+        return controller;
+      }
+
+      test('an after-write refresh never coalesces onto a pull that started '
+          'before it', () async {
+        final blocked = Completer<PlanningSyncPayload>();
+        remoteRepository.nextPayload = blocked.future;
+        final controller = await establishedController();
+
+        final first = controller.refreshPlanning();
+        final afterWrite = controller.refreshPlanningAfterWrite(ctx1);
+        blocked.complete(_payloadFor('org-1', planId: 'plan-1'));
+
+        expect(await afterWrite, isTrue);
+        await first;
+        expect(remoteRepository.fetchCallCount, 2);
+      });
+
+      test('an after-write refresh whose queued pull never ran is not '
+          'reported as refreshed', () async {
+        final blocked = Completer<PlanningSyncPayload>();
+        remoteRepository.nextPayload = blocked.future;
+        final controller = await establishedController();
+
+        final first = controller.refreshPlanning();
+        final afterWrite = controller.refreshPlanningAfterWrite(ctx1);
+        controller.handleCurrentUser('user-2');
+        blocked.complete(_payloadFor('org-1', planId: 'plan-1'));
+
+        expect(await afterWrite, isFalse);
+        await first;
+      });
+
+      test('a pull stored for another context does not count for the '
+          'requester', () async {
+        final blocked = Completer<PlanningSyncPayload>();
+        remoteRepository.nextPayload = blocked.future;
+        final controller = await establishedController();
+
+        final first = controller.refreshPlanning();
+        final afterWrite = controller.refreshPlanningAfterWrite(ctx1);
+        await Future<void>.delayed(Duration.zero);
+        await controller.handleActiveContextChanged(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-2',
+          ),
+          refresh: false,
+        );
+        blocked.complete(_payloadFor('org-1', planId: 'plan-1'));
+
+        expect(await afterWrite, isFalse);
+        await first;
+      });
+
+      test('an after-write refresh with no refresh in flight runs one pull '
+          'and reports it', () async {
+        final controller = await establishedController();
+
+        expect(await controller.refreshPlanningAfterWrite(ctx1), isTrue);
+        expect(remoteRepository.fetchCallCount, 1);
+      });
+    });
+
     test(
       'sign-out during an in-flight refresh prevents stale repopulation',
       () async {

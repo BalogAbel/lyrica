@@ -235,8 +235,9 @@ final planningMutationSyncControllerProvider =
         mutationStore: () => ref.read(planningMutationStoreProvider),
         remoteRepository: () =>
             ref.read(planningMutationRemoteRepositoryProvider),
-        refreshPlanning: (_) =>
-            ref.read(planningSyncControllerProvider).refreshPlanning(),
+        refreshPlanning: (context) => ref
+            .read(planningSyncControllerProvider)
+            .refreshPlanningAfterWrite(context),
         isRunContextActive: (context) {
           final activeContext = ref.read(activePlanningContextProvider);
           return activeContext != null &&
