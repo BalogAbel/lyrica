@@ -51,3 +51,5 @@ Scheduled in slice **S5b** (`fix/planning-mutation-gaps`) of
 conflict, in no other status. Plan-delete review gate 3 (F1) showed that a
 retry which rebases in any status silently absorbs a foreign write. The S5b
 spec confirms or overrides this default.
+
+S5b spec (2026-10-21): conflict-only rebase, extended to planEdit and both reorders (MG8 of `docs/specs/2026-10-21-planning-mutation-gaps.md`); resolved by S5b PR 2.

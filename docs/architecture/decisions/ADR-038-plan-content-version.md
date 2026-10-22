@@ -218,7 +218,8 @@ Follow-ups this slice created, each recorded under `docs/deferred/`:
   stays hidden behind "could not find the target item" copy until the row is
   discarded. Found by review gate 4 (F5); the mechanism predates this slice and
   is kept fail-open on purpose for offline editors.
-- `docs/deferred/2026-09-30-content-version-advance-on-context-switch.md`: D7
+- `docs/deferred/2026-09-30-content-version-advance-on-context-switch.md`
+  (removed by S5b PR 1; see the 2026-10-21 amendment): D7
   rule 1a advances the projection's plan `content_version` right after an
   accepted child write. If the org or user context switches mid-run, the old
   context's accepted child rows are cleared without a reconcile, so its
@@ -254,3 +255,50 @@ migration `supabase/migrations/202610130001_session_item_key.sql`.
   sent edit applied to the sent base values, PS15). Any other response's
   content version is discarded: the projection lags and a stale plan delete
   conflicts, the fail-safe direction.
+
+## Amendment: rule 1a placement and the retry rule (2026-10-21, S5b)
+
+**Status:** Accepted (2026-10-22, S5b design gate). Item 1 (MG4) is
+implemented by S5b PR 1 (#97); item 2 (MG8) is still to be implemented by
+S5b PR 2.
+**Spec:** `docs/specs/2026-10-21-planning-mutation-gaps.md` (MG4, MG8).
+
+1. **Rule 1a runs only after a successful reconcile of the same record
+   (MG4).** Decision 4's projection advance (D7 rule 1a) leaves the
+   accepted-write effects. It runs only in the refresh-failed branch, for a
+   record whose run context is still the active one, right after that
+   record's reconcile completed without throwing. The effects call keeps
+   rules 1b, 2 and 3, which rebase the run's own pending deletes, and stays
+   where it was, unconditional. Before, a context switch or a reconcile
+   failure between the advance and the reconcile cleared or failed the
+   accepted row without bringing the write W into the projection, which left
+   the projection at R without W and broke I7 (the deferred entry for
+   review gate 4's F6 finding, removed when this item was implemented).
+   This now cannot happen: a context switch, a failed or skipped reconcile
+   never leaves the projection at R without W. One race stays, pre-existing
+   and not closed here (F1): a pull for the same context stored between C5
+   and the reconcile, after which the reconcile writes the older W over the
+   pull's newer content while the projection keeps the pull's content
+   version. I7 holds except for it; the fix (reconcile and advance in one
+   transaction, only at exactly R - 1) is scheduled for PR 2, see
+   `docs/deferred/2026-10-22-content-version-ahead-of-content.md`.
+   A delete recorded earlier in the run reads R - 1 and is still rebased by
+   rule 1b at batch end. Accepted narrow window (refresh-failed branch
+   only): a `planDelete` recorded between a record's batch-end effects call
+   (rule 1b) and that record's advance reads R - 1 and gets no later rule-1b
+   rebase for that record, so it ends in a visible false conflict (fail-safe,
+   I3 holds); before, rule 1a ran ahead of rule 1b inside the effects call
+   and that draft read R. Consequence (already listed under "Narrow crash
+   windows"): a crash after the RPC leaves the projection at R - 1 until the
+   next refresh, so a later delete can show one visible false conflict.
+2. **Retry rebases only from a visible conflict, for every kind that
+   overwrites a shared value (MG8).** Decision 5's conflict-only rebase now
+   covers `planEdit`, `sessionRename`, `sessionReorder` and
+   `sessionItemReorder`, next to the cascade deletes and the key edit. A
+   retry from any other status resends the original bases. The automatic
+   sync never rebases, so a Retry that did would silently overwrite a
+   foreign value the user's own overlay hid; now it surfaces as a conflict
+   that Keep mine resolves knowingly. Creates and `sessionItemDelete` keep
+   rebasing in any status (they add or remove the user's own object). The
+   session-rename lookup (`_currentBaseVersionFor` keyed on `sessionId`,
+   which a session row does not set) resolves the session by `aggregateId`.

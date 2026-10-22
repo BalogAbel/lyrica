@@ -135,12 +135,6 @@ abstract interface class PlanningLocalStore {
 
   Future<String?> readLatestCachedOrganizationId({required String userId});
 
-  Future<void> deletePlanningData({
-    required String userId,
-    required String organizationId,
-    bool Function()? shouldContinue,
-  });
-
   Future<void> deletePlanningDataForUser({
     required String userId,
     bool Function()? shouldContinue,
@@ -621,61 +615,6 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
             .getSingleOrNull();
 
     return row?.organizationId;
-  }
-
-  @override
-  Future<void> deletePlanningData({
-    required String userId,
-    required String organizationId,
-    bool Function()? shouldContinue,
-  }) async {
-    final deletedRows = await _database.transaction(() async {
-      var deletedRows = 0;
-      _ensureProjectionCurrent(shouldContinue);
-      deletedRows +=
-          await (_database.delete(_database.cachedPlanningMutations)..where(
-                (table) =>
-                    table.userId.equals(userId) &
-                    table.organizationId.equals(organizationId),
-              ))
-              .go();
-      _ensureProjectionCurrent(shouldContinue);
-      deletedRows +=
-          await (_database.delete(_database.cachedPlanningSessionItems)..where(
-                (table) =>
-                    table.userId.equals(userId) &
-                    table.organizationId.equals(organizationId),
-              ))
-              .go();
-      _ensureProjectionCurrent(shouldContinue);
-      deletedRows +=
-          await (_database.delete(_database.cachedPlanningSessions)..where(
-                (table) =>
-                    table.userId.equals(userId) &
-                    table.organizationId.equals(organizationId),
-              ))
-              .go();
-      _ensureProjectionCurrent(shouldContinue);
-      deletedRows +=
-          await (_database.delete(_database.cachedPlanningPlans)..where(
-                (table) =>
-                    table.userId.equals(userId) &
-                    table.organizationId.equals(organizationId),
-              ))
-              .go();
-      _ensureProjectionCurrent(shouldContinue);
-      deletedRows +=
-          await (_database.delete(_database.planningProjectionOwners)..where(
-                (table) =>
-                    table.userId.equals(userId) &
-                    table.organizationId.equals(organizationId),
-              ))
-              .go();
-      return deletedRows;
-    });
-    if (deletedRows > 0) {
-      _onStorageFootprintChanged?.call();
-    }
   }
 
   @override

@@ -485,13 +485,6 @@ class _NoopLocalDataEventsRecorderForLifecycle
 
 class _NoopPlanningLocalStore implements PlanningLocalStore {
   @override
-  Future<void> deletePlanningData({
-    required String userId,
-    required String organizationId,
-    bool Function()? shouldContinue,
-  }) async {}
-
-  @override
   Future<void> deletePlanningDataForUser({
     required String userId,
     bool Function()? shouldContinue,

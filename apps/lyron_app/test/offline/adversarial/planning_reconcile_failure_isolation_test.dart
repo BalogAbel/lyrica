@@ -124,8 +124,8 @@ void main() {
         mutationStore: () => store,
         remoteRepository: () => _UnusedRemoteRepository(),
         // Force the refresh-failed (else / reconcile) branch.
-        refreshPlanning: () async => false,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => false,
+        isRunContextActive: (_) => true,
         // Faithful: delegate to the REAL reconciler.
         reconcileAcceptedMutation: reconciler.reconcile,
       );
@@ -272,6 +272,13 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
     required String organizationId,
     required PlanningMutationRecord accepted,
     required bool remoteResponse,
+  }) async {}
+
+  @override
+  Future<void> advanceAcceptedPlanContentVersion({
+    required String userId,
+    required String organizationId,
+    required PlanningMutationRecord accepted,
   }) async {}
   @override
   Future<void> recordPlanEdit({

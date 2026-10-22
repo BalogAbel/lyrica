@@ -66,6 +66,7 @@ void main() {
 
       final remote = _GatedRejectingSongRemote();
       final controller = SongMutationSyncController(
+        isContextActive: (_) => true,
         store: mutationStore,
         remoteRepository: remote,
       );

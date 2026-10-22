@@ -76,10 +76,7 @@ void main() {
         onStorageFootprintChanged: () => revisionCount += 1,
       );
 
-      await trackedStore.deletePlanningData(
-        userId: 'missing-user',
-        organizationId: 'missing-organization',
-      );
+      await trackedStore.deletePlanningDataForUser(userId: 'missing-user');
       expect(revisionCount, 0);
 
       await expectLater(

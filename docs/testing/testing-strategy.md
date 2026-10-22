@@ -302,6 +302,32 @@ specific finding:
   conflict). Also pins that collapsing a still-pending `sessionCreate` deletes that
   session's pending `session_item` and `session_item_order` mutations in the same
   transaction, so nothing is left behind that could only ever fail `dependencyBlocked`.
+- `planning_run_boundary_test.dart` — S5b PR 1 (MG4, MG5,
+  `docs/specs/2026-10-21-planning-mutation-gaps.md`): against the real Drift stores and the
+  real sync controllers with a scripted backend, a context switch before the batch end leaves
+  the old projection behind its content (rule 1a runs only after the same record's reconcile,
+  never ahead of the write), a reconcile failure does the same, a plan created and given a
+  child in one batch still reaches its final content version, a sign-out purge inside a run
+  writes nothing back, and an after-write refresh never counts a pull that started before the
+  write. It also pins, with the real stores, that a create deleted while the run sits between
+  the `sending` write and the C2 check is collapsed and nothing is sent (C2), that a create
+  tombstoned during a call that fails after the context moved has its tombstone resolved
+  (C6), and that the previous organization's pending row and projection survive a switch and
+  sync when it is active again (MG1). The stop checks of
+  `PlanningMutationSyncController._run` are spread over three places: the `a run stops when its
+  context moves (MG2)` group of
+  `test/application/planning/planning_mutation_sync_controller_test.dart` pins C1, C2, C6 and
+  the retry observer; `planning_run_boundary_test.dart` pins C3 and C5; C4 is pinned in the
+  `refreshPlanningAfterWrite (MG5)` group of
+  `test/application/planning/planning_sync_controller_test.dart`. An offline cold start after
+  a switch is pinned in the same file, both for an identity naming the new organization
+  (shows nothing of the previous one) and for an identity with no organization (falls back to
+  the latest cached organization, known behavior).
+- `song_run_boundary_test.dart` — S5b PR 1 (MG3): a song sync run belongs to one catalog
+  context. When the active catalog context moves, the run stops before the next song, and a
+  failure answered after the move is not written as that song's verdict (no `conflict`); real
+  Drift stores, remote double gated on a `Completer`.
+- `apps/lyron_app/test/offline/adversarial/planning_content_version_ahead_test.dart` — skipped red tests for the content-version-ahead race (F1); un-skip them in S5b PR 2 (see `docs/deferred/2026-10-22-content-version-ahead-of-content.md`).
 - `test/application/storage/local_storage_budget_test.dart`,
   `planning_storage_accountant_test.dart`, `local_storage_monitor_test.dart` — the
   content-derived footprint and pressure-classification contracts behind ADR-028: bytes

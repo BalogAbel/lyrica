@@ -1482,13 +1482,6 @@ class _RecordingPlanningLocalStore implements PlanningLocalStore {
       throw UnimplementedError();
 
   @override
-  Future<void> deletePlanningData({
-    required String userId,
-    required String organizationId,
-    bool Function()? shouldContinue,
-  }) => throw UnimplementedError();
-
-  @override
   Future<void> upsertSyncedPlan({
     required String userId,
     required String organizationId,

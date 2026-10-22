@@ -805,13 +805,6 @@ class _RecordingPlanningLocalStore implements PlanningLocalStore {
   }) async => null;
 
   @override
-  Future<void> deletePlanningData({
-    required String userId,
-    required String organizationId,
-    bool Function()? shouldContinue,
-  }) async {}
-
-  @override
   Future<void> deletePlanningDataForUser({
     required String userId,
     bool Function()? shouldContinue,
@@ -1020,6 +1013,13 @@ class _RecordingPlanningMutationStore implements PlanningMutationStore {
     required String organizationId,
     required PlanningMutationRecord accepted,
     required bool remoteResponse,
+  }) async {}
+
+  @override
+  Future<void> advanceAcceptedPlanContentVersion({
+    required String userId,
+    required String organizationId,
+    required PlanningMutationRecord accepted,
   }) async {}
 
   @override

@@ -2748,6 +2748,58 @@ void main() {
           planId: 'plan-1',
         ))?.plan.contentVersion;
 
+    test('applyAcceptedWriteEffects no longer advances the projection content '
+        'version (MG4)', () async {
+      await localStore.replaceActiveProjection(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        plans: [
+          CachedPlanRecord(
+            id: 'plan-1',
+            slug: 'plan-1',
+            name: 'Plan',
+            description: null,
+            scheduledFor: null,
+            updatedAt: DateTime.utc(2026),
+            version: 2,
+            contentVersion: 3,
+          ),
+        ],
+        sessions: const [
+          CachedSessionRecord(
+            id: 'session-1',
+            planId: 'plan-1',
+            position: 1,
+            name: 'S',
+            version: 3,
+          ),
+        ],
+        items: const [],
+        refreshedAt: DateTime.utc(2026),
+      );
+      final rename = accepted(
+        PlanningMutationKind.sessionRename,
+        aggregateId: 'session-1',
+        version: 4,
+        planContentVersion: 4,
+      );
+
+      await store.applyAcceptedWriteEffects(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        accepted: rename,
+        remoteResponse: true,
+      );
+      expect(await projectionContentVersion(), 3);
+
+      await store.advanceAcceptedPlanContentVersion(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        accepted: rename,
+      );
+      expect(await projectionContentVersion(), 4);
+    });
+
     test('rule 1: a contiguous own child write rebases the pending plan '
         'delete and the projection', () async {
       await store.recordPlanDelete(
@@ -2771,6 +2823,18 @@ void main() {
       );
 
       expect((await planRow())!.baseContentVersion, 6);
+      // MG4: the effects call no longer moves the projection (rule 1a).
+      expect(await projectionContentVersion(), 5);
+
+      await store.advanceAcceptedPlanContentVersion(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        accepted: accepted(
+          PlanningMutationKind.sessionItemCreateSong,
+          version: 4,
+          planContentVersion: 6,
+        ),
+      );
       expect(await projectionContentVersion(), 6);
     });
 
@@ -2839,6 +2903,34 @@ void main() {
           remoteResponse: true,
         );
         expect((await planRow())!.baseContentVersion, 6);
+        // MG4: the effects call no longer moves the projection (rule 1a).
+        expect(await projectionContentVersion(), 5);
+
+        // Rule 1a, now its own call: idempotent, and a planEdit/planCreate
+        // response (neither bumps plan content) never advances it.
+        for (var i = 0; i < 2; i += 1) {
+          await store.advanceAcceptedPlanContentVersion(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            accepted: child,
+          );
+        }
+        expect(await projectionContentVersion(), 6);
+        for (final kind in [
+          PlanningMutationKind.planEdit,
+          PlanningMutationKind.planCreate,
+        ]) {
+          await store.advanceAcceptedPlanContentVersion(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            accepted: accepted(
+              kind,
+              aggregateId: 'plan-1',
+              version: 9,
+              planContentVersion: 7,
+            ),
+          );
+        }
         expect(await projectionContentVersion(), 6);
       },
     );

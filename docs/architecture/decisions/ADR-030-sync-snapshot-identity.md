@@ -1129,3 +1129,38 @@ hand-rolled fake, for the same reason as the suites above):
   the deliberate D4 scope boundary: `updateSong`/`deleteSong` against a song absent from
   local storage entirely still throw `StateError`, so a future change does not silently
   widen D4 to cover these single-record, user-initiated calls.
+
+## Stranded Tombstone Follow-Up (2026-10-21, S5b)
+
+**Status:** Accepted (2026-10-22, S5b design gate); implemented by S5b PR 2.
+**Spec:** `docs/specs/2026-10-21-planning-mutation-gaps.md` (MG6, MG7).
+
+The in-flight create cancellation follow-up above resolves a `cancelling`
+tombstone only in the run that sent its create. If that run never reaches
+`resolveCancelledCreate` / `resolveCancelledSongCreate` (an app kill, an
+exception from the accept-marker write, an `Error`), nothing revisits the
+row (`docs/deferred/2026-09-30-stranded-create-tombstones.md`).
+
+- **Every run starts by converting its context's `cancelling` rows into
+  pending deletes.** Under the per-context single-flight no call of that
+  context is in flight when a run starts, so every `cancelling` row it sees
+  is stale. Option (b), resending the create, is rejected: today's create
+  RPCs are not idempotent.
+- **Planning bases are the values the client's own create produces:** plan
+  `(1, 1)`, session 1, and for a session item `b + 1`, where `b` is the create
+  row's session base (`create_song_session_item` moves the session `b → b + 1`
+  under OCC, and `delete_session_item` checks the session version before it
+  looks for the item). A delete with these bases succeeds only if the object
+  exists, which means the client's create committed, and nobody wrote to it
+  since; so no foreign write is absorbed (I3 of the plan-delete spec).
+- **A converted planning row is marked tombstone-origin**
+  (`CachedPlanningMutations.resolvesCancelledCreate`, planning schema 9). A
+  `*_not_found` answer closes it and purges its orphaned child rows, because
+  the create never committed. A user-recorded delete keeps the visible
+  `failedRemoteDelete`. A conflict stays visible and Keep mine resolves it; a
+  connectivity failure keeps the delete pending.
+- **Song tombstones become `pendingDelete` with version 1** (`create_song`
+  inserts version 1). No marker is needed: a `remoteDeleted` answer to a
+  `pendingDelete` already deletes the local row.
+- The conversion rewrites one row as one row: it joins the per-context write
+  queue and is never budget-admitted (ADR-028 D3/D9).

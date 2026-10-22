@@ -5,14 +5,15 @@ import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.
 typedef PlanningMutationStoreReader = PlanningMutationStore Function();
 typedef PlanningMutationRemoteRepositoryReader =
     PlanningMutationRemoteRepository Function();
-typedef PlanningRefreshTrigger = Future<bool> Function();
+typedef PlanningRefreshTrigger =
+    Future<bool> Function(ActivePlanningReadContext context);
 typedef PlanningAcceptedMutationReconciler =
     Future<void> Function(
       ActivePlanningReadContext context,
       PlanningMutationRecord record,
     );
-typedef PlanningAcceptedMutationGuard =
-    Future<bool> Function(ActivePlanningReadContext context);
+typedef PlanningRunContextGuard =
+    bool Function(ActivePlanningReadContext context);
 
 /// N3 (PR #64 review, second remediation round): invoked synchronously,
 /// in-band, at the moment `_run` catches a `PlanningMutationSyncException`
@@ -52,14 +53,14 @@ class PlanningMutationSyncController {
     required this._remoteRepository,
     required this._refreshPlanning,
     required this._reconcileAcceptedMutation,
-    required this._shouldReconcileAcceptedMutation,
+    required this._isRunContextActive,
   });
 
   final PlanningMutationStoreReader _mutationStore;
   final PlanningMutationRemoteRepositoryReader _remoteRepository;
   final PlanningRefreshTrigger _refreshPlanning;
   final PlanningAcceptedMutationReconciler _reconcileAcceptedMutation;
-  final PlanningAcceptedMutationGuard _shouldReconcileAcceptedMutation;
+  final PlanningRunContextGuard _isRunContextActive;
 
   // Single-flight keyed by sync context. This controller is an app-scoped
   // singleton, so a global in-flight future would let a sync for one
@@ -161,6 +162,16 @@ class PlanningMutationSyncController {
         continue;
       }
 
+      // MG2 C1: the run belongs to one `(userId, organizationId)`. When the
+      // active context has moved, this candidate and every later one stay as
+      // they are for the next run in their own context; nothing is marked
+      // terminal. A retry waiting on one of them must still hear that it
+      // never left the device.
+      if (!_isRunContextActive(context)) {
+        _reportUnsent(candidates.skip(index), onMutationFailure);
+        break;
+      }
+
       // D1: durably mark this row `sending` BEFORE the remote call --
       // mirroring the `accepted` marker ADR-019 already writes immediately
       // AFTER it. Between this write and the accept/failure write below,
@@ -187,6 +198,30 @@ class PlanningMutationSyncController {
           mutation.kind == PlanningMutationKind.planCreate ||
           mutation.kind == PlanningMutationKind.sessionCreate ||
           mutation.kind == PlanningMutationKind.sessionItemCreateSong;
+
+      // MG2 C2: the `sending` write above yielded, so the context may have
+      // moved during it. This check is the last synchronous statement before
+      // `syncMutation`: nothing may be awaited between it and the call, or
+      // the call could leave for a context that is no longer active. On a
+      // move the call is known not to have left, so the row goes back to
+      // `pending` (gated on the `sending` revision: a miss means a fold
+      // already reset it) and the run stops.
+      if (!_isRunContextActive(context)) {
+        final resolvedTombstone =
+            isCancellableCreate &&
+            await _mutationStore().resolveCancelledCreate(
+              userId: context.userId,
+              organizationId: context.organizationId,
+              aggregateType: mutation.kind.aggregateType,
+              aggregateId: mutation.aggregateId,
+              created: false,
+            );
+        if (!resolvedTombstone) {
+          await _resetToPending(context, mutation, sendingRevision);
+        }
+        _reportUnsent(candidates.skip(index), onMutationFailure);
+        break;
+      }
 
       try {
         final syncedMutation = await _remoteRepository().syncMutation(
@@ -309,7 +344,15 @@ class PlanningMutationSyncController {
             created: false,
           );
         }
-        if (!resolvedTombstone) {
+        // MG2 C6: evaluated synchronously right before the failure write. A
+        // failure answered after the context moved is not this row's
+        // verdict (it may have been produced under another identity), so it
+        // is not written; the row goes back to `pending` for the next run in
+        // its own context.
+        final contextMoved = !_isRunContextActive(context);
+        if (!resolvedTombstone && contextMoved) {
+          await _resetToPending(context, mutation, sendingRevision);
+        } else if (!resolvedTombstone) {
           // Finding B (PR #64 review, 2026-08-06 remediation round): this
           // write USED to be unconditional -- deliberately ungated,
           // reasoning that D2 scopes the snapshot-identity contract to the
@@ -355,6 +398,14 @@ class PlanningMutationSyncController {
             expectedRevision: sendingRevision,
           );
         }
+        if (contextMoved) {
+          // The current row too: its verdict was discarded, so a retry
+          // waiting on it must hear a connectivity failure last, not the
+          // discarded verdict. Ends in its own `break`, so the connectivity
+          // abandon-loop below never reports a candidate twice.
+          _reportUnsent(candidates.skip(index), onMutationFailure);
+          break;
+        }
         if (error.code == PlanningMutationSyncErrorCode.connectivityFailure) {
           // Fourth PR #64 review round: this `break` abandons every
           // remaining candidate without sending it, and nothing else in
@@ -386,7 +437,12 @@ class PlanningMutationSyncController {
       return;
     }
 
-    final refreshed = await _refreshPlanning();
+    // MG4 C3: a refresh requested after the context moved would refresh a
+    // context the run no longer belongs to. The synchronous check comes first
+    // so that no refresh is even requested; the fallback branch below then
+    // clears the run's own rows without reconciling them (C5).
+    final refreshed =
+        _isRunContextActive(context) && await _refreshPlanning(context);
     if (refreshed) {
       for (final (original, synced, clearRevision, remoteResponse)
           in acceptedRecords) {
@@ -427,19 +483,36 @@ class PlanningMutationSyncController {
     } else {
       for (final (original, synced, clearRevision, remoteResponse)
           in acceptedRecords) {
-        // Applied before each record's reconcile, in `acceptedRecords`
-        // order: this is what lets D7 rule 1a advance the projection's plan
-        // content version across a `planCreate` and its accepted children
-        // even when the refresh failed. The reconciler needs no rule-1a
-        // code of its own.
+        // The rebases and purges of the run's own rows (D7 rules 1b-3, D8),
+        // applied before each record's reconcile, in `acceptedRecords` order.
+        // Rule 1a is not among them (MG4): it follows the reconcile below.
         final effectsApplied = await _applyAcceptedEffects(
           context,
           synced,
           remoteResponse: remoteResponse,
         );
         try {
-          if (await _shouldReconcileAcceptedMutation(context)) {
+          // MG4 C5: checked once, before both calls. A context that moved
+          // means the row is cleared without being reconciled and the
+          // projection is not advanced either.
+          if (_isRunContextActive(context)) {
             await _reconcileAcceptedMutation(context, synced);
+            // MG4 rule 1a: only right after this record's reconcile
+            // completed without throwing, so a context switch or a failed or
+            // skipped reconcile never leaves the projection at the write's
+            // content version without the write (I7). Not covered: the F1
+            // race (a pull for this context stored between C5 and the
+            // reconcile, then the older write reconciled over it;
+            // pre-existing, scheduled for S5b PR 2,
+            // docs/deferred/2026-10-22-content-version-ahead-of-content.md).
+            // This is what carries a `planCreate` and its accepted children to
+            // their final content version when the refresh failed: the
+            // reconciler needs no rule-1a code of its own.
+            if (remoteResponse &&
+                synced.kind.bumpsPlanContent &&
+                synced.acceptedPlanContentVersion != null) {
+              await _advanceAcceptedContentVersion(context, synced);
+            }
           }
         } on ReconcileFieldError catch (error) {
           // LF-8 follow-up: a corrupt backend-accepted mutation must not
@@ -514,6 +587,40 @@ class PlanningMutationSyncController {
     }
   }
 
+  /// MG2: the gated reset a stopped run writes for a row it marked `sending`.
+  /// The result is deliberately unchecked: a miss means a local fold already
+  /// reset the row to `pending` with newer content.
+  Future<void> _resetToPending(
+    ActivePlanningReadContext context,
+    PlanningMutationRecord mutation,
+    int sendingRevision,
+  ) async {
+    await _mutationStore().saveSyncAttemptResult(
+      userId: context.userId,
+      organizationId: context.organizationId,
+      aggregateType: mutation.kind.aggregateType,
+      aggregateId: mutation.aggregateId,
+      syncStatus: PlanningMutationSyncStatus.pending,
+      expectedRevision: sendingRevision,
+    );
+  }
+
+  /// MG2: tells [observer] that each of [records] was left unsent because the
+  /// run stopped. Same rule as the connectivity `break` (ADR-030, fourth
+  /// review round): a retry waiting on one of these must not return as if it
+  /// had worked.
+  void _reportUnsent(
+    Iterable<PlanningMutationRecord> records,
+    PlanningMutationFailureObserver? observer,
+  ) {
+    const unsent = PlanningMutationSyncException(
+      PlanningMutationSyncErrorCode.connectivityFailure,
+    );
+    for (final record in records) {
+      observer?.call(record.kind.aggregateType, record.aggregateId, unsent);
+    }
+  }
+
   /// Whether [record] is a plan or session delete, whose accepted effects
   /// include purging the deleted subtree's child rows (spec D8).
   bool _isCascadeDelete(PlanningMutationRecord record) =>
@@ -545,6 +652,24 @@ class PlanningMutationSyncController {
     } on Exception {
       // Intentionally swallowed -- see the doc comment.
       return false;
+    }
+  }
+
+  /// MG4 rule 1a. Best-effort like [_applyAcceptedEffects]: a failed advance
+  /// leaves the projection behind its content (at most one false conflict on
+  /// a later delete) and must not skip the clear; an Error still propagates.
+  Future<void> _advanceAcceptedContentVersion(
+    ActivePlanningReadContext context,
+    PlanningMutationRecord accepted,
+  ) async {
+    try {
+      await _mutationStore().advanceAcceptedPlanContentVersion(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        accepted: accepted,
+      );
+    } on Exception {
+      // Intentionally swallowed -- see the doc comment.
     }
   }
 

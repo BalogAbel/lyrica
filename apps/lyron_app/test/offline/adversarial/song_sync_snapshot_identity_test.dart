@@ -63,6 +63,7 @@ void main() {
 
       final remote = _GatedSongRemote();
       final controller = SongMutationSyncController(
+        isContextActive: (_) => true,
         store: mutationStore,
         remoteRepository: remote,
       );
@@ -161,6 +162,7 @@ void main() {
 
       final remote = _GatedSongRemote();
       final controller = SongMutationSyncController(
+        isContextActive: (_) => true,
         store: mutationStore,
         remoteRepository: remote,
       );
@@ -231,6 +233,7 @@ void main() {
         ),
       );
       final controller = SongMutationSyncController(
+        isContextActive: (_) => true,
         store: mutationStore,
         remoteRepository: remote,
       );
@@ -347,6 +350,7 @@ void main() {
         ),
       );
       final controller = SongMutationSyncController(
+        isContextActive: (_) => true,
         store: mutationStore,
         remoteRepository: remote,
       );

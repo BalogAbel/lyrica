@@ -1777,6 +1777,13 @@ class _MutablePlanningMutationStore implements PlanningMutationStore {
   }) async {}
 
   @override
+  Future<void> advanceAcceptedPlanContentVersion({
+    required String userId,
+    required String organizationId,
+    required PlanningMutationRecord accepted,
+  }) async {}
+
+  @override
   Future<void> recordPlanEdit({
     required PlanningMutationContext context,
     required PlanningPlanEditMutationDraft draft,
@@ -1873,8 +1880,8 @@ class _RecordingPlanningMutationSyncController
     : super(
         mutationStore: () => throw UnimplementedError(),
         remoteRepository: () => throw UnimplementedError(),
-        refreshPlanning: () async => true,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => true,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -1914,19 +1921,6 @@ class _BlockingDeletePlanningLocalStore implements PlanningLocalStore {
       userId: userId,
       organizationId: organizationId,
       songId: songId,
-    );
-  }
-
-  @override
-  Future<void> deletePlanningData({
-    required String userId,
-    required String organizationId,
-    bool Function()? shouldContinue,
-  }) {
-    return _delegate.deletePlanningData(
-      userId: userId,
-      organizationId: organizationId,
-      shouldContinue: shouldContinue,
     );
   }
 

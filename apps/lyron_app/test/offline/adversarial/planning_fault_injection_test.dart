@@ -39,8 +39,8 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => remote,
-          refreshPlanning: () async => false,
-          shouldReconcileAcceptedMutation: (_) async => true,
+          refreshPlanning: (_) async => false,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {
             reconcileCalls += 1;
           },
@@ -87,8 +87,8 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => remote,
-          refreshPlanning: () async => false,
-          shouldReconcileAcceptedMutation: (_) async => true,
+          refreshPlanning: (_) async => false,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, record) async {
             reconciledAggregateIds.add(record.aggregateId);
           },
@@ -265,6 +265,13 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
     required String organizationId,
     required PlanningMutationRecord accepted,
     required bool remoteResponse,
+  }) async {}
+
+  @override
+  Future<void> advanceAcceptedPlanContentVersion({
+    required String userId,
+    required String organizationId,
+    required PlanningMutationRecord accepted,
   }) async {}
   @override
   Future<void> recordPlanEdit({
