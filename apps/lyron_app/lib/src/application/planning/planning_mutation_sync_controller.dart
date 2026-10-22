@@ -505,10 +505,9 @@ class PlanningMutationSyncController {
             // reconcile, then the older write reconciled over it;
             // pre-existing, scheduled for S5b PR 2,
             // docs/deferred/2026-10-22-content-version-ahead-of-content.md).
-            // This is
-            // what carries a `planCreate` and its accepted children to their
-            // final content version when the refresh failed: the reconciler
-            // needs no rule-1a code of its own.
+            // This is what carries a `planCreate` and its accepted children to
+            // their final content version when the refresh failed: the
+            // reconciler needs no rule-1a code of its own.
             if (remoteResponse &&
                 synced.kind.bumpsPlanContent &&
                 synced.acceptedPlanContentVersion != null) {

@@ -47,7 +47,7 @@ Result: the projection claims content version 5 but shows W (session v3), not
 F (session v4).
 
 The race is pre-existing: on `d73e9071` (the commit before S5b PR 1) the
-reviewer's scratch test passes, so the bug is reproducible there. PR 1 adds
+the bug reproduces (the interleaving yields the same wrong state there). PR 1 adds
 one extra way to reach it: a context that moves A to B across one await and is
 back in A at C5. C3 skips the refresh because the context was B, C5 holds
 again, and the reconcile then runs against whatever a pull stored meanwhile.

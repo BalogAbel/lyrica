@@ -327,6 +327,7 @@ specific finding:
   context. When the active catalog context moves, the run stops before the next song, and a
   failure answered after the move is not written as that song's verdict (no `conflict`); real
   Drift stores, remote double gated on a `Completer`.
+- `apps/lyron_app/test/offline/adversarial/planning_content_version_ahead_test.dart` — skipped red tests for the content-version-ahead race (F1); un-skip them in S5b PR 2 (see `docs/deferred/2026-10-22-content-version-ahead-of-content.md`).
 - `test/application/storage/local_storage_budget_test.dart`,
   `planning_storage_accountant_test.dart`, `local_storage_monitor_test.dart` — the
   content-derived footprint and pressure-classification contracts behind ADR-028: bytes
