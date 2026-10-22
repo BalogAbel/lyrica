@@ -88,6 +88,12 @@ final songMutationSyncControllerProvider = Provider<SongMutationSyncController>(
     return SongMutationSyncController(
       store: ref.watch(songMutationStoreProvider),
       remoteRepository: ref.watch(songMutationRemoteRepositoryProvider),
+      isContextActive: (context) {
+        final activeContext = ref.read(activeCatalogContextProvider);
+        return activeContext != null &&
+            activeContext.userId == context.userId &&
+            activeContext.organizationId == context.organizationId;
+      },
       refreshCatalog: (context) async {
         final activeContext = ref.read(activeCatalogContextProvider);
         if (activeContext == null ||

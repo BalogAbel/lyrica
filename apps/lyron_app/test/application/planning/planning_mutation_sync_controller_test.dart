@@ -30,11 +30,11 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async {
+          refreshPlanning: (_) async {
             refreshCalls += 1;
             return true;
           },
-          shouldReconcileAcceptedMutation: (_) async => true,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {
             reconcileCalls += 1;
           },
@@ -77,8 +77,8 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async => true,
-          shouldReconcileAcceptedMutation: (_) async => true,
+          refreshPlanning: (_) async => true,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {},
         );
 
@@ -128,8 +128,8 @@ void main() {
       final controller = PlanningMutationSyncController(
         mutationStore: () => store,
         remoteRepository: () => repository,
-        refreshPlanning: () async => true,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => true,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -185,8 +185,8 @@ void main() {
       final controller = PlanningMutationSyncController(
         mutationStore: () => store,
         remoteRepository: () => repository,
-        refreshPlanning: () async => true,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => true,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -233,8 +233,8 @@ void main() {
       final controller = PlanningMutationSyncController(
         mutationStore: () => store,
         remoteRepository: () => repository,
-        refreshPlanning: () async => true,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => true,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -273,11 +273,11 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async {
+          refreshPlanning: (_) async {
             refreshCalls += 1;
             return true;
           },
-          shouldReconcileAcceptedMutation: (_) async => true,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {},
         );
 
@@ -325,8 +325,8 @@ void main() {
       final controller = PlanningMutationSyncController(
         mutationStore: () => store,
         remoteRepository: () => repository,
-        refreshPlanning: () async => true,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => true,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -368,8 +368,8 @@ void main() {
       final controller = PlanningMutationSyncController(
         mutationStore: () => store,
         remoteRepository: () => repository,
-        refreshPlanning: () async => true,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => true,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -410,8 +410,8 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async => true,
-          shouldReconcileAcceptedMutation: (_) async => true,
+          refreshPlanning: (_) async => true,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {},
         );
 
@@ -452,8 +452,8 @@ void main() {
       final controller = PlanningMutationSyncController(
         mutationStore: () => store,
         remoteRepository: () => repository,
-        refreshPlanning: () async => false,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => false,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -499,8 +499,8 @@ void main() {
       final controller = PlanningMutationSyncController(
         mutationStore: () => store,
         remoteRepository: () => repository,
-        refreshPlanning: () async => true,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => true,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -592,8 +592,8 @@ void main() {
       final controller = PlanningMutationSyncController(
         mutationStore: () => store,
         remoteRepository: () => repository,
-        refreshPlanning: () async => true,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => true,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -683,11 +683,11 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async {
+          refreshPlanning: (_) async {
             refreshCalls += 1;
             return true;
           },
-          shouldReconcileAcceptedMutation: (_) async => true,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {},
         );
 
@@ -726,8 +726,8 @@ void main() {
       final controller = PlanningMutationSyncController(
         mutationStore: () => store,
         remoteRepository: () => repository,
-        refreshPlanning: () async => false,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => false,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -779,8 +779,8 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async => false,
-          shouldReconcileAcceptedMutation: (_) async => true,
+          refreshPlanning: (_) async => false,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, record) async {
             reconciledRecord = record;
           },
@@ -840,8 +840,8 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async => false,
-          shouldReconcileAcceptedMutation: (_) async => true,
+          refreshPlanning: (_) async => false,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, record) async {
             reconciledRecord = record;
           },
@@ -889,8 +889,8 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async => false,
-          shouldReconcileAcceptedMutation: (_) async => false,
+          refreshPlanning: (_) async => false,
+          isRunContextActive: (_) => false,
           reconcileAcceptedMutation: (_, _) async {
             reconcileCalls += 1;
           },
@@ -947,11 +947,11 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async {
+          refreshPlanning: (_) async {
             refreshCalls += 1;
             return true;
           },
-          shouldReconcileAcceptedMutation: (_) async => true,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {},
         );
 
@@ -976,11 +976,11 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async {
+          refreshPlanning: (_) async {
             refreshCalls += 1;
             return true;
           },
-          shouldReconcileAcceptedMutation: (_) async => true,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {},
         );
 
@@ -1023,8 +1023,8 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async => false,
-          shouldReconcileAcceptedMutation: (_) async => true,
+          refreshPlanning: (_) async => false,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {
             reconcileCalls += 1;
           },
@@ -1070,8 +1070,8 @@ void main() {
       final controller = PlanningMutationSyncController(
         mutationStore: () => store,
         remoteRepository: () => repository,
-        refreshPlanning: () async => true,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => true,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -1130,11 +1130,11 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async {
+          refreshPlanning: (_) async {
             refreshCalls += 1;
             return true;
           },
-          shouldReconcileAcceptedMutation: (_) async => true,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {},
         );
 
@@ -1178,11 +1178,11 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async {
+          refreshPlanning: (_) async {
             refreshCalls += 1;
             return true;
           },
-          shouldReconcileAcceptedMutation: (_) async => true,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {},
         );
 
@@ -1226,8 +1226,8 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async => false,
-          shouldReconcileAcceptedMutation: (_) async => true,
+          refreshPlanning: (_) async => false,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {},
         );
 
@@ -1267,8 +1267,8 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async => false,
-          shouldReconcileAcceptedMutation: (_) async => true,
+          refreshPlanning: (_) async => false,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {},
         );
 
@@ -1311,8 +1311,8 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => _FakePlanningMutationRemoteRepository(),
-          refreshPlanning: () async => true,
-          shouldReconcileAcceptedMutation: (_) async => true,
+          refreshPlanning: (_) async => true,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {},
         );
 
@@ -1351,8 +1351,8 @@ void main() {
       final controller = PlanningMutationSyncController(
         mutationStore: () => store,
         remoteRepository: () => _FakePlanningMutationRemoteRepository(),
-        refreshPlanning: () async => false,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => false,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -1393,8 +1393,8 @@ void main() {
           final controller = PlanningMutationSyncController(
             mutationStore: () => store,
             remoteRepository: () => _FakePlanningMutationRemoteRepository(),
-            refreshPlanning: () async => refreshed,
-            shouldReconcileAcceptedMutation: (_) async => true,
+            refreshPlanning: (_) async => refreshed,
+            isRunContextActive: (_) => true,
             reconcileAcceptedMutation: (_, _) async {},
           );
 
@@ -1435,8 +1435,8 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => _FakePlanningMutationRemoteRepository(),
-          refreshPlanning: () async => refreshed,
-          shouldReconcileAcceptedMutation: (_) async => true,
+          refreshPlanning: (_) async => refreshed,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {},
         );
 

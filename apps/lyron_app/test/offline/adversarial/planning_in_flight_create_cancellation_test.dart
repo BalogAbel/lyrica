@@ -58,8 +58,8 @@ void main() {
       final controller = PlanningMutationSyncController(
         mutationStore: () => store,
         remoteRepository: () => remote,
-        refreshPlanning: () async => true,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => true,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -148,8 +148,8 @@ void main() {
       final controller = PlanningMutationSyncController(
         mutationStore: () => store,
         remoteRepository: () => remote,
-        refreshPlanning: () async => true,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => true,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -228,8 +228,8 @@ void main() {
       final controller = PlanningMutationSyncController(
         mutationStore: () => store,
         remoteRepository: () => remote,
-        refreshPlanning: () async => true,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => true,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -413,8 +413,8 @@ void main() {
       final controller = PlanningMutationSyncController(
         mutationStore: () => store,
         remoteRepository: () => remote,
-        refreshPlanning: () async => true,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => true,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
       await controller.syncPendingMutations(readContext);
@@ -506,8 +506,8 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => remote,
-          refreshPlanning: () async => true,
-          shouldReconcileAcceptedMutation: (_) async => true,
+          refreshPlanning: (_) async => true,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {},
         );
         await controller.syncPendingMutations(readContext);
@@ -672,8 +672,8 @@ void main() {
       final controller = PlanningMutationSyncController(
         mutationStore: () => store,
         remoteRepository: () => remote,
-        refreshPlanning: () async => true,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => true,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -761,8 +761,8 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => remote,
-          refreshPlanning: () async => true,
-          shouldReconcileAcceptedMutation: (_) async => true,
+          refreshPlanning: (_) async => true,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {},
         );
 
@@ -853,8 +853,8 @@ void main() {
       final controller = PlanningMutationSyncController(
         mutationStore: () => store,
         remoteRepository: () => remote,
-        refreshPlanning: () async => true,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => true,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -935,8 +935,8 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => remote,
-          refreshPlanning: () async => true,
-          shouldReconcileAcceptedMutation: (_) async => true,
+          refreshPlanning: (_) async => true,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {},
         );
 

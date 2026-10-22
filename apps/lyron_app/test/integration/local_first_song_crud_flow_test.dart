@@ -214,6 +214,7 @@ void main() {
       'offline create syncs and reconciles the canonical server slug',
       () async {
         final syncController = SongMutationSyncController(
+          isContextActive: (_) => true,
           store: mutationStore,
           remoteRepository: _FakeSongMutationRemoteRepository(
             syncHandler: (record) async => record.copyWith(
@@ -286,6 +287,7 @@ void main() {
       );
 
       final syncController = SongMutationSyncController(
+        isContextActive: (_) => true,
         store: mutationStore,
         remoteRepository: _FakeSongMutationRemoteRepository(
           syncHandler: (record) async => throw const SongMutationSyncException(
@@ -353,6 +355,7 @@ void main() {
         );
 
         final syncController = SongMutationSyncController(
+          isContextActive: (_) => true,
           store: mutationStore,
           remoteRepository: _FakeSongMutationRemoteRepository(
             syncHandler: (record) async => record.copyWith(
@@ -502,6 +505,7 @@ void main() {
         );
 
         final syncController = SongMutationSyncController(
+          isContextActive: (_) => true,
           store: mutationStore,
           remoteRepository: _FakeSongMutationRemoteRepository(
             syncHandler: (record) async =>
@@ -579,6 +583,7 @@ void main() {
         );
 
         final syncController = SongMutationSyncController(
+          isContextActive: (_) => true,
           store: mutationStore,
           remoteRepository: _FakeSongMutationRemoteRepository(
             syncHandler: (record) async =>
@@ -633,6 +638,7 @@ void main() {
         );
 
         final syncController = SongMutationSyncController(
+          isContextActive: (_) => true,
           store: mutationStore,
           remoteRepository: _FakeSongMutationRemoteRepository(
             syncHandler: (record) async =>
@@ -677,6 +683,7 @@ void main() {
         );
 
         final syncController = SongMutationSyncController(
+          isContextActive: (_) => true,
           store: mutationStore,
           remoteRepository: _FakeSongMutationRemoteRepository(
             syncHandler: (record) async =>

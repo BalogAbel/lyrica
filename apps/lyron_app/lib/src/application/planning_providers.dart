@@ -235,9 +235,9 @@ final planningMutationSyncControllerProvider =
         mutationStore: () => ref.read(planningMutationStoreProvider),
         remoteRepository: () =>
             ref.read(planningMutationRemoteRepositoryProvider),
-        refreshPlanning: () =>
+        refreshPlanning: (_) =>
             ref.read(planningSyncControllerProvider).refreshPlanning(),
-        shouldReconcileAcceptedMutation: (context) async {
+        isRunContextActive: (context) {
           final activeContext = ref.read(activePlanningContextProvider);
           return activeContext != null &&
               activeContext.userId == context.userId &&

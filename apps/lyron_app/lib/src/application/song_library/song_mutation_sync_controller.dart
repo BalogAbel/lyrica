@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:lyron_app/src/application/song_library/song_mutation_sync_types.dart';
 
+typedef SongRunContextGuard = bool Function(SongMutationContext context);
 typedef SongCatalogRefresh = Future<void> Function(SongMutationContext context);
 
 enum SongDiscardResult { discarded, syncInProgress }
@@ -62,11 +63,14 @@ class SongMutationSyncController {
   SongMutationSyncController({
     required this._store,
     required this._remoteRepository,
+    required this._isContextActive,
     this._refreshCatalog,
   });
 
   final SongMutationStore _store;
   final SongMutationRemoteRepository _remoteRepository;
+  // ignore: unused_field
+  final SongRunContextGuard _isContextActive;
   final SongCatalogRefresh? _refreshCatalog;
 
   // A sync snapshots every pending song in its user/organization context, so

@@ -39,8 +39,8 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => remote,
-          refreshPlanning: () async => false,
-          shouldReconcileAcceptedMutation: (_) async => true,
+          refreshPlanning: (_) async => false,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {
             reconcileCalls += 1;
           },
@@ -87,8 +87,8 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => remote,
-          refreshPlanning: () async => false,
-          shouldReconcileAcceptedMutation: (_) async => true,
+          refreshPlanning: (_) async => false,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, record) async {
             reconciledAggregateIds.add(record.aggregateId);
           },

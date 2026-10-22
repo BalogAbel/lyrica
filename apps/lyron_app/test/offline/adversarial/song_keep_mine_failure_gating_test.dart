@@ -72,6 +72,7 @@ void main() {
         ),
       );
       final controller = SongMutationSyncController(
+        isContextActive: (_) => true,
         store: mutationStore,
         remoteRepository: remote,
       );
@@ -169,6 +170,7 @@ void main() {
       );
       remote.gate.complete();
       final controller = SongMutationSyncController(
+        isContextActive: (_) => true,
         store: mutationStore,
         remoteRepository: remote,
       );

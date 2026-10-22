@@ -105,8 +105,8 @@ void main() {
     controller = PlanningMutationSyncController(
       mutationStore: () => store,
       remoteRepository: () => remote,
-      refreshPlanning: () => refresh(),
-      shouldReconcileAcceptedMutation: (_) async => reconcileAllowed,
+      refreshPlanning: (_) => refresh(),
+      isRunContextActive: (_) => reconcileAllowed,
       reconcileAcceptedMutation: (ctx, record) =>
           reconciler.reconcile(ctx, record),
     );

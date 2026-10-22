@@ -5,14 +5,15 @@ import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.
 typedef PlanningMutationStoreReader = PlanningMutationStore Function();
 typedef PlanningMutationRemoteRepositoryReader =
     PlanningMutationRemoteRepository Function();
-typedef PlanningRefreshTrigger = Future<bool> Function();
+typedef PlanningRefreshTrigger =
+    Future<bool> Function(ActivePlanningReadContext context);
 typedef PlanningAcceptedMutationReconciler =
     Future<void> Function(
       ActivePlanningReadContext context,
       PlanningMutationRecord record,
     );
-typedef PlanningAcceptedMutationGuard =
-    Future<bool> Function(ActivePlanningReadContext context);
+typedef PlanningRunContextGuard =
+    bool Function(ActivePlanningReadContext context);
 
 /// N3 (PR #64 review, second remediation round): invoked synchronously,
 /// in-band, at the moment `_run` catches a `PlanningMutationSyncException`
@@ -52,14 +53,14 @@ class PlanningMutationSyncController {
     required this._remoteRepository,
     required this._refreshPlanning,
     required this._reconcileAcceptedMutation,
-    required this._shouldReconcileAcceptedMutation,
+    required this._isRunContextActive,
   });
 
   final PlanningMutationStoreReader _mutationStore;
   final PlanningMutationRemoteRepositoryReader _remoteRepository;
   final PlanningRefreshTrigger _refreshPlanning;
   final PlanningAcceptedMutationReconciler _reconcileAcceptedMutation;
-  final PlanningAcceptedMutationGuard _shouldReconcileAcceptedMutation;
+  final PlanningRunContextGuard _isRunContextActive;
 
   // Single-flight keyed by sync context. This controller is an app-scoped
   // singleton, so a global in-flight future would let a sync for one
@@ -386,7 +387,7 @@ class PlanningMutationSyncController {
       return;
     }
 
-    final refreshed = await _refreshPlanning();
+    final refreshed = await _refreshPlanning(context);
     if (refreshed) {
       for (final (original, synced, clearRevision, remoteResponse)
           in acceptedRecords) {
@@ -438,7 +439,7 @@ class PlanningMutationSyncController {
           remoteResponse: remoteResponse,
         );
         try {
-          if (await _shouldReconcileAcceptedMutation(context)) {
+          if (_isRunContextActive(context)) {
             await _reconcileAcceptedMutation(context, synced);
           }
         } on ReconcileFieldError catch (error) {

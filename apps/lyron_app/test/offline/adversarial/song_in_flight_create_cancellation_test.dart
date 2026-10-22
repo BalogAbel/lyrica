@@ -48,6 +48,7 @@ void main() {
 
       final remote = _GatedSongRemote();
       final controller = SongMutationSyncController(
+        isContextActive: (_) => true,
         store: env.mutationStore,
         remoteRepository: remote,
       );
@@ -109,6 +110,7 @@ void main() {
         ),
       );
       final controller = SongMutationSyncController(
+        isContextActive: (_) => true,
         store: env.mutationStore,
         remoteRepository: remote,
       );
@@ -196,6 +198,7 @@ void main() {
       final remote = _GatedSongRemote();
       remote.gate.complete();
       final controller = SongMutationSyncController(
+        isContextActive: (_) => true,
         store: env.mutationStore,
         remoteRepository: remote,
       );

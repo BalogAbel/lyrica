@@ -1873,8 +1873,8 @@ class _RecordingPlanningMutationSyncController
     : super(
         mutationStore: () => throw UnimplementedError(),
         remoteRepository: () => throw UnimplementedError(),
-        refreshPlanning: () async => true,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => true,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 

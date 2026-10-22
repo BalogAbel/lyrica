@@ -41,6 +41,7 @@ void main() {
         ),
       ]);
       final songController = SongMutationSyncController(
+        isContextActive: (_) => true,
         store: songStore,
         remoteRepository: _OfflineSongRemote(),
       );
@@ -123,6 +124,7 @@ void main() {
         ),
       ]);
       final songController = SongMutationSyncController(
+        isContextActive: (_) => true,
         store: songStore,
         remoteRepository: _OfflineSongRemote(),
       );
@@ -218,8 +220,8 @@ void main() {
       final planningController = PlanningMutationSyncController(
         mutationStore: () => planningStore,
         remoteRepository: () => _OfflinePlanningRemote(),
-        refreshPlanning: () async => false,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => false,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -299,8 +301,8 @@ void main() {
       final planningController = PlanningMutationSyncController(
         mutationStore: () => planningStore,
         remoteRepository: () => _OfflinePlanningRemote(),
-        refreshPlanning: () async => false,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => false,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -546,6 +548,7 @@ class _SyncOwnedSongController extends SongMutationSyncController {
     : super(
         store: _FakeSongStore(const []),
         remoteRepository: _OfflineSongRemote(),
+        isContextActive: (_) => true,
       );
 
   final List<String> discardMineCalls = [];

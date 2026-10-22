@@ -38,6 +38,7 @@ void main() {
           ),
         );
         final controller = SongMutationSyncController(
+          isContextActive: (_) => true,
           store: store,
           remoteRepository: repository,
         );
@@ -94,6 +95,7 @@ void main() {
         ),
       );
       final controller = SongMutationSyncController(
+        isContextActive: (_) => true,
         store: store,
         remoteRepository: repository,
       );
@@ -134,6 +136,7 @@ void main() {
         ),
       );
       final controller = SongMutationSyncController(
+        isContextActive: (_) => true,
         store: store,
         remoteRepository: repository,
       );
@@ -173,6 +176,7 @@ void main() {
           ),
         );
         final controller = SongMutationSyncController(
+          isContextActive: (_) => true,
           store: store,
           remoteRepository: repository,
         );
@@ -216,6 +220,7 @@ void main() {
           ),
         );
         final controller = SongMutationSyncController(
+          isContextActive: (_) => true,
           store: store,
           remoteRepository: repository,
         );
@@ -253,6 +258,7 @@ void main() {
         ),
       );
       final controller = SongMutationSyncController(
+        isContextActive: (_) => true,
         store: store,
         remoteRepository: repository,
       );
@@ -303,6 +309,7 @@ void main() {
         // (LF-7), so leaving it unimplemented proves the point if it is.
         final repository = _FakeSongMutationRemoteRepository();
         final controller = SongMutationSyncController(
+          isContextActive: (_) => true,
           store: store,
           remoteRepository: repository,
         );
@@ -349,6 +356,7 @@ void main() {
         );
         final repository = _FakeSongMutationRemoteRepository();
         final controller = SongMutationSyncController(
+          isContextActive: (_) => true,
           store: store,
           remoteRepository: repository,
         );
@@ -391,6 +399,7 @@ void main() {
         );
         final repository = _FakeSongMutationRemoteRepository();
         final controller = SongMutationSyncController(
+          isContextActive: (_) => true,
           store: store,
           remoteRepository: repository,
         );
@@ -437,6 +446,7 @@ void main() {
         );
         final repository = _FakeSongMutationRemoteRepository();
         final controller = SongMutationSyncController(
+          isContextActive: (_) => true,
           store: store,
           remoteRepository: repository,
         );
@@ -477,6 +487,7 @@ void main() {
               ),
         );
         final controller = SongMutationSyncController(
+          isContextActive: (_) => true,
           store: store,
           remoteRepository: repository,
         );
@@ -516,6 +527,7 @@ void main() {
         );
         var refreshCalls = 0;
         final controller = SongMutationSyncController(
+          isContextActive: (_) => true,
           store: store,
           remoteRepository: repository,
           refreshCatalog: (_) async {
@@ -559,6 +571,7 @@ void main() {
               ),
         );
         final controller = SongMutationSyncController(
+          isContextActive: (_) => true,
           store: store,
           remoteRepository: repository,
         );
@@ -622,6 +635,7 @@ void main() {
         },
       );
       final controller = SongMutationSyncController(
+        isContextActive: (_) => true,
         store: store,
         remoteRepository: repository,
       );
@@ -660,6 +674,7 @@ void main() {
           ),
         );
         final controller = SongMutationSyncController(
+          isContextActive: (_) => true,
           store: store,
           remoteRepository: repository,
         );
@@ -713,6 +728,7 @@ void main() {
         ),
       );
       final controller = SongMutationSyncController(
+        isContextActive: (_) => true,
         store: store,
         remoteRepository: repository,
       );
@@ -771,6 +787,7 @@ void main() {
         ),
       );
       final controller = SongMutationSyncController(
+        isContextActive: (_) => true,
         store: store,
         remoteRepository: repository,
       );
@@ -821,6 +838,7 @@ void main() {
           ),
         );
         final controller = SongMutationSyncController(
+          isContextActive: (_) => true,
           store: store,
           remoteRepository: repository,
         );
@@ -874,6 +892,7 @@ void main() {
         ),
       );
       final controller = SongMutationSyncController(
+        isContextActive: (_) => true,
         store: store,
         remoteRepository: repository,
         refreshCatalog: (_) async => throw const SongMutationSyncException(
