@@ -671,7 +671,7 @@ rather than making one reversible).
 ## Amendment: organization switch, import runs and purge ownership (2026-10-21, S5b)
 
 **Status:** Accepted (2026-10-22, S5b design gate). MG1 is implemented by
-S5b PR 1, MG10 and MG11 by S5b PR 3.
+S5b PR 1 (#97); MG10 and MG11 are still to be implemented by S5b PR 3.
 **Spec:** `docs/specs/2026-10-21-planning-mutation-gaps.md` (MG1, MG10,
 MG11).
 

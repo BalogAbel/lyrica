@@ -1,6 +1,6 @@
 # Planning Mutation Gaps, PR 1 (Context and Run Boundaries) Implementation Plan
 
-> Status: Ready for execution (2026-10-22). Covers PR 1 of
+> Status: Implemented (2026-10-22, PR #97). Covers PR 1 of
 > `docs/specs/2026-10-21-planning-mutation-gaps.md` only (MG1–MG5 and their
 > MG13 rows). PR 2 (`fix/planning-unresolved-rows`, MG6–MG9) and PR 3
 > (`fix/purge-and-pull-guards`, MG10–MG12) get their own plans after this PR
@@ -409,10 +409,13 @@ test('an organization switch keeps the previous organization pending '
 **Interfaces:**
 - Produces: `PlanningMutationStore.advanceAcceptedPlanContentVersion` (Global
   Constraints). It calls `PlanningLocalStore.advanceSyncedPlanContentVersion`
-  with `planId = accepted.planId ?? accepted.aggregateId` and
+  with `planId` = the record's `aggregateId` for a plan kind
+  (`kind.aggregateType == 'plan'`) and `accepted.planId` otherwise (the moved
+  rule-1a block, verbatim), and
   `acceptedContentVersion = accepted.acceptedPlanContentVersion`, and does
-  nothing when `!accepted.kind.bumpsPlanContent` or the value is `null` (the
-  PS15 own-write gate already nulls it in the repository mapping).
+  nothing when `!accepted.kind.bumpsPlanContent`, the plan id is `null` or
+  the value is `null` (the PS15 own-write gate already nulls it in the
+  repository mapping).
 - `applyAcceptedWriteEffects` keeps its signature; it no longer touches the
   projection.
 
@@ -603,3 +606,34 @@ test('an organization switch keeps the previous organization pending '
   MG1–MG5, the residuals (MG1 gap, MG2 token binding, MG4 invisible own
   write), and "no backend change"; end it with the attribution line. Bind it
   with the PR tools, wait for green CI, and leave the merge to the user.
+
+## Execution Notes
+
+Deviations from the plan above that were ruled during execution; the code and
+the spec are authoritative where they differ from the plan text.
+
+- **Task 3.** Two existing tests modelled "the context moved" with a guard
+  that is false for the whole run. From MG2 on such a run sends nothing, so
+  they flip the guard after the send instead:
+  `planning_mutation_sync_controller_test.dart` 'accepted-write fallback is
+  skipped when the active boundary changed' uses
+  `isRunContextActive: (_) => repository.calls == 0`, and the C10 test in
+  `planning_session_item_key_sync_test.dart` sets `reconcileAllowed = false`
+  inside its refresh closure.
+- **Task 4.** On the song side C1 and C2 coincide for an update and a delete
+  (no `sending` marker, so no await between the two checks). An extra test,
+  'a context that has already moved writes no sending marker for a create',
+  pins C1 for creates (spec MG3).
+- **Task 5.** Two store tests were rewritten because rule 1a left
+  `applyAcceptedWriteEffects`: 'rule 1: a contiguous own child write
+  rebases the pending plan delete…' and 'rule 1 is idempotent and ignores
+  planEdit/planCreate responses'. The projection stays at the old content
+  version after `applyAcceptedWriteEffects` and reaches the new one only after
+  an explicit `advanceAcceptedPlanContentVersion`. The plan id is the moved
+  block verbatim (plan kind: `aggregateId`; otherwise `accepted.planId`;
+  skipped on `null`), not `accepted.planId ?? accepted.aggregateId`.
+- **Task 6.** The test 'a pull stored for another context does not count for
+  the requester' needs one `Duration.zero` delay, so that the first pull is
+  blocked inside the fetch when the context switch lands. Without it, a single
+  pull started after the switch's synchronous generation invalidation is
+  stored for the original context, and `true` is the correct answer there.

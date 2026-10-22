@@ -4,7 +4,7 @@
 adversarial review on 2026-10-14)
 **Related:** `docs/specs/2026-10-13-personal-song-settings.md` (PS14-PS16),
 ADR-038 (key-edit amendment), ADR-041,
-`docs/deferred/2026-09-30-content-version-advance-on-context-switch.md`
+`docs/specs/2026-10-21-planning-mutation-gaps.md` (MG4, MG5)
 **Files:**
 - `apps/lyron_app/lib/src/application/planning/planning_mutation_sync_controller.dart`
 - `apps/lyron_app/lib/src/application/planning/planning_local_read_repository.dart`
@@ -14,9 +14,10 @@ The review found no silent loss and no absorbed foreign write after its two
 fixes. These are the residuals it rated non-blocking. Each ends in a visible
 state (a failed row or one visible conflict), never in a wrong silent write.
 
-**Triage (2026-10-20):** R1 and R3 are scheduled in roadmap slice S5b
+**Triage (2026-10-22):** R1 is scheduled in roadmap slice S5b PR 2
 (`docs/plans/2026-10-01-delivery-roadmap.md`), next to the other planning
-mutation gaps. R2 and R4 stay here, unscheduled.
+mutation gaps. R3 was fixed by S5b PR 1 (#97, MG5) and is removed. R2 and R4
+stay here, unscheduled.
 
 ## R1. Discarding a failed item create orphans its key-edit row
 
@@ -46,19 +47,6 @@ Keep mine resolves.
 **Where.** The same arm: prefer the projected item's version and key when the
 item is already present.
 
-## R3. A coalesced refresh can predate the key edit's commit
-
-**What.** `PlanningSyncController.refreshPlanning` coalesces onto an in-flight
-refresh that may have fetched before the key edit committed. The projection
-then stays at the base version and the next edit shows one visible
-self-conflict. Inherited, and it affects every versioned kind.
-
-**Why deferred.** It is not specific to this kind; the fix is a general
-refresh-after-write guarantee.
-
-**Where.** `planning_sync_controller.dart`: a refresh requested after a write
-must not coalesce onto a run that started before that write.
-
 ## R4. The key write reads and records in two steps
 
 **What.** `setSessionItemKey` reads the merged item and then records the edit
@@ -71,4 +59,4 @@ base the draft was built from. Inherited shape of the other planning writes.
 **Where.** `PlanningWriteService.setSessionItemKey`: resolve the base inside
 the mutation store's record transaction.
 
-S5b spec (2026-10-21): R3 decided as MG5 (S5b PR 1), R1 as MG9 (S5b PR 2) of `docs/specs/2026-10-21-planning-mutation-gaps.md`; R2 and R4 stay here.
+S5b spec (2026-10-21): R1 decided as MG9 (S5b PR 2) of `docs/specs/2026-10-21-planning-mutation-gaps.md`; R3 was fixed as MG5 (S5b PR 1, #97); R2 and R4 stay here.

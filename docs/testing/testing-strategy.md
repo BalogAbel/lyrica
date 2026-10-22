@@ -302,6 +302,20 @@ specific finding:
   conflict). Also pins that collapsing a still-pending `sessionCreate` deletes that
   session's pending `session_item` and `session_item_order` mutations in the same
   transaction, so nothing is left behind that could only ever fail `dependencyBlocked`.
+- `planning_run_boundary_test.dart` — S5b PR 1 (MG4, MG5,
+  `docs/specs/2026-10-21-planning-mutation-gaps.md`): against the real Drift stores and the
+  real sync controllers with a scripted backend, a context switch before the batch end leaves
+  the old projection behind its content (rule 1a runs only after the same record's reconcile,
+  never ahead of the write), a reconcile failure does the same, a plan created and given a
+  child in one batch still reaches its final content version, a sign-out purge inside a run
+  writes nothing back, and an after-write refresh never counts a pull that started before the
+  write. The stop checks C1-C6 of
+  `PlanningMutationSyncController._run` are pinned in the `a run stops when its context moves
+  (MG2)` group of `test/application/planning/planning_mutation_sync_controller_test.dart`.
+- `song_run_boundary_test.dart` — S5b PR 1 (MG3): a song sync run belongs to one catalog
+  context. When the active catalog context moves, the run stops before the next song, and a
+  failure answered after the move is not written as that song's verdict (no `conflict`); real
+  Drift stores, remote double gated on a `Completer`.
 - `test/application/storage/local_storage_budget_test.dart`,
   `planning_storage_accountant_test.dart`, `local_storage_monitor_test.dart` — the
   content-derived footprint and pressure-classification contracts behind ADR-028: bytes

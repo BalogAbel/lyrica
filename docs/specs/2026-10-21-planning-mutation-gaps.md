@@ -1,6 +1,8 @@
 # Spec: Planning Mutation Gaps (S5b)
 
-> Status: Accepted (2026-10-22, design gate approved). No code yet. PR 1
+> Status: Accepted (2026-10-22, design gate approved). PR 1 (MG1–MG5 and
+> their MG13 rows) is implemented on `fix/planning-mutation-gaps` (#97,
+> 2026-10-22); PR 2 and PR 3 are not started. PR 1
 > plan: `docs/plans/2026-10-22-planning-run-boundaries.md`. Amends ADR-030 (in-flight create
 > cancellation follow-up), ADR-035 (organization switch, import runs, D5
 > purge ownership) and ADR-038 (rule 1a placement, retry rule), and
@@ -178,6 +180,11 @@ song side.)
   after a failed call, before the failure-status write (no `conflict` is
   written for a call answered under a changed identity; the row keeps its
   pending status). On "moved" the loop stops.
+- On the song side C1 and C2 coincide for an update and a delete: those
+  have no `sending` marker, so there is no await between the two checks and
+  both run in the same synchronous turn. C1 is observable only as the
+  skipped create marker (`markCreateSending`), pinned by the test 'a context
+  that has already moved writes no sending marker for a create'.
 - `keepMine` is out of scope: it is a single, user-initiated call.
 - The per-record reconcile (`reconcileSyncedSong`) is already gated on the
   mutation row's revision, so a purge that removed the row also skips the
@@ -193,7 +200,13 @@ song side.)
 - Rule 1a becomes its own store call, `advanceAcceptedPlanContentVersion`
   (it wraps `PlanningLocalStore.advanceSyncedPlanContentVersion`, only for a
   `remoteResponse` record whose kind `bumpsPlanContent`, with the PS15
-  own-write gate for key edits unchanged). The controller calls it only at
+  own-write gate for key edits unchanged). The store keeps the moved
+  rule-1a block verbatim: the target plan is the accepted record's
+  `aggregateId` for plan kinds (`kind.aggregateType == 'plan'`) and
+  `accepted.planId` otherwise, and the call does nothing when that id or the
+  record's `acceptedPlanContentVersion` is null (the PS15 gate nulls the
+  version for a key edit that is not provably the caller's own). The
+  `remoteResponse` condition stays at the controller's call site. The controller calls it only at
   batch end, in the refresh-failed branch, when C5 held for the record **and**
   that record's reconcile completed without throwing, immediately after the
   reconcile, in `acceptedRecords` order.
