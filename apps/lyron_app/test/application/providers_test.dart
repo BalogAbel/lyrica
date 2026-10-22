@@ -1918,19 +1918,6 @@ class _BlockingDeletePlanningLocalStore implements PlanningLocalStore {
   }
 
   @override
-  Future<void> deletePlanningData({
-    required String userId,
-    required String organizationId,
-    bool Function()? shouldContinue,
-  }) {
-    return _delegate.deletePlanningData(
-      userId: userId,
-      organizationId: organizationId,
-      shouldContinue: shouldContinue,
-    );
-  }
-
-  @override
   Future<void> deletePlanningDataForUser({
     required String userId,
     bool Function()? shouldContinue,

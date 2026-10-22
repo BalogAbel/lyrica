@@ -183,18 +183,13 @@ class PlanningSyncController extends ChangeNotifier {
         previousOrganizationId == context.organizationId;
 
     if (!sameBoundary) {
+      // MG1: an organization switch keeps the previous organization's
+      // projection and pending mutation rows. They are keyed by
+      // (user, organization), so nothing of them is read under the new
+      // organization, and deleting them would silently destroy unsynced
+      // work. Only a sign-out, a user change or a confirmed membership
+      // revocation purge planning data.
       _invalidateRefreshGeneration();
-      if (previousUserId != null && previousOrganizationId != null) {
-        try {
-          await _localStore().deletePlanningData(
-            userId: previousUserId,
-            organizationId: previousOrganizationId,
-            shouldContinue: () => !_isStaleBoundary(boundaryGeneration),
-          );
-        } on PlanningProjectionAbortedException {
-          return;
-        }
-      }
     }
     if (_isStaleBoundary(boundaryGeneration)) {
       return;
