@@ -9,6 +9,8 @@ import 'package:lyron_app/src/application/planning/planning_mutation_sync_types.
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
 
+import '../../support/planning_run_fixtures.dart';
+
 /// Adversarial coverage for
 /// docs/specs/2026-09-29-plan-delete-and-session-cascade.md (D5-D10, I2/I3):
 /// the real storage boundary and sync controller against a scripted backend.
@@ -36,7 +38,7 @@ void main() {
       mutationStore: store,
       contextReader: () async => readContext,
     );
-    await seedProjection(localStore, contentVersion: 3);
+    await seedPlanningProjection(localStore, contentVersion: 3);
   });
 
   tearDown(() async {
@@ -83,7 +85,7 @@ void main() {
     await recordNewSession();
     final entered = Completer<void>();
     final release = Completer<void>();
-    final remote = _ScriptedPlanningRemote((record) async {
+    final remote = ScriptedPlanningRemote((record) async {
       switch (record.kind) {
         case PlanningMutationKind.sessionCreate:
           entered.complete();
@@ -140,7 +142,7 @@ void main() {
     await recordNewSession();
     final entered = Completer<void>();
     final release = Completer<void>();
-    final remote = _ScriptedPlanningRemote((record) async {
+    final remote = ScriptedPlanningRemote((record) async {
       switch (record.kind) {
         case PlanningMutationKind.sessionCreate:
           entered.complete();
@@ -179,7 +181,7 @@ void main() {
     expect(await reads.listPlans(), isEmpty, reason: 'still hidden (D10)');
 
     // A later refresh shows the plan as it now is.
-    await seedProjection(localStore, contentVersion: 5);
+    await seedPlanningProjection(localStore, contentVersion: 5);
     await controller.retryMutation(
       readContext,
       aggregateType: 'plan',
@@ -194,7 +196,7 @@ void main() {
   test('a connectivity-failed plan delete retried after a foreign write '
       'conflicts visibly instead of absorbing it (review gate 3 F1)', () async {
     var backendContentVersion = 3;
-    final remote = _ScriptedPlanningRemote((record) async {
+    final remote = ScriptedPlanningRemote((record) async {
       if (record.kind != PlanningMutationKind.planDelete) {
         throw StateError('unexpected ${record.kind}');
       }
@@ -231,7 +233,7 @@ void main() {
     // The foreign write lands and a refresh brings it in; the plan stays
     // hidden behind the pending delete (D10), so the user never sees it.
     backendContentVersion = 4;
-    await seedProjection(localStore, contentVersion: 4);
+    await seedPlanningProjection(localStore, contentVersion: 4);
     await controller.retryMutation(
       readContext,
       aggregateType: 'plan',
@@ -258,7 +260,7 @@ void main() {
     final entered = Completer<void>();
     final release = Completer<void>();
     var sessionCreateCalls = 0;
-    final remote = _ScriptedPlanningRemote((record) async {
+    final remote = ScriptedPlanningRemote((record) async {
       switch (record.kind) {
         case PlanningMutationKind.sessionCreate:
           sessionCreateCalls += 1;
@@ -302,7 +304,7 @@ void main() {
     await firstRun;
     // A refresh brings the foreign write in; the plan stays hidden behind
     // the pending delete (D10), so the user cannot have seen it.
-    await seedProjection(localStore, contentVersion: 4);
+    await seedPlanningProjection(localStore, contentVersion: 4);
 
     final shown = await allRows();
     expect(shown.map((row) => row.syncStatus), [
@@ -364,7 +366,7 @@ void main() {
         baseVersion: 1,
       ),
     );
-    final remote = _ScriptedPlanningRemote((record) async {
+    final remote = ScriptedPlanningRemote((record) async {
       throw const PlanningMutationSyncException(
         PlanningMutationSyncErrorCode.connectivityFailure,
       );
@@ -386,61 +388,4 @@ void main() {
           'a response would have moved 1 -> 2',
     );
   });
-}
-
-Future<void> seedProjection(
-  DriftPlanningLocalStore localStore, {
-  required int contentVersion,
-}) => localStore.replaceActiveProjection(
-  userId: 'user-1',
-  organizationId: 'org-1',
-  plans: [
-    CachedPlanRecord(
-      id: 'plan-1',
-      slug: 'plan-1',
-      name: 'Plan',
-      description: null,
-      scheduledFor: null,
-      updatedAt: DateTime.utc(2026),
-      version: 2,
-      contentVersion: contentVersion,
-    ),
-  ],
-  sessions: const [
-    CachedSessionRecord(
-      id: 'session-1',
-      planId: 'plan-1',
-      position: 1,
-      name: 'S',
-      version: 2,
-    ),
-  ],
-  items: const [
-    CachedSessionItemRecord(
-      id: 'item-1',
-      planId: 'plan-1',
-      sessionId: 'session-1',
-      position: 1,
-      songId: 'song-1',
-      songTitle: 'Song',
-    ),
-  ],
-  refreshedAt: DateTime.utc(2026),
-);
-
-class _ScriptedPlanningRemote implements PlanningMutationRemoteRepository {
-  _ScriptedPlanningRemote(this._respond);
-
-  final Future<PlanningMutationRecord> Function(PlanningMutationRecord record)
-  _respond;
-  final List<PlanningMutationRecord> calls = [];
-
-  @override
-  Future<PlanningMutationRecord> syncMutation({
-    required String organizationId,
-    required PlanningMutationRecord record,
-  }) {
-    calls.add(record);
-    return _respond(record);
-  }
 }

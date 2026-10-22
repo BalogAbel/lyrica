@@ -437,7 +437,12 @@ class PlanningMutationSyncController {
       return;
     }
 
-    final refreshed = await _refreshPlanning(context);
+    // MG4 C3: a refresh requested after the context moved would refresh a
+    // context the run no longer belongs to. The synchronous check comes first
+    // so that no refresh is even requested; the fallback branch below then
+    // clears the run's own rows without reconciling them (C5).
+    final refreshed =
+        _isRunContextActive(context) && await _refreshPlanning(context);
     if (refreshed) {
       for (final (original, synced, clearRevision, remoteResponse)
           in acceptedRecords) {
@@ -478,19 +483,31 @@ class PlanningMutationSyncController {
     } else {
       for (final (original, synced, clearRevision, remoteResponse)
           in acceptedRecords) {
-        // Applied before each record's reconcile, in `acceptedRecords`
-        // order: this is what lets D7 rule 1a advance the projection's plan
-        // content version across a `planCreate` and its accepted children
-        // even when the refresh failed. The reconciler needs no rule-1a
-        // code of its own.
+        // The rebases and purges of the run's own rows (D7 rules 1b-3, D8),
+        // applied before each record's reconcile, in `acceptedRecords` order.
+        // Rule 1a is not among them (MG4): it follows the reconcile below.
         final effectsApplied = await _applyAcceptedEffects(
           context,
           synced,
           remoteResponse: remoteResponse,
         );
         try {
+          // MG4 C5: checked once, before both calls. A context that moved
+          // means the row is cleared without being reconciled and the
+          // projection is not advanced either.
           if (_isRunContextActive(context)) {
             await _reconcileAcceptedMutation(context, synced);
+            // MG4 rule 1a: only right after this record's reconcile
+            // completed without throwing, so the projection never sits at
+            // the write's content version without the write (I7). This is
+            // what carries a `planCreate` and its accepted children to their
+            // final content version when the refresh failed: the reconciler
+            // needs no rule-1a code of its own.
+            if (remoteResponse &&
+                synced.kind.bumpsPlanContent &&
+                synced.acceptedPlanContentVersion != null) {
+              await _advanceAcceptedContentVersion(context, synced);
+            }
           }
         } on ReconcileFieldError catch (error) {
           // LF-8 follow-up: a corrupt backend-accepted mutation must not
@@ -630,6 +647,24 @@ class PlanningMutationSyncController {
     } on Exception {
       // Intentionally swallowed -- see the doc comment.
       return false;
+    }
+  }
+
+  /// MG4 rule 1a. Best-effort like [_applyAcceptedEffects]: a failed advance
+  /// leaves the projection behind its content (at most one false conflict on
+  /// a later delete) and must not skip the clear; an Error still propagates.
+  Future<void> _advanceAcceptedContentVersion(
+    ActivePlanningReadContext context,
+    PlanningMutationRecord accepted,
+  ) async {
+    try {
+      await _mutationStore().advanceAcceptedPlanContentVersion(
+        userId: context.userId,
+        organizationId: context.organizationId,
+        accepted: accepted,
+      );
+    } on Exception {
+      // Intentionally swallowed -- see the doc comment.
     }
   }
 

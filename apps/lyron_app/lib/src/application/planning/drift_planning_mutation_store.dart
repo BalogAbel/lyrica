@@ -1411,20 +1411,6 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
     final planId = accepted.kind.aggregateType == 'plan'
         ? accepted.aggregateId
         : accepted.planId;
-    final acceptedContentVersion = accepted.acceptedPlanContentVersion;
-
-    // D7 rule 1a -- the projection, in the local store's own transaction.
-    if (remoteResponse &&
-        accepted.kind.bumpsPlanContent &&
-        planId != null &&
-        acceptedContentVersion != null) {
-      await _localStore.advanceSyncedPlanContentVersion(
-        userId: userId,
-        organizationId: organizationId,
-        planId: planId,
-        acceptedContentVersion: acceptedContentVersion,
-      );
-    }
 
     var changed = false;
     await _database.transaction(() async {
@@ -1487,6 +1473,29 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
     });
     if (changed) {
       _onStorageFootprintChanged?.call();
+    }
+  }
+
+  @override
+  Future<void> advanceAcceptedPlanContentVersion({
+    required String userId,
+    required String organizationId,
+    required PlanningMutationRecord accepted,
+  }) async {
+    final planId = accepted.kind.aggregateType == 'plan'
+        ? accepted.aggregateId
+        : accepted.planId;
+    final acceptedContentVersion = accepted.acceptedPlanContentVersion;
+    // D7 rule 1a -- the projection, in the local store's own transaction.
+    if (accepted.kind.bumpsPlanContent &&
+        planId != null &&
+        acceptedContentVersion != null) {
+      await _localStore.advanceSyncedPlanContentVersion(
+        userId: userId,
+        organizationId: organizationId,
+        planId: planId,
+        acceptedContentVersion: acceptedContentVersion,
+      );
     }
   }
 
