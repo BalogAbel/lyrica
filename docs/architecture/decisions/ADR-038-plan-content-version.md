@@ -257,8 +257,8 @@ migration `supabase/migrations/202610130001_session_item_key.sql`.
 
 ## Amendment: rule 1a placement and the retry rule (2026-10-21, S5b)
 
-**Status:** Proposed (S5b design gate pending). Item 1 is implemented by S5b
-PR 1, item 2 by S5b PR 2.
+**Status:** Accepted (2026-10-22, S5b design gate). Item 1 is implemented by
+S5b PR 1, item 2 by S5b PR 2.
 **Spec:** `docs/specs/2026-10-21-planning-mutation-gaps.md` (MG4, MG8).
 
 1. **Rule 1a runs only after a successful reconcile of the same record

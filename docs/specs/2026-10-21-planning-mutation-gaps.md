@@ -1,8 +1,7 @@
 # Spec: Planning Mutation Gaps (S5b)
 
-> Status: Proposed (2026-10-21, S5b brainstorm; design gate pending). No
-> code yet. PR 1 plan: `docs/plans/2026-10-21-planning-run-boundaries.md`
-> (written after the design gate). Amends ADR-030 (in-flight create
+> Status: Accepted (2026-10-22, design gate approved). No code yet. PR 1
+> plan: `docs/plans/2026-10-22-planning-run-boundaries.md`. Amends ADR-030 (in-flight create
 > cancellation follow-up), ADR-035 (organization switch, import runs, D5
 > purge ownership) and ADR-038 (rule 1a placement, retry rule), and
 > supersedes the matching options in the deferred entries listed under
@@ -152,8 +151,8 @@ it at named check points:
   - `retryMutation`'s observer still hears it: a retry whose own record a
     stop left unsent must not return as if it had worked. The stop reports a
     connectivity-class failure for every candidate it leaves unsent (the C2
-    row included), the rule the connectivity `break` already follows
-    (ADR-030, fourth review round).
+    and C6 rows included: a C6 verdict is discarded), the rule the
+    connectivity `break` already follows (ADR-030, fourth review round).
 - A user switch releases the active context (XU2), so every check fails for
   it. An organization-only switch by the same user also stops the run; the
   rows simply wait for their context (MG1).

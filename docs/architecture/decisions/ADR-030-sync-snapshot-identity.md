@@ -1132,7 +1132,7 @@ hand-rolled fake, for the same reason as the suites above):
 
 ## Stranded Tombstone Follow-Up (2026-10-21, S5b)
 
-**Status:** Proposed (S5b design gate pending); implemented by S5b PR 2.
+**Status:** Accepted (2026-10-22, S5b design gate); implemented by S5b PR 2.
 **Spec:** `docs/specs/2026-10-21-planning-mutation-gaps.md` (MG6, MG7).
 
 The in-flight create cancellation follow-up above resolves a `cancelling`
