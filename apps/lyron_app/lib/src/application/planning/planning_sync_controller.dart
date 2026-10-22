@@ -71,8 +71,9 @@ class PlanningSyncController extends ChangeNotifier {
   /// is reset. This runs on the auth edge itself: the I3 guard in
   /// _refreshPlanning runs only if a refresh runs, and _readPlanningOrThrow
   /// skips the refresh while local data is present (F7). Releasing the
-  /// previous boundary here also means handleActiveContextChanged finds no
-  /// previous boundary to delete when the new user's arrives (F8). In memory
+  /// previous boundary here also means the previous user's state is already
+  /// released when the new user's arrives in handleActiveContextChanged
+  /// (F8), which deletes no local data on a switch since MG1. In memory
   /// only: no local data is deleted.
   void handleCurrentUser(String currentUserId) {
     final changed = _ownership.observe(currentUserId);

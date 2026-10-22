@@ -251,6 +251,152 @@ void main() {
     expect(item.version, 2);
     expect(await allRows(), isEmpty);
   });
+
+  group('tombstones and switch-back across a context move (MG1, MG2)', () {
+    // Records the delete of a still-`sending` create (the row becomes a
+    // `cancelling` tombstone) and moves the context, as one step.
+    Future<void> deleteCreatedPlanAndMoveContext() async {
+      await store.recordPlanDelete(
+        context: context,
+        draft: const PlanningPlanDeleteMutationDraft(planId: 'plan-new'),
+      );
+      active = false;
+    }
+
+    Future<void> recordPlanCreate() => store.recordPlanCreate(
+      context: context,
+      draft: const PlanningPlanCreateMutationDraft(
+        planId: 'plan-new',
+        slug: 'plan-new',
+        name: 'New plan',
+      ),
+    );
+
+    test('C2: a create deleted while the run is between the sending write '
+        'and the C2 check is collapsed, not left pending, and nothing is '
+        'sent', () async {
+      await recordPlanCreate();
+      final remote = ScriptedPlanningRemote(
+        (record) async => throw StateError('must not send'),
+      );
+      var guardCalls = 0;
+      Future<void>? deleteWrite;
+      final controller = PlanningMutationSyncController(
+        mutationStore: () => store,
+        remoteRepository: () => remote,
+        refreshPlanning: (_) async => false,
+        isRunContextActive: (_) {
+          guardCalls += 1;
+          if (guardCalls == 2) {
+            // C2 is the second guard call of the run (C1 is the first): the
+            // row is `sending` here, so the delete records a tombstone, and
+            // the context moves, both right after the sending write.
+            deleteWrite = deleteCreatedPlanAndMoveContext();
+            return false;
+          }
+          return true;
+        },
+        reconcileAcceptedMutation: reconciler.reconcile,
+      );
+
+      await controller.syncPendingMutations(readContext);
+      await deleteWrite;
+
+      expect(guardCalls, 2);
+      expect(remote.calls, isEmpty);
+      expect(await allRows(), isEmpty);
+    });
+
+    test('C6: a create that fails remotely after the context moved, and was '
+        'deleted during the call, has its tombstone resolved', () async {
+      await recordPlanCreate();
+      final remote = ScriptedPlanningRemote((record) async {
+        await deleteCreatedPlanAndMoveContext();
+        throw const PlanningMutationSyncException(
+          PlanningMutationSyncErrorCode.connectivityFailure,
+        );
+      });
+
+      await controllerFor(remote).syncPendingMutations(readContext);
+
+      expect(remote.calls, hasLength(1));
+      expect(await allRows(), isEmpty);
+    });
+
+    test('the previous organization pending row and projection survive a '
+        'switch and sync when it is active again (MG1)', () async {
+      const orgB = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-b',
+      );
+      const orgBRead = ActivePlanningReadContext(
+        userId: 'user-1',
+        organizationId: 'org-b',
+      );
+      const orgARead = ActivePlanningReadContext(
+        userId: 'user-1',
+        organizationId: 'org-a',
+      );
+      await seedPlanningProjection(
+        localStore,
+        contentVersion: 3,
+        organizationId: 'org-b',
+      );
+      await store.recordSessionRename(
+        context: orgB,
+        draft: const PlanningSessionRenameMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          name: 'Renamed in b',
+          baseVersion: 2,
+        ),
+      );
+      final planningSync = PlanningSyncController(
+        localStore: () => localStore,
+        localDataLifecycle: LocalDataLifecycle(
+          songCatalogStore: _NoopSongCatalogStore(),
+          planningLocalStore: localStore,
+          identityStore: _NoopLastKnownIdentityStore(),
+          noteLastKnownIdentity: (_) {},
+          eventsRecorder: _NoopLocalDataEventsRecorder(),
+        ),
+        remoteRepository: _OfflineRefreshRemote.new,
+        authSessionReader: () =>
+            const AppAuthSession(userId: 'user-1', email: 'demo@lyron.local'),
+      );
+
+      await planningSync.handleActiveContextChanged(orgBRead, refresh: false);
+      await planningSync.handleActiveContextChanged(orgARead);
+      await planningSync.handleActiveContextChanged(orgBRead);
+
+      expect(planningSync.state.organizationId, 'org-b');
+      final remote = ScriptedPlanningRemote(
+        (record) async => record.copyWith(baseVersion: 3),
+      );
+      await controllerFor(remote).syncPendingMutations(orgBRead);
+
+      expect(remote.calls, hasLength(1));
+      expect(
+        await store.readAllMutations(userId: 'user-1', organizationId: 'org-b'),
+        isEmpty,
+      );
+      final detail = (await localStore.readPlanDetail(
+        userId: 'user-1',
+        organizationId: 'org-b',
+        planId: 'plan-1',
+      ))!;
+      expect(detail.sessions.single.name, 'Renamed in b');
+    });
+  });
+}
+
+/// A backend that is unreachable: every pull fails.
+class _OfflineRefreshRemote implements PlanningRemoteRefreshRepository {
+  @override
+  Future<PlanningSyncPayload> fetchPlanningSyncPayload({
+    required String organizationId,
+    bool Function()? shouldContinue,
+  }) async => throw Exception('offline');
 }
 
 PlanningSyncPayload _payload({required int itemVersion}) => PlanningSyncPayload(

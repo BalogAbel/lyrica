@@ -21,7 +21,13 @@ void main() {
   suppressDriftMultipleDatabaseWarnings();
 
   group('Song run boundary (MG3)', () {
-    test('a catalog context change between songs stops the run', () async {
+    // For updates C1 and C2 coincide on the song side (no `sending` marker,
+    // so no await between the checks): this pins "the run stops at C1 or C2",
+    // not C1 alone. C1 alone is pinned for creates by 'a context that has
+    // already moved writes no sending marker for a create' in
+    // song_mutation_sync_controller_test.dart.
+    test('a catalog context change between songs stops the run (C1 or C2: '
+        'they coincide for updates)', () async {
       final env = _TestEnv();
       addTearDown(env.close);
       await env.seedPendingUpdate('song-1');

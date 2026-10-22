@@ -1191,6 +1191,38 @@ void main() {
       expect(controller2.state.organizationId, isNull);
       expect(controller2.state.organizationId, isNot('org-b'));
     });
+
+    // Known behavior, pinned (MG1): when the last known identity carries NO
+    // organization, the offline cold start falls back to the store's latest
+    // cached organization for the user (readLatestCachedOrganizationId), the
+    // same fallback the song side has. After a switch whose first pull failed
+    // that is the previous organization: cached data may outlive the user's
+    // revocation, and nothing is exposed that this device did not already
+    // hold for this user. Recorded in
+    // docs/deferred/2026-10-22-other-organization-pending-work.md.
+    test(
+      'an offline cold start with no identity organization after a switch '
+      'falls back to the latest cached organization (known behavior)',
+      () async {
+        await switchedAwayFromUnsyncedOrgB();
+        final controller2 = PlanningSyncController(
+          localStore: () => store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: () => remoteRepository,
+          authSessionReader: () => null,
+          lastKnownIdentityReader: () =>
+              (userId: 'user-1', organizationId: null),
+        );
+
+        await controller2.handleOfflineAuthenticated();
+
+        expect(controller2.state.organizationId, 'org-b');
+        expect(
+          await store.readLatestCachedOrganizationId(userId: 'user-1'),
+          'org-b',
+        );
+      },
+    );
   });
 
   group('PlanningSyncController paged pull (PG6-PG8)', () {
