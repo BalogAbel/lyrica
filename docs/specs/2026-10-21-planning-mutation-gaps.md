@@ -114,6 +114,11 @@ data.** (Decides the organization-switch finding: option (a), keep.)
   (`countPlanningPendingWork` is user-wide), and so do the different-user
   reauth wipe and the D5 purge. PR 1 records this as a deferred entry whose
   trigger is an organization switcher or a field report.
+- **Known behavior (pinned):** an offline cold start after a switch whose
+  first pull failed, with a last known identity that carries no organization,
+  falls back to `readLatestCachedOrganizationId` and so lands on the previous
+  organization; this matches the song side and "cached data may outlive a
+  revocation".
 - `PlanningLocalStore.deletePlanningData` loses its only production caller
   and is removed from the interface, the Drift store and the test doubles. A
   destructive primitive outside the gate with no caller is not kept.
@@ -224,8 +229,15 @@ song side.)
 - Why refined: option (a) gated 1a at both of today's call sites, but both
   run before the reconcile, so a context switch, or a reconcile failure,
   between the advance and the reconcile still left the projection at R
-  without W (builder check, 2026-10-21). Rule 1b at batch end already rebases
-  a delete recorded mid-run from R - 1, so the early advance bought nothing.
+  without W (builder check, 2026-10-21).
+- **Accepted narrow window (refresh-failed branch only).** Before, rule 1a
+  ran inside the effects call, ahead of rule 1b, so a `planDelete` drafted
+  after it read R. Now the advance follows the reconcile. A `planDelete`
+  recorded at batch end between a record's effects call (rule 1b) and that
+  record's advance reads R - 1 from the projection and gets no later rule-1b
+  rebase for that record, so it ends in a visible false conflict (fail-safe:
+  a stale base conflicts, I3 holds). A delete recorded earlier in the run
+  is still rebased by the batch-end rule 1b. The window spans one reconcile.
 - **Residual, pre-existing and unchanged:** when C5 fails, the accepted row is
   cleared without a reconcile, so the user's own accepted write W is not
   shown in the old context until that context refreshes. Option (b) (keep
@@ -504,12 +516,13 @@ every task.
     edit and one structural kind); a queued run that aborts before its pull,
     and an `idle` set by a context change, both count as not refreshed;
   - the retry observer hears a stopped run's unsent record.
-- Existing tests that pin the boundary delete ("switching to a new active
-  organization that fails to refresh does not expose the previous
-  organization projection", "stale previous-boundary delete is aborted when
-  ownership returns to that organization") are rewritten to pin the keep:
-  the new organization still reads nothing of the old one, and the old one's
-  rows are intact.
+- The existing tests that pin the boundary delete are changed: "switching to
+  a new active organization that fails to refresh does not expose the
+  previous organization projection" is rewritten to pin the keep (the new
+  organization still reads nothing of the old one, and the old one's rows
+  are intact), and "stale previous-boundary delete is aborted when ownership
+  returns to that organization" is deleted with its test double, because the
+  aborted delete it guarded no longer exists.
 - Prove the guards can fail: revert each check (C1–C6, the pull-sequence
   test, the never-coalesce queueing, the 1a-after-reconcile order, the MG1
   delete removal) one at a time and watch its test fail.

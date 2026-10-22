@@ -22,6 +22,13 @@ The work is not hidden from the destructive paths. `countPlanningPendingWork`
 counts by `userId` only, so the sign-out warning, the different-user reauth
 wipe and the D5 purge dialog all include it.
 
+Related known behavior (pinned by a test, not a defect): after a switch
+whose first pull failed, an offline cold start whose last known identity has
+no organization falls back to the latest cached organization
+(`readLatestCachedOrganizationId`) and shows the previous organization. The
+song side behaves the same, and cached data may outlive a revocation by
+design (authorization is backend-enforced and converges on reconnect).
+
 ## Why deferred
 
 The switch happens automatically (the active organization is the smallest

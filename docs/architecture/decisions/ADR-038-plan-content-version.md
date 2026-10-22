@@ -218,7 +218,8 @@ Follow-ups this slice created, each recorded under `docs/deferred/`:
   stays hidden behind "could not find the target item" copy until the row is
   discarded. Found by review gate 4 (F5); the mechanism predates this slice and
   is kept fail-open on purpose for offline editors.
-- `docs/deferred/2026-09-30-content-version-advance-on-context-switch.md`: D7
+- `docs/deferred/2026-09-30-content-version-advance-on-context-switch.md`
+  (removed by S5b PR 1; see the 2026-10-21 amendment): D7
   rule 1a advances the projection's plan `content_version` right after an
   accepted child write. If the org or user context switches mid-run, the old
   context's accepted child rows are cleared without a reconcile, so its
@@ -273,11 +274,15 @@ S5b PR 2.
    accepted row without bringing the write W into the projection, which left
    the projection at R without W and broke I7 (the deferred entry for
    review gate 4's F6 finding, removed when this item was implemented).
-   A delete recorded mid-run reads R - 1 and is rebased by rule 1b at batch
-   end, so nothing depended on the early advance. Consequence (already
-   listed under "Narrow crash windows"): a crash after the RPC leaves the
-   projection at R - 1 until the next refresh, so a later delete can show
-   one visible false conflict.
+   A delete recorded earlier in the run reads R - 1 and is still rebased by
+   rule 1b at batch end. Accepted narrow window (refresh-failed branch
+   only): a `planDelete` recorded between a record's batch-end effects call
+   (rule 1b) and that record's advance reads R - 1 and gets no later rule-1b
+   rebase for that record, so it ends in a visible false conflict (fail-safe,
+   I3 holds); before, rule 1a ran ahead of rule 1b inside the effects call
+   and that draft read R. Consequence (already listed under "Narrow crash
+   windows"): a crash after the RPC leaves the projection at R - 1 until the
+   next refresh, so a later delete can show one visible false conflict.
 2. **Retry rebases only from a visible conflict, for every kind that
    overwrites a shared value (MG8).** Decision 5's conflict-only rebase now
    covers `planEdit`, `sessionRename`, `sessionReorder` and

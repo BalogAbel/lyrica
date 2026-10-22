@@ -309,9 +309,20 @@ specific finding:
   never ahead of the write), a reconcile failure does the same, a plan created and given a
   child in one batch still reaches its final content version, a sign-out purge inside a run
   writes nothing back, and an after-write refresh never counts a pull that started before the
-  write. The stop checks C1-C6 of
-  `PlanningMutationSyncController._run` are pinned in the `a run stops when its context moves
-  (MG2)` group of `test/application/planning/planning_mutation_sync_controller_test.dart`.
+  write. It also pins, with the real stores, that a create deleted while the run sits between
+  the `sending` write and the C2 check is collapsed and nothing is sent (C2), that a create
+  tombstoned during a call that fails after the context moved has its tombstone resolved
+  (C6), and that the previous organization's pending row and projection survive a switch and
+  sync when it is active again (MG1). The stop checks of
+  `PlanningMutationSyncController._run` are spread over three places: the `a run stops when its
+  context moves (MG2)` group of
+  `test/application/planning/planning_mutation_sync_controller_test.dart` pins C1, C2, C6 and
+  the retry observer; `planning_run_boundary_test.dart` pins C3 and C5; C4 is pinned in the
+  `refreshPlanningAfterWrite (MG5)` group of
+  `test/application/planning/planning_sync_controller_test.dart`. An offline cold start after
+  a switch is pinned in the same file, both for an identity naming the new organization
+  (shows nothing of the previous one) and for an identity with no organization (falls back to
+  the latest cached organization, known behavior).
 - `song_run_boundary_test.dart` — S5b PR 1 (MG3): a song sync run belongs to one catalog
   context. When the active catalog context moves, the run stops before the next song, and a
   failure answered after the move is not written as that song's verdict (no `conflict`); real
