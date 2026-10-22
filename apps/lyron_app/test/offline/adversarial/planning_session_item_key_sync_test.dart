@@ -798,8 +798,12 @@ void main() {
     // the post-sync refresh does not run for this context and
     // `shouldReconcileAcceptedMutation` is false. The accepted row clears
     // without the item reaching the projection (S5b decides the fix).
-    refresh = () async => false;
-    reconcileAllowed = false;
+    // The context moves during the run, after the send (MG2: a run whose
+    // context is gone before its first send sends nothing).
+    refresh = () async {
+      reconcileAllowed = false;
+      return false;
+    };
     await editKey(transposeTo(2));
     await sync();
 
