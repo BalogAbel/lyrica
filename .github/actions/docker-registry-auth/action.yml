@@ -1,0 +1,32 @@
+name: Authenticate registry pulls
+description: >-
+  Writes registry credentials into a Docker config under the literal registry
+  key the Supabase CLI looks up (docker login would store a different key), and
+  exports DOCKER_CONFIG for the following steps. Without credentials, pulls
+  stay anonymous.
+
+inputs:
+  registry:
+    description: Registry string the Supabase CLI pulls from.
+    required: false
+    default: docker.io
+  username:
+    description: Registry username.
+    required: false
+  token:
+    description: Registry access token.
+    required: false
+
+runs:
+  using: composite
+  steps:
+    - name: Write Docker config
+      shell: sh
+      env:
+        REGISTRY: ${{ inputs.registry }}
+        REGISTRY_USERNAME: ${{ inputs.username }}
+        REGISTRY_TOKEN: ${{ inputs.token }}
+        DOCKER_CONFIG: ${{ runner.temp }}/docker-config
+      run: |
+        ./scripts/docker-registry-auth.sh "$REGISTRY"
+        echo "DOCKER_CONFIG=$DOCKER_CONFIG" >> "$GITHUB_ENV"
