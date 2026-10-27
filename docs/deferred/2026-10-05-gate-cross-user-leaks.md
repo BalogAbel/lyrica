@@ -19,7 +19,8 @@ explicit sign-out cleared another user's identity row) was closed by SO4 of
 user's own state. O2 and O3 were found by the adversarial review of the
 cross-user ownership PR (2026-10-06); both are pre-existing and neither
 shows one user's data to another or deletes it. None of the entries is a
-cross-user leak.
+cross-user leak. O2 was narrowed on 2026-10-22 by S5b PR 1 (#97) to the
+token-binding residual below; O3 is scheduled in S5b PR 3.
 
 **Line references** are to the tree at the Task 8c commits of this branch.
 Re-verify them before editing.
@@ -187,42 +188,51 @@ gate change.
 Offer the cache-only Retry on the `nonConnectivity` view when
 `isSessionExpired`.
 
-## O2 - mutation sync does not re-check the user between candidates (ownership review, non-blocking)
+## O2 - the auth token is bound inside the send call (residual of MG2/MG3)
+
+S5b PR 1 (#97, MG2/MG3) made both mutation sync controllers stop a run when
+its context moves: checks C1 (before a candidate's `sending` write), C2
+(synchronously before the remote call) and C6 (before a failure-status
+write) in `PlanningMutationSyncController._run` and `SongMutationSyncController`
+(`_runSync`). What stays open is the part the controllers cannot check.
 
 ### Problem
 
-A planning or song mutation sync run snapshots one context and sends every
-candidate in it. If the session switches to another user mid-run, the
-remaining candidates are sent with the new user's token.
+`AuthHttpClient.send` awaits `_getAccessToken()` before it builds the
+request (supabase 2.16.5, `auth_http_client.dart:24`), and
+`_getAccessToken` awaits `auth.getSession()` (`supabase_client.dart:277-285`).
+The identity is therefore read after C2 has passed.
 
 ### Event sequence
 
-1. A is signed in and `PlanningMutationSyncController._run`
-   (`apps/lyron_app/lib/src/application/planning/planning_mutation_sync_controller.dart:103-372`)
-   is sending A's pending mutations.
+1. A run for A passes C2 and calls the remote repository.
 2. A direct session switch (magic link or OAuth for B, no sign-out) lands
-   mid-loop.
-3. A's remaining mutations go out with B's token; the backend rejects them,
-   so planning mutations become `failedAuthorization` (`:273-285`) and song
-   mutations become `conflict`
-   (`song_mutation_sync_controller.dart:244-259`).
+   inside the `getSession()` await of that one call.
+3. That one row of A goes out with B's token.
+   - A failure (RLS or membership rejection) lands on C6: the context has
+     moved, so the row goes back to `pending` (a song update or delete keeps
+     its pending status) and the run stops.
+   - A success is accepted by the backend under B's identity: a misattributed
+     write, not a lost one.
 
 ### Why it is non-blocking
 
-Nothing is shown to B and nothing is deleted; RLS rejects the writes. A's
-work leaves automatic resend and needs a manual retry. Pre-existing, outside
-the read-context scope of the ownership slice. Code read only.
+At most one row per switch, and only when the switch lands inside one
+`getSession()` await. Nothing is shown to B and nothing is deleted.
+Pre-existing, now narrowed from "every remaining candidate" to one row.
 
 ### Fix sketch
 
-Before each send, check that the active context (planning) or the catalog
-context (songs) still equals the run's snapshot context; stop the run
-otherwise.
+Bind the token to the run's user inside the send path: the call reads the
+token only if the current session user still equals the run's `userId`, and
+otherwise fails before it leaves as a connectivity-class failure. Decide in
+the slice that picks this up.
 
 ### Test sketch
 
-A sync run with a remote double that blocks on the first candidate; switch
-the session to B; release; expect the second candidate still `pending`.
+A remote double whose send awaits a gate; switch the session user while it
+waits; release: the call is rejected before it leaves and the row stays
+`pending`.
 
 ## O3 - D5 purge completion handlers ignore ownership (ownership review, non-blocking)
 
@@ -265,14 +275,18 @@ C4, F5, N1 and N2 show only the current user's own state, Retry or sign-in
 recovers each of them, and fixing them means changing the gate's resolution
 bookkeeping, which PR 1 had just settled. O2 and O3 neither show nor delete
 another user's data (the exit criterion of the ownership review) and lie
-outside the read-context scope of that PR.
+outside the read-context scope of that PR. The O2 residual is bound inside
+the Supabase client's send call, below the controllers' reach.
 
 ## Trigger
 
 No fixed slice. Pick up C4, F5, N1 and N2 when a change touches the gate's
 retry or resolution bookkeeping (`membershipRetryProvider`,
-`ActiveMembershipController`); O2 with the next change to either
-mutation sync controller; O3 with the next change to the D5 purge
-coordinator. Any of them earlier if reported from the field.
+`ActiveMembershipController`); the O2 residual with the next change to the
+authenticated HTTP client or the Supabase client wiring; O3 with the next
+change to the D5 purge coordinator. Any of them earlier if reported from the
+field.
 
-Roadmap (2026-10-12): scheduled in S5b (O2, O3); C4, F5, N1 and N2 stay trigger-gated (S9).
+Roadmap (2026-10-12): scheduled in S5b (O2, O3; O2 narrowed by PR 1, 2026-10-22); C4, F5, N1 and N2 stay trigger-gated (S9).
+
+S5b spec (2026-10-21): O2 decided as MG2/MG3 (S5b PR 1, #97; the token-binding residual stays here), O3 as MG10 (S5b PR 3) of `docs/specs/2026-10-21-planning-mutation-gaps.md`.

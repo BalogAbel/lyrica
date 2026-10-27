@@ -105,8 +105,8 @@ void main() {
     controller = PlanningMutationSyncController(
       mutationStore: () => store,
       remoteRepository: () => remote,
-      refreshPlanning: () => refresh(),
-      shouldReconcileAcceptedMutation: (_) async => reconcileAllowed,
+      refreshPlanning: (_) => refresh(),
+      isRunContextActive: (_) => reconcileAllowed,
       reconcileAcceptedMutation: (ctx, record) =>
           reconciler.reconcile(ctx, record),
     );
@@ -786,20 +786,26 @@ void main() {
     expect((await keyRow())!.syncStatus, PlanningMutationSyncStatus.sending);
   });
 
-  test('C10 (inherited gap, '
-      'docs/deferred/2026-09-30-content-version-advance-on-context-switch.md): '
-      'an accepted key edit whose reconcile a context switch skips leaves the '
-      'projection at the old item version, and the next edit shows one '
+  test('C10 (MG4 residual, docs/specs/2026-10-21-planning-mutation-gaps.md): '
+      'an accepted key edit whose reconcile the C5 context check skips leaves '
+      'the projection at the old item version, and the next edit shows one '
       'visible false conflict', () async {
-    // Pinned as KNOWN behavior, not a defect of this slice: see
-    // docs/deferred/2026-09-30-content-version-advance-on-context-switch.md
-    // (the 2026-10-13 roadmap entry extends it to this kind; S5b decides).
-    // The same switch the sync controller tests use for the boundary change:
-    // the post-sync refresh does not run for this context and
-    // `shouldReconcileAcceptedMutation` is false. The accepted row clears
-    // without the item reaching the projection (S5b decides the fix).
-    refresh = () async => false;
-    reconcileAllowed = false;
+    // Pinned as KNOWN behavior, not a defect of this slice: the MG4 residual
+    // ("Residual, pre-existing and unchanged" in the spec). When C5 fails
+    // because the context moved, the accepted row is cleared without a
+    // reconcile, so the user's own accepted write is not shown in the old
+    // context until that context refreshes. Keeping the row `accepted` was
+    // rejected in MG4: it strands rows in a context the user may never
+    // revisit.
+    // Here the post-sync refresh does not store a pull for this context and
+    // `isRunContextActive` is false at the batch end, so the accepted row
+    // clears without the item reaching the projection.
+    // The context moves during the run, after the send (MG2: a run whose
+    // context is gone before its first send sends nothing).
+    refresh = () async {
+      reconcileAllowed = false;
+      return false;
+    };
     await editKey(transposeTo(2));
     await sync();
 

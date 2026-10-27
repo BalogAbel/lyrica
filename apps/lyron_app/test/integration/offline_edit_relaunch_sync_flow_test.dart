@@ -252,14 +252,14 @@ void main() {
         final mutationSyncController = PlanningMutationSyncController(
           mutationStore: () => mutationStore,
           remoteRepository: () => remoteMutationRepository,
-          refreshPlanning: () async {
+          refreshPlanning: (_) async {
             await syncController.handleActiveContextChanged(
               context,
               refresh: false,
             );
             return syncController.refreshPlanning();
           },
-          shouldReconcileAcceptedMutation: (_) async => true,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: PlanningMutationReconciler(
             localStore: () => localStore,
           ).reconcile,

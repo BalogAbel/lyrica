@@ -211,8 +211,8 @@ Use native Flutter targets as the acceptance path for authenticated offline rela
 - The organization-membership uniqueness migration deduplicates pre-existing local duplicates by keeping the earliest row by `created_at, id` before recreating the partial unique index.
 - Local verification now also proves RLS scope isolation: the seeded hidden-organization song is not visible to the demo user.
 - The planning baseline now uses the simplified `plan -> session -> session_items` hierarchy, with ordered sessions and ordered song-backed session items seeded for the demo organization.
-- The current slice retains only one active authenticated catalog snapshot per user for the currently active organization. It does not keep a local archive of multiple organization catalogs.
-- The current planning slice retains only the active organization's authenticated planning projection per user, clears the previous active organization projection when the active organization changes, and requires a fresh refresh when the user returns to an earlier organization.
+- The current slice keeps one authenticated catalog snapshot per user and organization and reads the active organization's only. It does not keep a historical snapshot archive, and an organization switch deletes no catalog data.
+- The current planning slice reads only the active organization's authenticated planning projection per user and starts a refresh when the active organization changes. The previous organization's projection and pending mutations stay on the device until a purge reason removes them (an organization switch is not one) and sync when that organization is active again.
 - Explicit sign-out removes both the cached authenticated song catalog and the authenticated planning projection instead of leaving a device-global offline archive behind.
 
 ## Status
