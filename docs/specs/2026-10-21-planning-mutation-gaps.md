@@ -1,8 +1,9 @@
 # Spec: Planning Mutation Gaps (S5b)
 
 > Status: Accepted (2026-10-22, design gate approved). PR 1 (MG1–MG5 and
-> their MG13 rows) is implemented on `fix/planning-mutation-gaps` (#97,
-> 2026-10-22); PR 2 and PR 3 are not started. PR 1
+> their MG13 rows) merged as #97 (`9c16d79`, 2026-10-27). PR 2 (MG6–MG9 and
+> the F1 fix) is in progress on `fix/planning-unresolved-rows`; PR 3 is not
+> started. PR 1
 > plan: `docs/plans/2026-10-22-planning-run-boundaries.md`. Amends ADR-030 (in-flight create
 > cancellation follow-up), ADR-035 (organization switch, import runs, D5
 > purge ownership) and ADR-038 (rule 1a placement, retry rule), and
