@@ -844,3 +844,14 @@ authoritative where they differ from the plan text.
   `owner!`, and is equivalent to the predicate today because no
   `bumpsPlanContent` arm writes the plan's `contentVersion`. Reviewers re-run
   (iii) in this form.
+
+### Task 2
+
+- The store test lives in `test/offline/planning/planning_mutation_store_test.dart`
+  (where that file actually is), not under `test/offline/adversarial/` as the
+  brief's path implies. The migration test is in
+  `test/offline/adversarial/planning_migration_test.dart` as planned.
+- Guard proof: with the `from < 9` step disabled, the 8 → 9 migration test
+  fails with a null-check error while mapping the missing
+  `resolves_cancelled_create` column (`$CachedPlanningMutationsTable.map`),
+  not a literal "no such column" message. The failure is the intended one.

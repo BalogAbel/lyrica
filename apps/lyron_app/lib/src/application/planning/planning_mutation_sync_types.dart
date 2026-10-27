@@ -244,6 +244,7 @@ class PlanningMutationRecord {
     this.errorCode,
     this.errorMessage,
     this.localRevision = 0,
+    this.resolvesCancelledCreate = false,
   });
 
   final String aggregateId;
@@ -297,6 +298,11 @@ class PlanningMutationRecord {
   /// computes the real value on write and callers never need to guess it).
   final int localRevision;
 
+  /// Persisted tombstone-origin marker (MG6): true on a delete converted
+  /// from a stale create tombstone. Retry keeps it; a user-recorded write to
+  /// the aggregate replaces the record and clears it.
+  final bool resolvesCancelledCreate;
+
   PlanningMutationRecord copyWith({
     String? aggregateId,
     String? organizationId,
@@ -347,6 +353,7 @@ class PlanningMutationRecord {
     int? orderKey,
     DateTime? updatedAt,
     int? localRevision,
+    bool? resolvesCancelledCreate,
   }) {
     return PlanningMutationRecord(
       aggregateId: aggregateId ?? this.aggregateId,
@@ -395,6 +402,8 @@ class PlanningMutationRecord {
       orderKey: orderKey ?? this.orderKey,
       updatedAt: updatedAt ?? this.updatedAt,
       localRevision: localRevision ?? this.localRevision,
+      resolvesCancelledCreate:
+          resolvesCancelledCreate ?? this.resolvesCancelledCreate,
     );
   }
 }

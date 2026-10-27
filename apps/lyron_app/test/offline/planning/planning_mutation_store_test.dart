@@ -976,6 +976,64 @@ void main() {
         );
       },
     );
+
+    test('resolvesCancelledCreate round-trips and survives a retry', () async {
+      // MG6: the tombstone-origin marker is a persisted column, not
+      // in-memory state; a retry's upsert must write and compare it.
+      const context = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+      await store.recordSessionCreate(
+        context: context,
+        draft: const PlanningSessionCreateMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          slug: 'welcome',
+          name: 'Welcome',
+          position: 10,
+        ),
+      );
+      Future<PlanningMutationRecord?> read() => store.readMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'session',
+        aggregateId: 'session-1',
+      );
+      expect((await read())!.resolvesCancelledCreate, isFalse);
+
+      await (database.update(database.cachedPlanningMutations)..where(
+            (table) => table.aggregateId.equals('session-1'),
+          ))
+          .write(
+            const CachedPlanningMutationsCompanion(
+              resolvesCancelledCreate: Value(true),
+            ),
+          );
+      final marked = await read();
+      expect(marked!.resolvesCancelledCreate, isTrue);
+
+      await store.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'session',
+        aggregateId: 'session-1',
+        syncStatus: PlanningMutationSyncStatus.conflict,
+        errorCode: PlanningMutationSyncErrorCode.conflict,
+        errorMessage: 'base_version_conflict',
+      );
+      await store.retryMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'session',
+        aggregateId: 'session-1',
+      );
+
+      final retried = await read();
+      expect(retried!.resolvesCancelledCreate, isTrue);
+      expect(retried.syncStatus, PlanningMutationSyncStatus.pending);
+      expect(retried.localRevision, greaterThan(marked.localRevision));
+    });
   });
 
   group('PlanningMutationStore.localRevision (D1, sync-snapshot-identity)', () {

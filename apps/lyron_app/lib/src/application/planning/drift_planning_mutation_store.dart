@@ -1665,6 +1665,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
             localRevision: Value(
               existing == null ? 1 : existing.localRevision + 1,
             ),
+            resolvesCancelledCreate: Value(record.resolvesCancelledCreate),
           ),
         );
     return true;
@@ -1706,7 +1707,8 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
         existing.errorCode == record.errorCode?.name &&
         existing.errorMessage == record.errorMessage &&
         existing.orderKey == record.orderKey &&
-        existing.updatedAt.toUtc() == record.updatedAt.toUtc();
+        existing.updatedAt.toUtc() == record.updatedAt.toUtc() &&
+        existing.resolvesCancelledCreate == record.resolvesCancelledCreate;
   }
 
   Future<int> _nextOrderKey({
@@ -1890,6 +1892,7 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       orderKey: row.orderKey,
       updatedAt: row.updatedAt.toUtc(),
       localRevision: row.localRevision,
+      resolvesCancelledCreate: row.resolvesCancelledCreate,
     );
   }
 

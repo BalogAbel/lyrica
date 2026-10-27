@@ -116,6 +116,13 @@ class CachedPlanningMutations extends Table {
   /// `docs/specs/2026-08-05-sync-snapshot-identity.md` (D1).
   IntColumn get localRevision => integer().withDefault(const Constant(1))();
 
+  /// Tombstone-origin marker (S5b MG6, docs/specs/2026-10-21-planning-
+  /// mutation-gaps.md): true on a delete that was converted from a stale
+  /// create tombstone. Retry keeps it; any user-recorded write to the
+  /// aggregate replaces the record and clears it. False for every other row.
+  BoolColumn get resolvesCancelledCreate =>
+      boolean().withDefault(const Constant(false))();
+
   @override
   Set<Column<Object>> get primaryKey => {
     userId,
