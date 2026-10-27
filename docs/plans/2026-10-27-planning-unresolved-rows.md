@@ -788,3 +788,45 @@ if (applied) _onStorageFootprintChanged?.call();
 
 Deviations ruled during execution go here; the code and the spec are
 authoritative where they differ from the plan text.
+
+### Pre-execution rulings (2026-10-27, user)
+
+- **E1 (Tasks 3, 4, 7). A failed run-start conversion never stops the run.**
+  In `PlanningMutationSyncController._run` and
+  `SongMutationSyncController._runSync` the conversion call is wrapped in
+  `try { … } on Exception { }` (an `Error` still propagates); the rows stay
+  `cancelling` and the next run retries the conversion. Why: the conversion
+  has no recovery boundary, and an exception escaping `_run` reaches
+  `PlanningWriteService` through `syncScheduler` (try/finally, no catch), so
+  an unrelated new write would report failure; on the song side the outbox
+  would stop. Tests: the planning controller test's fake store gets
+  `bool throwOnConvert = false` (throws `Exception('convert')`), pinned by
+  `'a failed tombstone conversion does not stop the run'` (pending
+  candidates are still sent); the same test in
+  `song_mutation_sync_controller_test.dart`. Guard proof: remove the catch →
+  each fails. Task 7: spec MG6/MG7 and the "Await Points" row A0 say the
+  conversion is best-effort.
+- **E2 (Task 7). Two more living docs.**
+  `docs/architecture/state-machines.md`: the conflict-only retry rebase now
+  covers `planEdit`, `sessionRename`, `sessionReorder`, `sessionItemReorder`
+  and the key edit besides the cascade deletes; discarding a create removes
+  its dependents unless the create is in flight; a stale `cancelling` row is
+  converted at the next run start, planning and song.
+  `docs/testing/testing-strategy.md`: one entry for
+  `planning_stranded_tombstone_test`, `song_stranded_tombstone_test` and
+  `planning_retry_rebase_test`.
+- **E3 (Tasks 3, 5). Red at a "verify they fail" step.** A test that fails
+  only because it does not compile yet counts as red.
+  `'a user-recorded delete answered not_found stays visible (D9)'` and
+  `'a not_found answered after a context change resets the converted delete
+  instead of closing it'` pin behavior the current code already has; their
+  red is guard proofs (iii) and (iv) of Task 3. In Task 5,
+  `'creates and sessionItemDelete still rebase from any status'` and the
+  PS16 key-edit test also pass on the current code. None of these is a STOP.
+- **E4 (Task 1, STOP 2, Task 7). No test for STOP 2's last clause.** A
+  guarded inner write retried inside the outer transaction has no planned
+  trigger; no test is added for it. Task 7 records in ADR-028 D8: guarded
+  writes inside `applyAcceptedWrite` run in savepoints, a recovery retry runs
+  in a fresh savepoint, and if SQLite aborts the outer transaction the
+  exception propagates and the rows stay `accepted` (fail-safe, resumed by
+  the next run).
