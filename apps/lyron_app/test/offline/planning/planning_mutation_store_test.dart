@@ -1002,14 +1002,13 @@ void main() {
       );
       expect((await read())!.resolvesCancelledCreate, isFalse);
 
-      await (database.update(database.cachedPlanningMutations)..where(
-            (table) => table.aggregateId.equals('session-1'),
-          ))
-          .write(
-            const CachedPlanningMutationsCompanion(
-              resolvesCancelledCreate: Value(true),
-            ),
-          );
+      await (database.update(
+        database.cachedPlanningMutations,
+      )..where((table) => table.aggregateId.equals('session-1'))).write(
+        const CachedPlanningMutationsCompanion(
+          resolvesCancelledCreate: Value(true),
+        ),
+      );
       final marked = await read();
       expect(marked!.resolvesCancelledCreate, isTrue);
 
@@ -3943,5 +3942,243 @@ void main() {
       expect(row.syncStatus, PlanningMutationSyncStatus.pending);
       expect(row.resolvesCancelledCreate, isTrue);
     });
+  });
+
+  group('retry rebase (MG8)', () {
+    late PlanningLocalDatabase database;
+    late DriftPlanningLocalStore localStore;
+    late DriftPlanningMutationStore store;
+    const context = PlanningMutationContext(
+      userId: 'user-1',
+      organizationId: 'org-1',
+    );
+
+    setUp(() async {
+      database = PlanningLocalDatabase.inMemory();
+      localStore = DriftPlanningLocalStore(database);
+      store = DriftPlanningMutationStore(
+        database: database,
+        localStore: localStore,
+      );
+      await localStore.replaceActiveProjection(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        plans: [
+          CachedPlanRecord(
+            id: 'plan-1',
+            slug: 'plan-1',
+            name: 'Plan',
+            description: null,
+            scheduledFor: null,
+            updatedAt: DateTime.utc(2026),
+            version: 5,
+          ),
+        ],
+        sessions: const [
+          CachedSessionRecord(
+            id: 'session-1',
+            planId: 'plan-1',
+            position: 1,
+            name: 'S',
+            version: 5,
+          ),
+        ],
+        items: const [
+          CachedSessionItemRecord(
+            id: 'item-1',
+            planId: 'plan-1',
+            sessionId: 'session-1',
+            position: 1,
+            songId: 'song-1',
+            songTitle: 'Song',
+            version: 5,
+          ),
+        ],
+        refreshedAt: DateTime.utc(2026),
+      );
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    Future<void> record(PlanningMutationKind kind) => switch (kind) {
+      PlanningMutationKind.planEdit => store.recordPlanEdit(
+        context: context,
+        draft: const PlanningPlanEditMutationDraft(
+          planId: 'plan-1',
+          name: 'Renamed',
+          baseVersion: 3,
+        ),
+      ),
+      PlanningMutationKind.sessionRename => store.recordSessionRename(
+        context: context,
+        draft: const PlanningSessionRenameMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          name: 'Renamed',
+          baseVersion: 2,
+        ),
+      ),
+      PlanningMutationKind.sessionReorder => store.recordSessionReorder(
+        context: context,
+        draft: const PlanningSessionReorderMutationDraft(
+          planId: 'plan-1',
+          orderedSessionIds: ['session-1'],
+          baseVersion: 3,
+        ),
+      ),
+      PlanningMutationKind.sessionItemReorder => store.recordSessionItemReorder(
+        context: context,
+        draft: const PlanningSessionItemReorderMutationDraft(
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          orderedSessionItemIds: ['item-1'],
+          baseVersion: 2,
+        ),
+      ),
+      PlanningMutationKind.sessionItemDelete => store.recordSessionItemDelete(
+        context: context,
+        draft: const PlanningSessionItemDeleteMutationDraft(
+          sessionItemId: 'item-1',
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          baseVersion: 2,
+        ),
+      ),
+      PlanningMutationKind.sessionCreate => store.recordSessionCreate(
+        context: context,
+        draft: const PlanningSessionCreateMutationDraft(
+          sessionId: 'session-new',
+          planId: 'plan-1',
+          slug: 'session-new',
+          name: 'New',
+          position: 2,
+        ),
+      ),
+      _ => throw ArgumentError(kind),
+    };
+
+    Future<PlanningMutationRecord> onlyRow() async {
+      final rows = await store.readAllMutations(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+      return rows.single;
+    }
+
+    Future<PlanningMutationRecord> retried({
+      required PlanningMutationSyncStatus status,
+      PlanningMutationSyncErrorCode? errorCode,
+    }) async {
+      final row = await onlyRow();
+      await store.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: row.kind.aggregateType,
+        aggregateId: row.aggregateId,
+        syncStatus: status,
+        errorCode: errorCode,
+      );
+      await store.retryMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: row.kind.aggregateType,
+        aggregateId: row.aggregateId,
+      );
+      return onlyRow();
+    }
+
+    test('a conflicted session rename is rebased onto the projected session '
+        'version', () async {
+      await record(PlanningMutationKind.sessionRename);
+
+      final row = await retried(
+        status: PlanningMutationSyncStatus.conflict,
+        errorCode: PlanningMutationSyncErrorCode.conflict,
+      );
+
+      expect(row.baseVersion, 5);
+      expect(row.syncStatus, PlanningMutationSyncStatus.pending);
+    });
+
+    for (final entry in {
+      PlanningMutationKind.planEdit: 3,
+      PlanningMutationKind.sessionRename: 2,
+      PlanningMutationKind.sessionReorder: 3,
+      PlanningMutationKind.sessionItemReorder: 2,
+    }.entries) {
+      for (final status in [
+        PlanningMutationSyncStatus.failedDependency,
+        PlanningMutationSyncStatus.pending,
+      ]) {
+        test('a non-conflict retry of a ${entry.key.name} from '
+            '${status.name} keeps its base', () async {
+          await record(entry.key);
+
+          final row = await retried(
+            status: status,
+            errorCode: status == PlanningMutationSyncStatus.pending
+                ? PlanningMutationSyncErrorCode.connectivityFailure
+                : null,
+          );
+
+          expect(row.baseVersion, entry.value);
+          expect(row.syncStatus, PlanningMutationSyncStatus.pending);
+        });
+      }
+    }
+
+    test('a key edit retried from a non-conflict status keeps its base '
+        '(PS16, MG13)', () async {
+      await store.recordSessionItemKeyEdit(
+        context: context,
+        draft: PlanningSessionItemKeyEditMutationDraft(
+          sessionItemId: 'item-1',
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          edit: SessionItemKeyEdit(
+            transposeMode: SessionItemKeyFieldMode.set,
+            transpose: 3,
+            capoMode: SessionItemKeyFieldMode.keep,
+          ),
+          baseVersion: 2,
+          baseTranspose: 1,
+          baseCapo: 2,
+        ),
+      );
+
+      final row = await retried(
+        status: PlanningMutationSyncStatus.failedDependency,
+      );
+
+      expect(row.baseVersion, 2);
+      expect(row.keyBaseTranspose, 1);
+      expect(row.keyBaseCapo, 2);
+      expect(row.syncStatus, PlanningMutationSyncStatus.pending);
+    });
+
+    test(
+      'creates and sessionItemDelete still rebase from any status',
+      () async {
+        await record(PlanningMutationKind.sessionItemDelete);
+        final itemDelete = await retried(
+          status: PlanningMutationSyncStatus.failedDependency,
+        );
+        expect(itemDelete.baseVersion, 5);
+
+        await store.clearMutation(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType: 'session_item',
+          aggregateId: 'item-1',
+        );
+        await record(PlanningMutationKind.sessionCreate);
+        final create = await retried(
+          status: PlanningMutationSyncStatus.failedDependency,
+        );
+        expect(create.baseVersion, 5);
+      },
+    );
   });
 }

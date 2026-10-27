@@ -1175,12 +1175,27 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
     // PS16: a key edit is treated like the cascade deletes. Only Keep mine
     // (the retry of a visible CONFLICT) rebases onto the item as the
     // projection shows it; a connectivity retry resends the original base.
-    final isCascadeDelete =
-        existing.kind == PlanningMutationKind.planDelete ||
-        existing.kind == PlanningMutationKind.sessionDelete;
+    //
+    // MG8 (ADR-038 decision 5 applied to every overwrite): the same holds for
+    // every kind that overwrites a value or an order the user may not have
+    // seen change. Creates and a session-item delete carry no such value and
+    // rebase from any status. Exhaustive on purpose: a new kind must decide.
     final isKeyEdit = existing.kind == PlanningMutationKind.sessionItemKeyEdit;
+    final rebasesOnlyFromConflict = switch (existing.kind) {
+      PlanningMutationKind.planDelete ||
+      PlanningMutationKind.sessionDelete ||
+      PlanningMutationKind.sessionItemKeyEdit ||
+      PlanningMutationKind.planEdit ||
+      PlanningMutationKind.sessionRename ||
+      PlanningMutationKind.sessionReorder ||
+      PlanningMutationKind.sessionItemReorder => true,
+      PlanningMutationKind.planCreate ||
+      PlanningMutationKind.sessionCreate ||
+      PlanningMutationKind.sessionItemCreateSong ||
+      PlanningMutationKind.sessionItemDelete => false,
+    };
     final rebases =
-        !(isCascadeDelete || isKeyEdit) ||
+        !rebasesOnlyFromConflict ||
         existing.syncStatus == PlanningMutationSyncStatus.conflict;
     // The base version and the item the base values come from are read in one
     // transaction, so a refresh landing between the two reads cannot pair the
@@ -1831,8 +1846,8 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       return record.baseVersion;
     }
     // PS16: a key edit's version is the ITEM's, never the session's or the
-    // plan's (the S5b session-rename defect: a lookup by the wrong id means
-    // the retry never rebases and conflicts forever).
+    // plan's (a lookup by the wrong id means the retry never rebases and
+    // conflicts forever).
     if (record.kind == PlanningMutationKind.sessionItemKeyEdit) {
       return (await _projectedKeyItem(
             record,
@@ -1848,12 +1863,13 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
       planId: planId,
     );
 
-    // A session delete is a session aggregate row: the session id is its
-    // aggregateId and `sessionId` is null (review gate 3 F3). The other
-    // session kinds are deliberately left as they were.
+    // A session delete or rename is a session aggregate row: the session id is
+    // its aggregateId and `sessionId` is null (review gate 3 F3, MG8). The
+    // other session kinds are deliberately left as they were.
     final sessionId =
         record.sessionId ??
-        (record.kind == PlanningMutationKind.sessionDelete
+        (record.kind == PlanningMutationKind.sessionDelete ||
+                record.kind == PlanningMutationKind.sessionRename
             ? record.aggregateId
             : null);
     return switch (record.kind) {

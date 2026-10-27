@@ -917,3 +917,18 @@ authoritative where they differ from the plan text.
   it surfaced as a compile error in the full suite). The fake in
   `song_mutation_sync_controller_test.dart` records `runCalls` and honors
   `throwOnConvert`.
+
+### Task 5
+
+- The run test re-seeds the projection inline (`replaceActiveProjection` with
+  session-1 at version 5, name `Foreign`, no items) because
+  `seedPlanningProjection` takes no session version; the refresh stays
+  `(_) async => false`, so the accepted rename is reconciled through the F1
+  gate and no rows remain.
+- Per ruling E3, red included compile-free failures only for the rename
+  conflict test, the planEdit/sessionReorder/sessionItemReorder non-conflict
+  tests and the run test. The sessionRename non-conflict tests, the PS16 key
+  edit test and the creates/sessionItemDelete test already passed on the old
+  code (expected).
+- The non-conflict test is a loop over four kinds times two statuses, so it
+  reports as eight tests rather than one.
