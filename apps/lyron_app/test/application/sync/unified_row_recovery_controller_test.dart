@@ -651,6 +651,16 @@ class _FakePlanningStore implements PlanningMutationStore {
   }
 
   @override
+  Future<bool> discardMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+  }) async {
+    return _mutations.remove(_key(aggregateType, aggregateId)) != null;
+  }
+
+  @override
   Future<int?> saveSyncAttemptResult({
     required String userId,
     required String organizationId,

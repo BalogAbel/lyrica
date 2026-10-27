@@ -4153,6 +4153,14 @@ class _PlanDetailTestPlanningMutationStore implements PlanningMutationStore {
   }) async => false;
 
   @override
+  Future<bool> discardMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+  }) async => false;
+
+  @override
   Future<bool> hasUnsyncedMutations({required String userId}) async => false;
 
   @override

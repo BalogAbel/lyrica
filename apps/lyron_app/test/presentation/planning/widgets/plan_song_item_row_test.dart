@@ -232,6 +232,14 @@ class _NoopPlanningMutationStore implements PlanningMutationStore {
     required String aggregateId,
     int? expectedRevision,
   }) async => false;
+
+  @override
+  Future<bool> discardMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+  }) async => false;
 }
 
 class _FakePlanningWriteService extends PlanningWriteService {

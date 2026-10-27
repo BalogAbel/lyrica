@@ -1298,6 +1298,88 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
   }
 
   @override
+  Future<bool> discardMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+  }) async {
+    final context = PlanningMutationContext(
+      userId: userId,
+      organizationId: organizationId,
+    );
+    final discarded = await _database.transaction(() async {
+      final existing = await _readMutationByKey(
+        userId: userId,
+        organizationId: organizationId,
+        aggregateType: aggregateType,
+        aggregateId: aggregateId,
+      );
+      if (existing == null) {
+        return false;
+      }
+      await (_database.delete(_database.cachedPlanningMutations)..where(
+            (table) =>
+                table.userId.equals(userId) &
+                table.organizationId.equals(organizationId) &
+                table.aggregateType.equals(aggregateType) &
+                table.aggregateId.equals(aggregateId),
+          ))
+          .go();
+      // MG9 / ADR-028 D10: a discarded create takes with it whatever was
+      // queued against the object it would have created -- the same effects
+      // the record*Delete collapse branches apply. A create in flight is
+      // left alone: its outcome (and any tombstone) is decided by the sync.
+      if (existing.syncStatus == PlanningMutationSyncStatus.sending ||
+          existing.syncStatus == PlanningMutationSyncStatus.accepted ||
+          existing.syncStatus == PlanningMutationSyncStatus.cancelling) {
+        return true;
+      }
+      switch (existing.kind) {
+        case PlanningMutationKind.sessionItemCreateSong:
+          final sessionId = existing.sessionId;
+          if (sessionId != null) {
+            await _removeSessionItemFromPendingReorder(
+              context: context,
+              sessionId: sessionId,
+              sessionItemId: aggregateId,
+            );
+          }
+          await _deleteKeyEditUnlessInFlight(
+            context: context,
+            sessionItemId: aggregateId,
+          );
+        case PlanningMutationKind.sessionCreate:
+          await _deletePendingMutationsForSession(
+            context: context,
+            sessionId: aggregateId,
+          );
+          final planId = existing.planId;
+          if (planId != null) {
+            await _removeSessionFromPendingReorder(
+              context: context,
+              planId: planId,
+              sessionId: aggregateId,
+            );
+          }
+        case PlanningMutationKind.planCreate:
+          await _deleteChildMutationsOfPlan(
+            context: context,
+            planId: aggregateId,
+            keepInFlight: false,
+          );
+        default:
+          break;
+      }
+      return true;
+    });
+    if (discarded) {
+      _onStorageFootprintChanged?.call();
+    }
+    return discarded;
+  }
+
+  @override
   Future<bool> resolveCancelledCreate({
     required String userId,
     required String organizationId,

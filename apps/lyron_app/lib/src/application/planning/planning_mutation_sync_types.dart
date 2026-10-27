@@ -757,6 +757,23 @@ abstract interface class PlanningMutationStore {
     int? expectedRevision,
   });
 
+  /// Explicit user discard of a mutation row (MG9, ADR-028 D10): deletes the
+  /// row and, when it is a not-in-flight create (`planCreate`,
+  /// `sessionCreate`, `sessionItemCreateSong`), also the rows queued against
+  /// the object it would have created, exactly as the `record*Delete`
+  /// collapse branches do. A create that is `sending`, `accepted` or
+  /// `cancelling` keeps its dependents. Unlike [clearMutation] (the sync's
+  /// revision-gated clear) this is unconditional.
+  ///
+  /// Returns `true` if the row existed and was discarded, `false` if it did
+  /// not exist.
+  Future<bool> discardMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+  });
+
   /// D3 (`docs/specs/2026-08-06-in-flight-create-cancellation.md`): resolves
   /// the outcome of an in-flight `planCreate`/`sessionCreate`/
   /// `sessionItemCreateSong` (`planCreate` per

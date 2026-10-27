@@ -932,3 +932,31 @@ authoritative where they differ from the plan text.
   code (expected).
 - The non-conflict test is a loop over four kinds times two statuses, so it
   reports as eight tests rather than one.
+
+### Task 6
+
+- Store tests: the in-flight test is a loop over `sending` and `accepted`
+  (two reported tests, each discarding an item, a session and a plan create
+  with a surviving key edit). Two tests beyond the plan pin that discarding
+  an absent row returns `false` without a footprint call; the non-create
+  test builds a lone `planEdit` row (a `planEdit` recorded on a pending
+  `planCreate` folds into the create).
+- `discardMutation` also treats `cancelling` as in flight, per the brief's
+  Interfaces (a tombstone's dependents are resolved by the sync).
+- Test doubles migrated mechanically (a `discardMutation` mirroring each
+  double's `clearMutation`, nothing else changed): the controller test fake
+  also records `discardedAggregateIds`; the others are
+  `budgeted_planning_mutation_store_test.dart` (three doubles),
+  `planning_local_read_repository_test.dart`,
+  `unified_discard_controller_test.dart`,
+  `unified_row_recovery_controller_test.dart`,
+  `song_list_plan_song_pick_flow_test.dart`,
+  `planning_fault_injection_test.dart`,
+  `planning_reconcile_failure_isolation_test.dart`,
+  `plan_detail_screen_test.dart`, `plan_list_screen_test.dart`,
+  `plan_song_item_row_test.dart`, plus `planning_invalidation_scope_test.dart`
+  and `providers_test.dart` (surfaced only by the full suite).
+- The comment on the MG6 not_found-close branch in
+  `planning_mutation_sync_controller.dart` is corrected (wording only): the
+  clear and the reset are gated on `sendingRevision`, the D8 purge is not,
+  and the purge is the effect of a plan, session or item delete.

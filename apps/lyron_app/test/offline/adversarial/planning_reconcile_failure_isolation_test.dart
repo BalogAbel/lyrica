@@ -203,6 +203,17 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   }
 
   @override
+  Future<bool> discardMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+  }) async {
+    clearedAggregateIds.add(aggregateId);
+    return true;
+  }
+
+  @override
   Future<String> allocatePlanSlug({
     required String userId,
     required String organizationId,

@@ -382,11 +382,13 @@ class PlanningMutationSyncController {
           // caused. A delete the user recorded themselves does not carry the
           // marker and stays a visible failure (D9).
           //
-          // The purge is the delete's D8 effect for a plan or session (no
+          // The purge is the delete's D8 effect for a plan, session or item (no
           // rebases without a response); when it fails the row goes back to
           // `pending` so the next run closes it, never clearing a row whose
-          // children still stand. Both writes are gated on `sendingRevision`:
-          // a fold that landed in the meantime wins.
+          // children still stand. The clear and the reset are gated on
+          // `sendingRevision`: a fold that landed in the meantime wins. The
+          // purge is not (it only removes orphans of an object the server
+          // said does not exist).
           final purged = await _applyAcceptedEffects(
             context,
             mutation,
@@ -842,7 +844,7 @@ class PlanningMutationSyncController {
     required String aggregateType,
     required String aggregateId,
   }) async {
-    await _mutationStore().clearMutation(
+    await _mutationStore().discardMutation(
       userId: context.userId,
       organizationId: context.organizationId,
       aggregateType: aggregateType,

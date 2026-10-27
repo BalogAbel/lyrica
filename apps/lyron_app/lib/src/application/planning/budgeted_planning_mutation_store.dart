@@ -566,6 +566,25 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
     ),
   );
 
+  // Like clearMutation: a pure delete (plus deletes of dependents), so it
+  // goes through the write queue only -- never budget-admitted, no recovery
+  // boundary.
+  @override
+  Future<bool> discardMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+  }) => _queuedWrite(
+    PlanningMutationContext(userId: userId, organizationId: organizationId),
+    () => _delegate.discardMutation(
+      userId: userId,
+      organizationId: organizationId,
+      aggregateType: aggregateType,
+      aggregateId: aggregateId,
+    ),
+  );
+
   // Queued through the same storage-recovery boundary as
   // saveSyncAttemptResult, for the same reason: this can rewrite the row's
   // content (kind, syncStatus, baseVersion) when it resolves a cancellation

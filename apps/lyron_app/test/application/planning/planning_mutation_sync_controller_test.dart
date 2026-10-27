@@ -706,6 +706,33 @@ void main() {
       },
     );
 
+    test(
+      'discardMutation goes through the store discard, then syncs',
+      () async {
+        final store = _FakePlanningMutationStore(pending: const []);
+        final repository = _FakePlanningMutationRemoteRepository();
+        final controller = PlanningMutationSyncController(
+          mutationStore: () => store,
+          remoteRepository: () => repository,
+          refreshPlanning: (_) async => true,
+          isRunContextActive: (_) => true,
+          reconcileAcceptedMutation: (_, _) async {},
+        );
+
+        await controller.discardMutation(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          aggregateType: PlanningMutationKind.planCreate.aggregateType,
+          aggregateId: 'plan-1',
+        );
+
+        expect(store.discardedAggregateIds, ['plan-1']);
+        expect(store.runCalls, contains('readAll'));
+      },
+    );
+
     test('discarding a conflict works offline and clears mutation', () async {
       final store = _FakePlanningMutationStore(
         pending: [
@@ -1859,6 +1886,7 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   final List<PlanningMutationRecord> pending;
   final List<PlanningMutationRecord> all;
   final List<String> clearedAggregateIds = [];
+  final List<String> discardedAggregateIds = [];
   final List<String> retriedAggregateIds = [];
   PlanningMutationSyncStatus? lastSavedStatus;
   final List<String> events = [];
@@ -1908,6 +1936,18 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
     required String aggregateId,
     int? expectedRevision,
   }) async {
+    clearedAggregateIds.add(aggregateId);
+    return true;
+  }
+
+  @override
+  Future<bool> discardMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+  }) async {
+    discardedAggregateIds.add(aggregateId);
     clearedAggregateIds.add(aggregateId);
     return true;
   }
