@@ -6,13 +6,27 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 # The Supabase CLI pulls the local stack's images from public.ecr.aws by
 # default, whose anonymous data limit the shared GitHub runner IPs exhaust
-# ("toomanyrequests: Data limit exceeded"). Supabase mirrors the same tags to
-# GHCR, which runners reach without that limit. See
-# docs/workflows/development-workflow.md, "Local Tooling".
+# ("toomanyrequests: Data limit exceeded", 2026-10-21). Supabase mirrors the
+# same tags to GHCR, but GHCR throttled both anonymous and authenticated pulls
+# from the runners with "toomanyrequests" (2026-10-22, even after login). CI
+# therefore pulls from Docker Hub with a free authenticated account (documented
+# limit: 200 pulls / 6 h per account, versus 100 / 6 h per IPv4 anonymously).
+# The credentials come from the repository secrets DOCKERHUB_USERNAME and
+# DOCKERHUB_TOKEN and are written under the key `docker.io` because the CLI
+# looks them up by the literal registry string; `docker login` would store
+# `https://index.docker.io/v1/`, which it does not find. Without the secrets
+# (for example fork PRs) pulls stay anonymous and rely on the retry of
+# `supabase start` with backoff (SUPABASE_START_RETRIES, handled by
+# scripts/supabase.sh). See docs/workflows/development-workflow.md, "Local
+# Tooling".
 env:
-  SUPABASE_INTERNAL_IMAGE_REGISTRY: ghcr.io
+  SUPABASE_INTERNAL_IMAGE_REGISTRY: docker.io
+  SUPABASE_START_RETRIES: 4
 
 jobs:
   verify:
@@ -21,6 +35,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Authenticate Docker Hub pulls
+        # An optimization, not a gate: missing secrets or a failed write must
+        # not fail CI; pulls then stay anonymous.
+        continue-on-error: true
+        uses: ./.github/actions/docker-registry-auth
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          token: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -76,6 +100,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Authenticate Docker Hub pulls
+        # An optimization, not a gate: missing secrets or a failed write must
+        # not fail CI; pulls then stay anonymous.
+        continue-on-error: true
+        uses: ./.github/actions/docker-registry-auth
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          token: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -95,6 +129,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Authenticate Docker Hub pulls
+        # An optimization, not a gate: missing secrets or a failed write must
+        # not fail CI; pulls then stay anonymous.
+        continue-on-error: true
+        uses: ./.github/actions/docker-registry-auth
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          token: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Setup Node
         uses: actions/setup-node@v4

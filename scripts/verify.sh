@@ -14,6 +14,8 @@ supabase_cleanup_script="${SUPABASE_CLEANUP_SCRIPT:-./scripts/supabase-cleanup.s
 provision_demo_user_script="${PROVISION_DEMO_USER_SCRIPT:-./scripts/provision-local-demo-user.sh}"
 provision_demo_user_test_script="${PROVISION_DEMO_USER_TEST_SCRIPT:-bash ./scripts/tests/provision-local-demo-user-test.sh}"
 manual_validation_scripts_test_script="${MANUAL_VALIDATION_SCRIPTS_TEST_SCRIPT:-./scripts/tests/local-first-manual-validation-scripts-test.sh}"
+supabase_start_retry_test_script="${SUPABASE_START_RETRY_TEST_SCRIPT:-./scripts/tests/supabase-start-retry-test.sh}"
+docker_registry_auth_test_script="${DOCKER_REGISTRY_AUTH_TEST_SCRIPT:-./scripts/tests/docker-registry-auth-test.sh}"
 backend_write_contracts_script="${BACKEND_WRITE_CONTRACTS_SCRIPT:-./scripts/backend-write-contracts.sh}"
 coverage_gate_script="${COVERAGE_GATE_SCRIPT:-./scripts/coverage-gate.sh}"
 dependency_audit_script="${DEPENDENCY_AUDIT_SCRIPT:-./scripts/dependency-audit.sh}"
@@ -107,3 +109,5 @@ fi
 )
 
 "$manual_validation_scripts_test_script"
+"$supabase_start_retry_test_script"
+"$docker_registry_auth_test_script"

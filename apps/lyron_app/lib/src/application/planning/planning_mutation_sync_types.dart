@@ -796,10 +796,12 @@ abstract interface class PlanningMutationStore {
   ///
   /// When [remoteResponse] is true, [accepted] was mapped from an RPC
   /// response in the current sync run, and the D7 contiguity rules may use
-  /// its returned versions to rebase a not-in-flight pending cascade delete
-  /// (and the projection's plan content version). When false (a
-  /// crash-resumed `accepted` marker, whose `baseVersion` is still the
-  /// pre-write base), only the D8 purge runs.
+  /// its returned versions to rebase a not-in-flight pending cascade delete.
+  /// When false (a crash-resumed `accepted` marker, whose `baseVersion` is
+  /// still the pre-write base), only the D8 purge runs.
+  ///
+  /// It never touches the projection: D7 rule 1a (the projection's plan
+  /// content version) lives in [advanceAcceptedPlanContentVersion] (MG4).
   ///
   /// D8: when [accepted] is a `planDelete`/`sessionDelete`, every remaining
   /// mutation row of the deleted subtree is removed, in any status.
@@ -810,6 +812,30 @@ abstract interface class PlanningMutationStore {
     required String organizationId,
     required PlanningMutationRecord accepted,
     required bool remoteResponse,
+  });
+
+  /// Spec D7 rule 1a, placed by MG4: advances the projection's plan content
+  /// version across the content-bumping write [accepted] (a record mapped
+  /// from an RPC response in the current run), so the plan's next delete is
+  /// based on a version that already contains it. The caller (the sync
+  /// controller's refresh-failed branch) calls it only for a record whose run
+  /// context is still active and right after that record's reconcile
+  /// completed without throwing; a context switch or a failed or skipped
+  /// reconcile therefore never leaves the projection at the write's content
+  /// version without the write itself (I7). Exception: the F1 race, a pull for
+  /// the same context stored between C5 and the reconcile, then the older
+  /// write reconciled over it (pre-existing; scheduled for S5b PR 2,
+  /// docs/deferred/2026-10-22-content-version-ahead-of-content.md).
+  ///
+  /// Does nothing when the kind does not bump plan content or the response
+  /// carried no content version (the PS15 own-write gate nulls it for a key
+  /// edit that is not provably the caller's own).
+  ///
+  /// Idempotent. Never grows the store.
+  Future<void> advanceAcceptedPlanContentVersion({
+    required String userId,
+    required String organizationId,
+    required PlanningMutationRecord accepted,
   });
 }
 

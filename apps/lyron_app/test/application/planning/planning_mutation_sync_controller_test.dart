@@ -30,11 +30,11 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async {
+          refreshPlanning: (_) async {
             refreshCalls += 1;
             return true;
           },
-          shouldReconcileAcceptedMutation: (_) async => true,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {
             reconcileCalls += 1;
           },
@@ -77,8 +77,8 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async => true,
-          shouldReconcileAcceptedMutation: (_) async => true,
+          refreshPlanning: (_) async => true,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {},
         );
 
@@ -128,8 +128,8 @@ void main() {
       final controller = PlanningMutationSyncController(
         mutationStore: () => store,
         remoteRepository: () => repository,
-        refreshPlanning: () async => true,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => true,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -185,8 +185,8 @@ void main() {
       final controller = PlanningMutationSyncController(
         mutationStore: () => store,
         remoteRepository: () => repository,
-        refreshPlanning: () async => true,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => true,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -233,8 +233,8 @@ void main() {
       final controller = PlanningMutationSyncController(
         mutationStore: () => store,
         remoteRepository: () => repository,
-        refreshPlanning: () async => true,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => true,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -273,11 +273,11 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async {
+          refreshPlanning: (_) async {
             refreshCalls += 1;
             return true;
           },
-          shouldReconcileAcceptedMutation: (_) async => true,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {},
         );
 
@@ -325,8 +325,8 @@ void main() {
       final controller = PlanningMutationSyncController(
         mutationStore: () => store,
         remoteRepository: () => repository,
-        refreshPlanning: () async => true,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => true,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -368,8 +368,8 @@ void main() {
       final controller = PlanningMutationSyncController(
         mutationStore: () => store,
         remoteRepository: () => repository,
-        refreshPlanning: () async => true,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => true,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -410,8 +410,8 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async => true,
-          shouldReconcileAcceptedMutation: (_) async => true,
+          refreshPlanning: (_) async => true,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {},
         );
 
@@ -452,8 +452,8 @@ void main() {
       final controller = PlanningMutationSyncController(
         mutationStore: () => store,
         remoteRepository: () => repository,
-        refreshPlanning: () async => false,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => false,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -499,8 +499,8 @@ void main() {
       final controller = PlanningMutationSyncController(
         mutationStore: () => store,
         remoteRepository: () => repository,
-        refreshPlanning: () async => true,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => true,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -592,8 +592,8 @@ void main() {
       final controller = PlanningMutationSyncController(
         mutationStore: () => store,
         remoteRepository: () => repository,
-        refreshPlanning: () async => true,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => true,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -683,11 +683,11 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async {
+          refreshPlanning: (_) async {
             refreshCalls += 1;
             return true;
           },
-          shouldReconcileAcceptedMutation: (_) async => true,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {},
         );
 
@@ -726,8 +726,8 @@ void main() {
       final controller = PlanningMutationSyncController(
         mutationStore: () => store,
         remoteRepository: () => repository,
-        refreshPlanning: () async => false,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => false,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -779,8 +779,8 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async => false,
-          shouldReconcileAcceptedMutation: (_) async => true,
+          refreshPlanning: (_) async => false,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, record) async {
             reconciledRecord = record;
           },
@@ -840,8 +840,8 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async => false,
-          shouldReconcileAcceptedMutation: (_) async => true,
+          refreshPlanning: (_) async => false,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, record) async {
             reconciledRecord = record;
           },
@@ -889,8 +889,10 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async => false,
-          shouldReconcileAcceptedMutation: (_) async => false,
+          refreshPlanning: (_) async => false,
+          // The context moves once the call has been made: from MG2 on a
+          // run whose context is already gone sends nothing (C1/C2).
+          isRunContextActive: (_) => repository.calls == 0,
           reconcileAcceptedMutation: (_, _) async {
             reconcileCalls += 1;
           },
@@ -947,11 +949,11 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async {
+          refreshPlanning: (_) async {
             refreshCalls += 1;
             return true;
           },
-          shouldReconcileAcceptedMutation: (_) async => true,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {},
         );
 
@@ -976,11 +978,11 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async {
+          refreshPlanning: (_) async {
             refreshCalls += 1;
             return true;
           },
-          shouldReconcileAcceptedMutation: (_) async => true,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {},
         );
 
@@ -1023,8 +1025,8 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async => false,
-          shouldReconcileAcceptedMutation: (_) async => true,
+          refreshPlanning: (_) async => false,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {
             reconcileCalls += 1;
           },
@@ -1070,8 +1072,8 @@ void main() {
       final controller = PlanningMutationSyncController(
         mutationStore: () => store,
         remoteRepository: () => repository,
-        refreshPlanning: () async => true,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => true,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -1130,11 +1132,11 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async {
+          refreshPlanning: (_) async {
             refreshCalls += 1;
             return true;
           },
-          shouldReconcileAcceptedMutation: (_) async => true,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {},
         );
 
@@ -1178,11 +1180,11 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async {
+          refreshPlanning: (_) async {
             refreshCalls += 1;
             return true;
           },
-          shouldReconcileAcceptedMutation: (_) async => true,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {},
         );
 
@@ -1226,8 +1228,8 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async => false,
-          shouldReconcileAcceptedMutation: (_) async => true,
+          refreshPlanning: (_) async => false,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {},
         );
 
@@ -1267,8 +1269,8 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => repository,
-          refreshPlanning: () async => false,
-          shouldReconcileAcceptedMutation: (_) async => true,
+          refreshPlanning: (_) async => false,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {},
         );
 
@@ -1311,8 +1313,8 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => _FakePlanningMutationRemoteRepository(),
-          refreshPlanning: () async => true,
-          shouldReconcileAcceptedMutation: (_) async => true,
+          refreshPlanning: (_) async => true,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {},
         );
 
@@ -1351,8 +1353,8 @@ void main() {
       final controller = PlanningMutationSyncController(
         mutationStore: () => store,
         remoteRepository: () => _FakePlanningMutationRemoteRepository(),
-        refreshPlanning: () async => false,
-        shouldReconcileAcceptedMutation: (_) async => true,
+        refreshPlanning: (_) async => false,
+        isRunContextActive: (_) => true,
         reconcileAcceptedMutation: (_, _) async {},
       );
 
@@ -1393,8 +1395,8 @@ void main() {
           final controller = PlanningMutationSyncController(
             mutationStore: () => store,
             remoteRepository: () => _FakePlanningMutationRemoteRepository(),
-            refreshPlanning: () async => refreshed,
-            shouldReconcileAcceptedMutation: (_) async => true,
+            refreshPlanning: (_) async => refreshed,
+            isRunContextActive: (_) => true,
             reconcileAcceptedMutation: (_, _) async {},
           );
 
@@ -1435,8 +1437,8 @@ void main() {
         final controller = PlanningMutationSyncController(
           mutationStore: () => store,
           remoteRepository: () => _FakePlanningMutationRemoteRepository(),
-          refreshPlanning: () async => refreshed,
-          shouldReconcileAcceptedMutation: (_) async => true,
+          refreshPlanning: (_) async => refreshed,
+          isRunContextActive: (_) => true,
           reconcileAcceptedMutation: (_, _) async {},
         );
 
@@ -1451,6 +1453,248 @@ void main() {
         expect(store.events, contains('save:accepted:item-1'));
       });
     }
+
+    group('a run stops when its context moves (MG2)', () {
+      const context = ActivePlanningReadContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      PlanningMutationRecord pendingRecord(
+        String id,
+        int orderKey, {
+        PlanningMutationKind kind = PlanningMutationKind.planEdit,
+      }) => PlanningMutationRecord(
+        aggregateId: id,
+        organizationId: 'org-1',
+        name: 'Plan $id',
+        slug: kind == PlanningMutationKind.planCreate ? 'slug-$id' : null,
+        kind: kind,
+        syncStatus: PlanningMutationSyncStatus.pending,
+        orderKey: orderKey,
+        updatedAt: DateTime.utc(2026),
+      );
+
+      test('C1: a context change between candidates stops the run', () async {
+        var active = true;
+        final store = _FakePlanningMutationStore(
+          pending: [pendingRecord('plan-1', 1), pendingRecord('plan-2', 2)],
+        );
+        final completer = Completer<void>();
+        final repository = _FakePlanningMutationRemoteRepository(
+          slowCompleter: completer,
+        );
+        final controller = PlanningMutationSyncController(
+          mutationStore: () => store,
+          remoteRepository: () => repository,
+          refreshPlanning: (_) async => true,
+          isRunContextActive: (_) => active,
+          reconcileAcceptedMutation: (_, _) async {},
+        );
+
+        final run = controller.syncPendingMutations(context);
+        await Future<void>.delayed(Duration.zero);
+        active = false;
+        completer.complete();
+        await run;
+
+        expect(repository.calls, 1);
+        expect(store.events, isNot(contains('save:sending:plan-2')));
+        final plan2 = await store.readMutation(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType: PlanningMutationKind.planEdit.aggregateType,
+          aggregateId: 'plan-2',
+        );
+        expect(plan2!.syncStatus, PlanningMutationSyncStatus.pending);
+      });
+
+      test('C1: a context that moves and comes back before the next check '
+          'keeps the run going', () async {
+        var active = true;
+        final store = _FakePlanningMutationStore(
+          pending: [pendingRecord('plan-1', 1), pendingRecord('plan-2', 2)],
+        );
+        final completer = Completer<void>();
+        final repository = _FakePlanningMutationRemoteRepository(
+          slowCompleter: completer,
+        );
+        final controller = PlanningMutationSyncController(
+          mutationStore: () => store,
+          remoteRepository: () => repository,
+          refreshPlanning: (_) async => true,
+          isRunContextActive: (_) => active,
+          reconcileAcceptedMutation: (_, _) async {},
+        );
+
+        final run = controller.syncPendingMutations(context);
+        await Future<void>.delayed(Duration.zero);
+        active = false;
+        active = true;
+        completer.complete();
+        await run;
+
+        expect(repository.calls, 2);
+      });
+
+      test('C2: a context change during the sending write sends nothing and '
+          'resets the row to pending', () async {
+        var active = true;
+        final store = _FakePlanningMutationStore(
+          pending: [
+            pendingRecord('plan-1', 1, kind: PlanningMutationKind.planCreate),
+          ],
+        );
+        store.onEvent = (event) {
+          if (event == 'save:sending:plan-1') active = false;
+        };
+        final repository = _FakePlanningMutationRemoteRepository();
+        final controller = PlanningMutationSyncController(
+          mutationStore: () => store,
+          remoteRepository: () => repository,
+          refreshPlanning: (_) async => true,
+          isRunContextActive: (_) => active,
+          reconcileAcceptedMutation: (_, _) async {},
+        );
+
+        await controller.syncPendingMutations(context);
+
+        expect(repository.calls, 0);
+        expect(store.events, ['save:sending:plan-1', 'save:pending:plan-1']);
+        expect(store.resolvedCreates, ['false:plan-1']);
+        final record = await store.readMutation(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          aggregateType: PlanningMutationKind.planCreate.aggregateType,
+          aggregateId: 'plan-1',
+        );
+        expect(record!.syncStatus, PlanningMutationSyncStatus.pending);
+        expect(record.errorCode, isNull);
+      });
+
+      test('C6: a failure answered after a context change is not written as '
+          'a verdict', () async {
+        var active = true;
+        final store = _FakePlanningMutationStore(
+          pending: [pendingRecord('plan-1', 1), pendingRecord('plan-2', 2)],
+        );
+        final completer = Completer<void>();
+        final repository = _FakePlanningMutationRemoteRepository(
+          error: const PlanningMutationSyncException(
+            PlanningMutationSyncErrorCode.authorizationDenied,
+          ),
+          slowCompleter: completer,
+        );
+        final controller = PlanningMutationSyncController(
+          mutationStore: () => store,
+          remoteRepository: () => repository,
+          refreshPlanning: (_) async => true,
+          isRunContextActive: (_) => active,
+          reconcileAcceptedMutation: (_, _) async {},
+        );
+
+        final run = controller.syncPendingMutations(context);
+        await Future<void>.delayed(Duration.zero);
+        active = false;
+        completer.complete();
+        await run;
+
+        expect(store.events, contains('save:pending:plan-1'));
+        expect(
+          store.events,
+          isNot(contains('save:failedAuthorization:plan-1')),
+        );
+        expect(repository.calls, 1);
+
+        // A retry whose own record carries the discarded verdict must hear a
+        // connectivity failure last, not the authorization verdict.
+        var retryActive = true;
+        final retryStore = _FakePlanningMutationStore(
+          pending: [pendingRecord('plan-1', 1), pendingRecord('plan-2', 2)],
+        );
+        final retryCompleter = Completer<void>();
+        final retryRepository = _FakePlanningMutationRemoteRepository(
+          error: const PlanningMutationSyncException(
+            PlanningMutationSyncErrorCode.authorizationDenied,
+          ),
+          slowCompleter: retryCompleter,
+        );
+        final retryController = PlanningMutationSyncController(
+          mutationStore: () => retryStore,
+          remoteRepository: () => retryRepository,
+          refreshPlanning: (_) async => true,
+          isRunContextActive: (_) => retryActive,
+          reconcileAcceptedMutation: (_, _) async {},
+        );
+        final retry = retryController.retryMutation(
+          context,
+          aggregateType: PlanningMutationKind.planEdit.aggregateType,
+          aggregateId: 'plan-1',
+        );
+        // Settle the expectation up front so a throw is never unhandled.
+        final retryOutcome = expectLater(
+          retry,
+          throwsA(
+            isA<PlanningMutationSyncException>().having(
+              (e) => e.code,
+              'code',
+              PlanningMutationSyncErrorCode.connectivityFailure,
+            ),
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+        retryActive = false;
+        retryCompleter.complete();
+        await retryOutcome;
+        expect(
+          retryStore.events,
+          isNot(contains('save:failedAuthorization:plan-1')),
+        );
+      });
+
+      test('a retry in a context that just moved throws a connectivity '
+          'failure', () async {
+        final store = _FakePlanningMutationStore(
+          pending: [],
+          all: [
+            PlanningMutationRecord(
+              aggregateId: 'plan-1',
+              organizationId: 'org-1',
+              name: 'Plan One',
+              kind: PlanningMutationKind.planEdit,
+              syncStatus: PlanningMutationSyncStatus.conflict,
+              errorCode: PlanningMutationSyncErrorCode.conflict,
+              orderKey: 1,
+              updatedAt: DateTime.utc(2026),
+            ),
+          ],
+        );
+        final repository = _FakePlanningMutationRemoteRepository();
+        final controller = PlanningMutationSyncController(
+          mutationStore: () => store,
+          remoteRepository: () => repository,
+          refreshPlanning: (_) async => true,
+          isRunContextActive: (_) => false,
+          reconcileAcceptedMutation: (_, _) async {},
+        );
+
+        await expectLater(
+          controller.retryMutation(
+            context,
+            aggregateType: 'plan',
+            aggregateId: 'plan-1',
+          ),
+          throwsA(
+            isA<PlanningMutationSyncException>().having(
+              (e) => e.code,
+              'code',
+              PlanningMutationSyncErrorCode.connectivityFailure,
+            ),
+          ),
+        );
+        expect(repository.calls, 0);
+      });
+    });
   });
 }
 
@@ -1468,7 +1712,11 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
     required String aggregateId,
     required bool created,
     int? acceptedBaseVersion,
-  }) async => false;
+  }) async {
+    resolvedCreates.add('$created:$aggregateId');
+    return false;
+  }
+
   _FakePlanningMutationStore({
     required this.pending,
     List<PlanningMutationRecord>? all,
@@ -1480,6 +1728,17 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   final List<String> retriedAggregateIds = [];
   PlanningMutationSyncStatus? lastSavedStatus;
   final List<String> events = [];
+
+  /// Called right after every entry added to [events].
+  void Function(String event)? onEvent;
+
+  /// `'$created:$aggregateId'` for every [resolveCancelledCreate] call.
+  final List<String> resolvedCreates = [];
+
+  void _log(String event) {
+    events.add(event);
+    onEvent?.call(event);
+  }
 
   /// Thrown from [applyAcceptedWriteEffects] after it records its event, to
   /// model a failing purge/rebase. `null` keeps the call succeeding.
@@ -1620,11 +1879,20 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
     required PlanningMutationRecord accepted,
     required bool remoteResponse,
   }) async {
-    events.add('effects:${accepted.aggregateId}:$remoteResponse');
+    _log('effects:${accepted.aggregateId}:$remoteResponse');
     final error = effectsError;
     if (error != null) {
       throw error;
     }
+  }
+
+  @override
+  Future<void> advanceAcceptedPlanContentVersion({
+    required String userId,
+    required String organizationId,
+    required PlanningMutationRecord accepted,
+  }) async {
+    _log('advance:${accepted.aggregateId}');
   }
 
   @override
@@ -1685,7 +1953,7 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
     String? errorMessage,
     int? expectedRevision,
   }) async {
-    events.add('save:${syncStatus.name}:$aggregateId');
+    _log('save:${syncStatus.name}:$aggregateId');
     lastSavedStatus = syncStatus;
     // Mirror the real store: persist the attempt result onto the record so
     // a subsequent readMutation reflects it, the way the Drift-backed store

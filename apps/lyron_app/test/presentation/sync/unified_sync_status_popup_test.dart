@@ -187,9 +187,9 @@ class _SpyPlanningSyncController extends PlanningMutationSyncController {
     : super(
         mutationStore: () => throw UnimplementedError(),
         remoteRepository: () => throw UnimplementedError(),
-        refreshPlanning: () async => false,
+        refreshPlanning: (_) async => false,
         reconcileAcceptedMutation: (context, record) async {},
-        shouldReconcileAcceptedMutation: (context) async => false,
+        isRunContextActive: (context) => false,
       );
 
   final List<String> retryCalls = [];
@@ -219,7 +219,11 @@ class _SpyPlanningSyncController extends PlanningMutationSyncController {
 
 class _SpySongSyncController extends SongMutationSyncController {
   _SpySongSyncController({this.discardResult = SongDiscardResult.discarded})
-    : super(store: _FakeSongStore(), remoteRepository: _FakeSongRemote());
+    : super(
+        store: _FakeSongStore(),
+        remoteRepository: _FakeSongRemote(),
+        isContextActive: (_) => true,
+      );
 
   final SongDiscardResult discardResult;
   final List<String> keepMineCalls = [];

@@ -54,6 +54,10 @@ class PlanningSyncController extends ChangeNotifier {
   Future<void>? _refreshFuture;
   int? _refreshFutureGeneration;
   bool _refreshQueued = false;
+  // MG5: pulls are numbered when they start; the last one whose payload was
+  // stored is remembered with the context it was stored for.
+  int _pullSequence = 0;
+  ({int sequence, String userId, String organizationId})? _lastStoredPull;
   bool _disposed = false;
   final _ownership = CurrentUserOwnership();
 
@@ -67,8 +71,9 @@ class PlanningSyncController extends ChangeNotifier {
   /// is reset. This runs on the auth edge itself: the I3 guard in
   /// _refreshPlanning runs only if a refresh runs, and _readPlanningOrThrow
   /// skips the refresh while local data is present (F7). Releasing the
-  /// previous boundary here also means handleActiveContextChanged finds no
-  /// previous boundary to delete when the new user's arrives (F8). In memory
+  /// previous boundary here also means the previous user's state is already
+  /// released when the new user's arrives in handleActiveContextChanged
+  /// (F8), which deletes no local data on a switch since MG1. In memory
   /// only: no local data is deleted.
   void handleCurrentUser(String currentUserId) {
     final changed = _ownership.observe(currentUserId);
@@ -183,18 +188,13 @@ class PlanningSyncController extends ChangeNotifier {
         previousOrganizationId == context.organizationId;
 
     if (!sameBoundary) {
+      // MG1: an organization switch keeps the previous organization's
+      // projection and pending mutation rows. They are keyed by
+      // (user, organization), so nothing of them is read under the new
+      // organization, and deleting them would silently destroy unsynced
+      // work. Only a sign-out, a user change or a confirmed membership
+      // revocation purge planning data.
       _invalidateRefreshGeneration();
-      if (previousUserId != null && previousOrganizationId != null) {
-        try {
-          await _localStore().deletePlanningData(
-            userId: previousUserId,
-            organizationId: previousOrganizationId,
-            shouldContinue: () => !_isStaleBoundary(boundaryGeneration),
-          );
-        } on PlanningProjectionAbortedException {
-          return;
-        }
-      }
     }
     if (_isStaleBoundary(boundaryGeneration)) {
       return;
@@ -246,6 +246,27 @@ class PlanningSyncController extends ChangeNotifier {
         _refreshQueued = false;
       }
     }
+  }
+
+  /// MG5: true only if a pull for exactly [context], started after this
+  /// request, was stored. [refreshPlanning]'s bool says the state is idle,
+  /// which is no evidence of that: the call may coalesce onto an older
+  /// in-flight pull (its payload predates the write just stored), or its
+  /// queued run may abort before pulling. This always queues one more pull
+  /// behind an in-flight one and checks the numbered pull that was stored.
+  Future<bool> refreshPlanningAfterWrite(
+    ActivePlanningReadContext context,
+  ) async {
+    final startSequence = _pullSequence;
+    if (_refreshFuture != null) {
+      _refreshQueued = true;
+    }
+    await refreshPlanning();
+    final stored = _lastStoredPull;
+    return stored != null &&
+        stored.sequence > startSequence &&
+        stored.userId == context.userId &&
+        stored.organizationId == context.organizationId;
   }
 
   Future<void> _drainRefreshQueue() async {
@@ -321,6 +342,7 @@ class PlanningSyncController extends ChangeNotifier {
     );
 
     try {
+      final pullNumber = ++_pullSequence;
       final payload = await _remoteRepository().fetchPlanningSyncPayload(
         organizationId: organizationId,
         shouldContinue: () => !_isStale(generation),
@@ -339,6 +361,11 @@ class PlanningSyncController extends ChangeNotifier {
         return;
       }
 
+      _lastStoredPull = (
+        sequence: pullNumber,
+        userId: userId,
+        organizationId: organizationId,
+      );
       _setState(
         _state.copyWith(
           refreshStatus: PlanningRefreshStatus.idle,

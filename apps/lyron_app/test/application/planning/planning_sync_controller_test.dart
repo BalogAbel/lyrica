@@ -14,8 +14,10 @@ import 'package:lyron_app/src/application/storage/local_data_lifecycle.dart';
 import 'package:lyron_app/src/domain/auth/app_auth_session.dart';
 import 'package:lyron_app/src/domain/planning/plan_detail.dart';
 import 'package:lyron_app/src/domain/planning/plan_summary.dart';
+import 'package:lyron_app/src/offline/auth/drift_pending_local_work_reader.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_database.dart';
 import 'package:lyron_app/src/offline/planning/planning_local_store.dart';
+import 'package:lyron_app/src/offline/song_catalog/song_catalog_database.dart';
 import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 import 'package:lyron_app/src/shared/keyset_paging.dart';
 
@@ -310,6 +312,84 @@ void main() {
 
       expect(remoteRepository.fetchCallCount, 1);
       expect(controller.state.refreshStatus, PlanningRefreshStatus.idle);
+    });
+
+    group('refreshPlanningAfterWrite (MG5)', () {
+      const ctx1 = ActivePlanningReadContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+
+      Future<PlanningSyncController> establishedController() async {
+        final controller = PlanningSyncController(
+          localStore: () => store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: () => remoteRepository,
+          authSessionReader: () => session,
+        );
+        await controller.handleActiveContextChanged(ctx1, refresh: false);
+        return controller;
+      }
+
+      test('an after-write refresh never coalesces onto a pull that started '
+          'before it', () async {
+        final blocked = Completer<PlanningSyncPayload>();
+        remoteRepository.nextPayload = blocked.future;
+        final controller = await establishedController();
+
+        final first = controller.refreshPlanning();
+        final afterWrite = controller.refreshPlanningAfterWrite(ctx1);
+        blocked.complete(_payloadFor('org-1', planId: 'plan-1'));
+
+        expect(await afterWrite, isTrue);
+        await first;
+        expect(remoteRepository.fetchCallCount, 2);
+      });
+
+      test('an after-write refresh whose queued pull never ran is not '
+          'reported as refreshed', () async {
+        final blocked = Completer<PlanningSyncPayload>();
+        remoteRepository.nextPayload = blocked.future;
+        final controller = await establishedController();
+
+        final first = controller.refreshPlanning();
+        final afterWrite = controller.refreshPlanningAfterWrite(ctx1);
+        controller.handleCurrentUser('user-2');
+        blocked.complete(_payloadFor('org-1', planId: 'plan-1'));
+
+        expect(await afterWrite, isFalse);
+        await first;
+      });
+
+      test('a pull stored for another context does not count for the '
+          'requester', () async {
+        final blocked = Completer<PlanningSyncPayload>();
+        remoteRepository.nextPayload = blocked.future;
+        final controller = await establishedController();
+
+        final first = controller.refreshPlanning();
+        final afterWrite = controller.refreshPlanningAfterWrite(ctx1);
+        await Future<void>.delayed(Duration.zero);
+        await controller.handleActiveContextChanged(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-2',
+          ),
+          refresh: false,
+        );
+        blocked.complete(_payloadFor('org-1', planId: 'plan-1'));
+
+        expect(await afterWrite, isFalse);
+        await first;
+      });
+
+      test('an after-write refresh with no refresh in flight runs one pull '
+          'and reports it', () async {
+        final controller = await establishedController();
+
+        expect(await controller.refreshPlanningAfterWrite(ctx1), isTrue);
+        expect(remoteRepository.fetchCallCount, 1);
+      });
     });
 
     test(
@@ -792,57 +872,6 @@ void main() {
     );
 
     test(
-      'stale previous-boundary delete is aborted when ownership returns to that organization',
-      () async {
-        final localStore = _BlockingBoundaryDeletePlanningLocalStore(store);
-        final boundaryLifecycle = _lifecycleFor(localStore);
-        final controller = PlanningSyncController(
-          localStore: () => localStore,
-          localDataLifecycle: boundaryLifecycle,
-          remoteRepository: () => remoteRepository,
-          authSessionReader: () => session,
-        );
-
-        await controller.handleActiveContextChanged(
-          const ActivePlanningReadContext(
-            userId: 'user-1',
-            organizationId: 'org-1',
-          ),
-        );
-
-        final switchToOrg2 = controller.handleActiveContextChanged(
-          const ActivePlanningReadContext(
-            userId: 'user-1',
-            organizationId: 'org-2',
-          ),
-          refresh: false,
-        );
-        await localStore.deleteStarted.future;
-
-        final switchBackToOrg1 = controller.handleActiveContextChanged(
-          const ActivePlanningReadContext(
-            userId: 'user-1',
-            organizationId: 'org-1',
-          ),
-          refresh: false,
-        );
-        localStore.releaseDelete();
-
-        await switchToOrg2;
-        await switchBackToOrg1;
-
-        expect(controller.state.organizationId, 'org-1');
-        expect(
-          await store.readPlanSummaries(
-            userId: 'user-1',
-            organizationId: 'org-1',
-          ),
-          hasLength(1),
-        );
-      },
-    );
-
-    test(
       'organization change while a refresh is in flight still triggers a refresh for the new generation',
       () async {
         final org1Refresh = Completer<PlanningSyncPayload>();
@@ -1029,7 +1058,7 @@ void main() {
     });
 
     test(
-      'switching to a new active organization that fails to refresh does not expose the previous organization projection',
+      'switching to a new active organization that fails to refresh shows nothing of the previous organization and keeps its data',
       () async {
         final controller = PlanningSyncController(
           localStore: () => store,
@@ -1062,7 +1091,135 @@ void main() {
             userId: 'user-1',
             organizationId: 'org-1',
           ),
-          isEmpty,
+          isNotEmpty,
+        );
+      },
+    );
+
+    Future<PlanningSyncController> switchedAwayFromUnsyncedOrgB() async {
+      final controller = PlanningSyncController(
+        localStore: () => store,
+        localDataLifecycle: lifecycle,
+        remoteRepository: () => remoteRepository,
+        authSessionReader: () => session,
+      );
+      const orgB = ActivePlanningReadContext(
+        userId: 'user-1',
+        organizationId: 'org-b',
+      );
+      const orgA = ActivePlanningReadContext(
+        userId: 'user-1',
+        organizationId: 'org-a',
+      );
+      await controller.handleActiveContextChanged(orgB); // default payload
+      await mutationStore.recordPlanEdit(
+        context: const PlanningMutationContext(
+          userId: 'user-1',
+          organizationId: 'org-b',
+        ),
+        draft: const PlanningPlanEditMutationDraft(
+          planId: 'plan-1',
+          name: 'Unsynced rename',
+        ),
+      );
+      remoteRepository.payloadsByOrganizationId['org-a'] =
+          Future<PlanningSyncPayload>(() => throw Exception('offline'));
+
+      await controller.handleActiveContextChanged(orgA);
+      return controller;
+    }
+
+    test('an organization switch keeps the previous organization pending '
+        'mutations and projection (MG1)', () async {
+      final controller = await switchedAwayFromUnsyncedOrgB();
+
+      expect(controller.state.organizationId, 'org-a');
+      expect(controller.state.hasLocalPlanningData, isFalse);
+      expect(
+        await mutationStore.readAllMutations(
+          userId: 'user-1',
+          organizationId: 'org-b',
+        ),
+        hasLength(1),
+      );
+      expect(
+        await store.readPlanSummaries(
+          userId: 'user-1',
+          organizationId: 'org-b',
+        ),
+        isNotEmpty,
+      );
+      expect(
+        await store.readPlanSummaries(
+          userId: 'user-1',
+          organizationId: 'org-a',
+        ),
+        isEmpty,
+      );
+    });
+
+    test('previous organization rows still count for the sign-out warning '
+        'after a switch', () async {
+      await switchedAwayFromUnsyncedOrgB();
+      final songDatabase = SongCatalogDatabase.inMemory();
+      addTearDown(songDatabase.close);
+
+      final count = await DriftPendingLocalWorkReader(
+        planningDatabase: database,
+        songDatabase: songDatabase,
+      ).countPlanningPendingWork(userId: 'user-1');
+
+      expect(count, 1);
+    });
+
+    test('an offline cold start after a switch shows nothing of the previous '
+        'organization', () async {
+      await switchedAwayFromUnsyncedOrgB();
+      final controller2 = PlanningSyncController(
+        localStore: () => store,
+        localDataLifecycle: lifecycle,
+        remoteRepository: () => remoteRepository,
+        authSessionReader: () => null,
+        lastKnownIdentityReader: () =>
+            (userId: 'user-1', organizationId: 'org-a'),
+      );
+
+      await controller2.handleOfflineAuthenticated();
+
+      // org-a has no projection, so no context is established; in particular
+      // the previous organization (org-b) is never exposed.
+      expect(controller2.state.organizationId, isNull);
+      expect(controller2.state.organizationId, isNot('org-b'));
+    });
+
+    // Known behavior, pinned (MG1): when the last known identity carries NO
+    // organization, the offline cold start falls back to the store's latest
+    // cached organization for the user (readLatestCachedOrganizationId), the
+    // same fallback the song side has. After a switch whose first pull failed
+    // that is the previous organization: cached data may outlive the user's
+    // revocation, and nothing is exposed that this device did not already
+    // hold for this user. Recorded in
+    // docs/deferred/2026-10-22-other-organization-pending-work.md.
+    test(
+      'an offline cold start with no identity organization after a switch '
+      'falls back to the latest cached organization (known behavior)',
+      () async {
+        await switchedAwayFromUnsyncedOrgB();
+        final controller2 = PlanningSyncController(
+          localStore: () => store,
+          localDataLifecycle: lifecycle,
+          remoteRepository: () => remoteRepository,
+          authSessionReader: () => null,
+          lastKnownIdentityReader: () =>
+              (userId: 'user-1', organizationId: null),
+        );
+
+        await controller2.handleOfflineAuthenticated();
+
+        expect(controller2.state.organizationId, 'org-b');
+        expect(
+          await store.readLatestCachedOrganizationId(userId: 'user-1'),
+          'org-b',
         );
       },
     );
@@ -1528,15 +1685,6 @@ class _BlockingPlanningLocalStore implements PlanningLocalStore {
   }
 
   @override
-  Future<void> deletePlanningData({
-    required String userId,
-    required String organizationId,
-    bool Function()? shouldContinue,
-  }) async {
-    _detailsByOrg.remove(organizationId);
-  }
-
-  @override
   Future<void> deletePlanningDataForUser({
     required String userId,
     bool Function()? shouldContinue,
@@ -1635,318 +1783,4 @@ class _BlockingPlanningLocalStore implements PlanningLocalStore {
     required int sessionVersion,
     required DateTime refreshedAt,
   }) async {}
-}
-
-class _BlockingBoundaryDeletePlanningLocalStore implements PlanningLocalStore {
-  _BlockingBoundaryDeletePlanningLocalStore(this._delegate);
-
-  final PlanningLocalStore _delegate;
-  final Completer<void> deleteStarted = Completer<void>();
-  final Completer<void> _deleteGate = Completer<void>();
-
-  void releaseDelete() {
-    if (!_deleteGate.isCompleted) {
-      _deleteGate.complete();
-    }
-  }
-
-  @override
-  Future<int> countSongReferences({
-    required String userId,
-    required String organizationId,
-    required String songId,
-  }) {
-    return _delegate.countSongReferences(
-      userId: userId,
-      organizationId: organizationId,
-      songId: songId,
-    );
-  }
-
-  @override
-  Future<void> deletePlanningData({
-    required String userId,
-    required String organizationId,
-    bool Function()? shouldContinue,
-  }) async {
-    if (!deleteStarted.isCompleted) {
-      deleteStarted.complete();
-    }
-    await _deleteGate.future;
-    await _delegate.deletePlanningData(
-      userId: userId,
-      organizationId: organizationId,
-      shouldContinue: shouldContinue,
-    );
-  }
-
-  @override
-  Future<void> deletePlanningDataForUser({
-    required String userId,
-    bool Function()? shouldContinue,
-  }) {
-    return _delegate.deletePlanningDataForUser(
-      userId: userId,
-      shouldContinue: shouldContinue,
-    );
-  }
-
-  @override
-  Future<void> advanceSyncedPlanContentVersion({
-    required String userId,
-    required String organizationId,
-    required String planId,
-    required int acceptedContentVersion,
-  }) {
-    return _delegate.advanceSyncedPlanContentVersion(
-      userId: userId,
-      organizationId: organizationId,
-      planId: planId,
-      acceptedContentVersion: acceptedContentVersion,
-    );
-  }
-
-  @override
-  Future<void> deleteSyncedPlan({
-    required String userId,
-    required String organizationId,
-    required String planId,
-    required DateTime refreshedAt,
-  }) {
-    return _delegate.deleteSyncedPlan(
-      userId: userId,
-      organizationId: organizationId,
-      planId: planId,
-      refreshedAt: refreshedAt,
-    );
-  }
-
-  @override
-  Future<void> deleteSyncedSession({
-    required String userId,
-    required String organizationId,
-    required String sessionId,
-    required DateTime refreshedAt,
-  }) {
-    return _delegate.deleteSyncedSession(
-      userId: userId,
-      organizationId: organizationId,
-      sessionId: sessionId,
-      refreshedAt: refreshedAt,
-    );
-  }
-
-  @override
-  Future<void> applySyncedSessionItemKey({
-    required String userId,
-    required String organizationId,
-    required String sessionItemId,
-    required int version,
-    required int? transpose,
-    required int? capo,
-    required DateTime refreshedAt,
-  }) => _delegate.applySyncedSessionItemKey(
-    userId: userId,
-    organizationId: organizationId,
-    sessionItemId: sessionItemId,
-    version: version,
-    transpose: transpose,
-    capo: capo,
-    refreshedAt: refreshedAt,
-  );
-
-  @override
-  Future<void> deleteSyncedSessionItem({
-    required String userId,
-    required String organizationId,
-    required String sessionId,
-    required String sessionItemId,
-    required int sessionVersion,
-    required DateTime refreshedAt,
-  }) {
-    return _delegate.deleteSyncedSessionItem(
-      userId: userId,
-      organizationId: organizationId,
-      sessionId: sessionId,
-      sessionItemId: sessionItemId,
-      sessionVersion: sessionVersion,
-      refreshedAt: refreshedAt,
-    );
-  }
-
-  @override
-  Future<bool> hasProjection({
-    required String userId,
-    required String organizationId,
-  }) {
-    return _delegate.hasProjection(
-      userId: userId,
-      organizationId: organizationId,
-    );
-  }
-
-  @override
-  Future<PlanDetail?> readPlanDetail({
-    required String userId,
-    required String organizationId,
-    required String planId,
-  }) {
-    return _delegate.readPlanDetail(
-      userId: userId,
-      organizationId: organizationId,
-      planId: planId,
-    );
-  }
-
-  @override
-  Future<PlanDetail?> readPlanDetailBySlug({
-    required String userId,
-    required String organizationId,
-    required String planSlug,
-  }) {
-    return _delegate.readPlanDetailBySlug(
-      userId: userId,
-      organizationId: organizationId,
-      planSlug: planSlug,
-    );
-  }
-
-  @override
-  Future<String?> readLatestCachedOrganizationId({required String userId}) {
-    return _delegate.readLatestCachedOrganizationId(userId: userId);
-  }
-
-  @override
-  Future<List<PlanSummary>> readPlanSummaries({
-    required String userId,
-    required String organizationId,
-  }) {
-    return _delegate.readPlanSummaries(
-      userId: userId,
-      organizationId: organizationId,
-    );
-  }
-
-  @override
-  Future<PlanSummary?> readPlanSummaryBySlug({
-    required String userId,
-    required String organizationId,
-    required String planSlug,
-  }) {
-    return _delegate.readPlanSummaryBySlug(
-      userId: userId,
-      organizationId: organizationId,
-      planSlug: planSlug,
-    );
-  }
-
-  @override
-  Future<void> replaceActiveProjection({
-    required String userId,
-    required String organizationId,
-    required List<CachedPlanRecord> plans,
-    required List<CachedSessionRecord> sessions,
-    required List<CachedSessionItemRecord> items,
-    required DateTime refreshedAt,
-    bool Function()? shouldContinue,
-  }) {
-    return _delegate.replaceActiveProjection(
-      userId: userId,
-      organizationId: organizationId,
-      plans: plans,
-      sessions: sessions,
-      items: items,
-      refreshedAt: refreshedAt,
-      shouldContinue: shouldContinue,
-    );
-  }
-
-  @override
-  Future<void> replaceSyncedSessionItemOrder({
-    required String userId,
-    required String organizationId,
-    required String sessionId,
-    required List<String> orderedSessionItemIds,
-    List<int>? orderedSessionItemPositions,
-    required int sessionVersion,
-    required DateTime refreshedAt,
-  }) {
-    return _delegate.replaceSyncedSessionItemOrder(
-      userId: userId,
-      organizationId: organizationId,
-      sessionId: sessionId,
-      orderedSessionItemIds: orderedSessionItemIds,
-      orderedSessionItemPositions: orderedSessionItemPositions,
-      sessionVersion: sessionVersion,
-      refreshedAt: refreshedAt,
-    );
-  }
-
-  @override
-  Future<void> replaceSyncedSessionOrder({
-    required String userId,
-    required String organizationId,
-    required String planId,
-    required List<String> orderedSessionIds,
-    List<int>? orderedSessionPositions,
-    required int planVersion,
-    required DateTime refreshedAt,
-  }) {
-    return _delegate.replaceSyncedSessionOrder(
-      userId: userId,
-      organizationId: organizationId,
-      planId: planId,
-      orderedSessionIds: orderedSessionIds,
-      orderedSessionPositions: orderedSessionPositions,
-      planVersion: planVersion,
-      refreshedAt: refreshedAt,
-    );
-  }
-
-  @override
-  Future<void> upsertSyncedPlan({
-    required String userId,
-    required String organizationId,
-    required CachedPlanRecord plan,
-    required DateTime refreshedAt,
-  }) {
-    return _delegate.upsertSyncedPlan(
-      userId: userId,
-      organizationId: organizationId,
-      plan: plan,
-      refreshedAt: refreshedAt,
-    );
-  }
-
-  @override
-  Future<void> upsertSyncedSession({
-    required String userId,
-    required String organizationId,
-    required CachedSessionRecord session,
-    required DateTime refreshedAt,
-  }) {
-    return _delegate.upsertSyncedSession(
-      userId: userId,
-      organizationId: organizationId,
-      session: session,
-      refreshedAt: refreshedAt,
-    );
-  }
-
-  @override
-  Future<void> upsertSyncedSessionItem({
-    required String userId,
-    required String organizationId,
-    required CachedSessionItemRecord item,
-    required int sessionVersion,
-    required DateTime refreshedAt,
-  }) {
-    return _delegate.upsertSyncedSessionItem(
-      userId: userId,
-      organizationId: organizationId,
-      item: item,
-      sessionVersion: sessionVersion,
-      refreshedAt: refreshedAt,
-    );
-  }
 }
