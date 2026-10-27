@@ -4388,6 +4388,12 @@ class _ConflictRejectingSongLibraryService extends SongLibraryService {
 class _ReaderFakeSongRepository
     implements SongCatalogReadRepository, SongMutationStore {
   @override
+  Future<void> convertStaleSongCreateTombstones({
+    required String userId,
+    required String organizationId,
+  }) async {}
+
+  @override
   Future<String> allocateUniqueSlug({
     required String userId,
     required String organizationId,

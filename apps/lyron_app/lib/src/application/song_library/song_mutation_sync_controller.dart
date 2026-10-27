@@ -108,6 +108,26 @@ class SongMutationSyncController {
   }
 
   Future<void> _runSync(SongMutationContext context) async {
+    // MG7 (await point A0): the first statement of a run. Runs are
+    // single-flight per context, so no remote call of this context is in
+    // flight here and every `cancelling` row is stale -- a create tombstone
+    // no run resolved. Each becomes a pending delete before the candidates
+    // are read, so the same run sends it. No marker is needed: a
+    // `remoteDeleted` answer to a `pendingDelete` already deletes the local
+    // row, which covers a create that never committed.
+    //
+    // Best-effort: `resolveCancelledSongCreate` has its own recovery
+    // boundary, but a failure must still not stop the run -- an exception
+    // escaping here would stop the outbox. A failed conversion leaves the
+    // rows `cancelling`; the next run retries it. An Error still propagates.
+    try {
+      await _store.convertStaleSongCreateTombstones(
+        userId: context.userId,
+        organizationId: context.organizationId,
+      );
+    } on Exception {
+      // Intentionally swallowed -- see the comment above.
+    }
     final pendingSongs = await _store.readPendingSongs(
       userId: context.userId,
       organizationId: context.organizationId,

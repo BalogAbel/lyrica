@@ -156,6 +156,19 @@ abstract interface class SongMutationStore {
     required String organizationId,
   });
 
+  /// MG7 (docs/specs/2026-10-21-planning-mutation-gaps.md, ADR-030): turns
+  /// every `cancelling` create tombstone of the context into a
+  /// `pendingDelete` based on version 1, the version `create_song` assigns.
+  /// Only a run start may call this: runs are single-flight per context, so
+  /// no remote call of this context is in flight and every `cancelling` row
+  /// is stale -- a tombstone no run resolved. A song delete answered
+  /// `remoteDeleted` removes the local row, so a create that never committed
+  /// needs no marker.
+  Future<void> convertStaleSongCreateTombstones({
+    required String userId,
+    required String organizationId,
+  });
+
   Future<List<SongMutationRecord>> readConflictSongs({
     required String userId,
     required String organizationId,

@@ -470,6 +470,12 @@ class _GatedSongMutationStore implements SongMutationStore {
   }
 
   @override
+  Future<void> convertStaleSongCreateTombstones({
+    required String userId,
+    required String organizationId,
+  }) async {}
+
+  @override
   Future<SongMutationRecord?> readById({
     required String userId,
     required String organizationId,

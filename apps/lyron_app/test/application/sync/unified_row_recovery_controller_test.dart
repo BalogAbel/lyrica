@@ -357,6 +357,12 @@ class _FakeSongStore implements SongMutationStore {
   final Map<String, SongMutationRecord> _mutations;
 
   @override
+  Future<void> convertStaleSongCreateTombstones({
+    required String userId,
+    required String organizationId,
+  }) async {}
+
+  @override
   Future<SongMutationRecord?> readById({
     required String userId,
     required String organizationId,

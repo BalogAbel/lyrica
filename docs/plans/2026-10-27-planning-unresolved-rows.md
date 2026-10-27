@@ -893,3 +893,27 @@ authoritative where they differ from the plan text.
 - E1 guard proof (vi): replacing the `on Exception` catch around the
   conversion with `finally` makes `'a failed tombstone conversion does not
   stop the run'` fail with `Exception: convert`.
+
+### Task 4
+
+- The committed-create test scripts the remote's delete answer as the record
+  with `syncStatus: synced` (what the real remote returns), not the unchanged
+  `pendingDelete` record: the controller reconciles the returned record, so
+  echoing `pendingDelete` leaves the row in place.
+- The strand helper reads the row through `readSongMutationBySongId` (both for
+  the `markCreateSending` revision and for the `cancelling` check):
+  `readById` hides `cancelling` rows.
+- Per ruling E1 the run-start conversion in `SongMutationSyncController._runSync`
+  is wrapped in `try { ... } on Exception { }` and the fake store gets
+  `throwOnConvert`; the new test `'a failed tombstone conversion does not stop
+  the run'` pins it (guard proof: removing the catch fails it with
+  `Exception: convert`).
+- Test doubles migrated mechanically (a no-op `convertStaleSongCreateTombstones`,
+  nothing else changed): `chordpro_import_service_test.dart`,
+  `song_library_service_test.dart`, `unified_discard_controller_test.dart`,
+  `unified_row_recovery_controller_test.dart`, `song_single_flight_test.dart`,
+  `song_reader_screen_test.dart`, `unified_sync_status_popup_test.dart` and
+  `song_editor_route_test.dart` (the last was not in the brief's grep result;
+  it surfaced as a compile error in the full suite). The fake in
+  `song_mutation_sync_controller_test.dart` records `runCalls` and honors
+  `throwOnConvert`.
