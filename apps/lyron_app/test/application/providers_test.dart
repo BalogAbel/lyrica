@@ -1777,13 +1777,6 @@ class _MutablePlanningMutationStore implements PlanningMutationStore {
   }) async {}
 
   @override
-  Future<void> advanceAcceptedPlanContentVersion({
-    required String userId,
-    required String organizationId,
-    required PlanningMutationRecord accepted,
-  }) async {}
-
-  @override
   Future<void> recordPlanEdit({
     required PlanningMutationContext context,
     required PlanningPlanEditMutationDraft draft,
@@ -1940,17 +1933,17 @@ class _BlockingDeletePlanningLocalStore implements PlanningLocalStore {
   }
 
   @override
-  Future<void> advanceSyncedPlanContentVersion({
+  Future<void> applyAcceptedWrite({
     required String userId,
     required String organizationId,
-    required String planId,
-    required int acceptedContentVersion,
+    required PlanningAcceptedWriteGate gate,
+    required Future<void> Function() apply,
   }) {
-    return _delegate.advanceSyncedPlanContentVersion(
+    return _delegate.applyAcceptedWrite(
       userId: userId,
       organizationId: organizationId,
-      planId: planId,
-      acceptedContentVersion: acceptedContentVersion,
+      gate: gate,
+      apply: apply,
     );
   }
 

@@ -1693,12 +1693,12 @@ class _BlockingPlanningLocalStore implements PlanningLocalStore {
   }
 
   @override
-  Future<void> advanceSyncedPlanContentVersion({
+  Future<void> applyAcceptedWrite({
     required String userId,
     required String organizationId,
-    required String planId,
-    required int acceptedContentVersion,
-  }) async {}
+    required PlanningAcceptedWriteGate gate,
+    required Future<void> Function() apply,
+  }) => apply();
 
   @override
   Future<void> deleteSyncedPlan({

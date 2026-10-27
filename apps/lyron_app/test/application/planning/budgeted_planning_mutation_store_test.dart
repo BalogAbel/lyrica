@@ -1120,13 +1120,6 @@ class _ReentrantPlanningMutationStore implements PlanningMutationStore {
   }) => throw UnimplementedError();
 
   @override
-  Future<void> advanceAcceptedPlanContentVersion({
-    required String userId,
-    required String organizationId,
-    required PlanningMutationRecord accepted,
-  }) => throw UnimplementedError();
-
-  @override
   Future<void> recordPlanEdit({
     required PlanningMutationContext context,
     required PlanningPlanEditMutationDraft draft,
@@ -1298,13 +1291,6 @@ class _HookedPlanningMutationStore implements PlanningMutationStore {
     required String organizationId,
     required PlanningMutationRecord accepted,
     required bool remoteResponse,
-  }) => throw UnimplementedError();
-
-  @override
-  Future<void> advanceAcceptedPlanContentVersion({
-    required String userId,
-    required String organizationId,
-    required PlanningMutationRecord accepted,
   }) => throw UnimplementedError();
 
   @override
@@ -1783,13 +1769,6 @@ class _CollapseRaceMutationStore implements PlanningMutationStore {
     required String organizationId,
     required PlanningMutationRecord accepted,
     required bool remoteResponse,
-  }) => throw UnimplementedError();
-
-  @override
-  Future<void> advanceAcceptedPlanContentVersion({
-    required String userId,
-    required String organizationId,
-    required PlanningMutationRecord accepted,
   }) => throw UnimplementedError();
 
   @override

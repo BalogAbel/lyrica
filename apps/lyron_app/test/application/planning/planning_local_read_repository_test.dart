@@ -827,12 +827,12 @@ class _RecordingPlanningLocalStore implements PlanningLocalStore {
   }) async {}
 
   @override
-  Future<void> advanceSyncedPlanContentVersion({
+  Future<void> applyAcceptedWrite({
     required String userId,
     required String organizationId,
-    required String planId,
-    required int acceptedContentVersion,
-  }) async {}
+    required PlanningAcceptedWriteGate gate,
+    required Future<void> Function() apply,
+  }) => apply();
 
   @override
   Future<void> deleteSyncedPlan({
@@ -1013,13 +1013,6 @@ class _RecordingPlanningMutationStore implements PlanningMutationStore {
     required String organizationId,
     required PlanningMutationRecord accepted,
     required bool remoteResponse,
-  }) async {}
-
-  @override
-  Future<void> advanceAcceptedPlanContentVersion({
-    required String userId,
-    required String organizationId,
-    required PlanningMutationRecord accepted,
   }) async {}
 
   @override

@@ -375,9 +375,11 @@ if (applied) _onStorageFootprintChanged?.call();
   (i) drop the content check → `'a session created and since deleted by
   another member is not resurrected'` fails (the F1 tests still pass through
   the row check); (ii) drop the versioned-row check → both crash-resumed
-  tests (Step 2, Step 4) fail; (iii) advance on `current < accepted` instead
-  of `current == accepted - 1` → `'applies without advancing below R - 1'`
-  fails; (iv) run the `_required` checks inside `apply` → `'a corrupt record
+  tests (Step 2, Step 4) fail; (iii) relax both contiguity checks together:
+  advance on `current < accepted` instead of `current == accepted - 1` and
+  drop the rule-1a UPDATE's `content_version = R - 1` predicate →
+  `'applies without advancing below R - 1'` and
+  `'applyAcceptedWrite advances only a contiguous value'` fail (E5); (iv) run the `_required` checks inside `apply` → `'a corrupt record
   throws before any projection write…'` fails; (v) call `apply()` outside the
   transaction → `'a throwing apply rolls back its writes and the advance'`
   fails.
@@ -830,3 +832,15 @@ authoritative where they differ from the plan text.
   in a fresh savepoint, and if SQLite aborts the outer transaction the
   exception propagates and the rows stay `accepted` (fail-safe, resumed by
   the next run).
+- **E5 (Task 1, STOP 3). Guard proof (iii) relaxes both contiguity checks.**
+  The rule-1a UPDATE keeps its `WHERE content_version = R - 1` predicate, so
+  relaxing only the outer `current == accepted - 1` to `current < accepted`
+  changes no behavior (the UPDATE matches no row) and no test can catch it.
+  Proof (iii) instead relaxes the outer condition and the `WHERE` predicate
+  together; `'applies without advancing below R - 1'` and
+  `'applyAcceptedWrite advances only a contiguous value'` then fail
+  (`Expected: <4> Actual: <6>`). The code stays as planned: the outer check
+  keeps the decision on the gate read C (the approved design), guards
+  `owner!`, and is equivalent to the predicate today because no
+  `bumpsPlanContent` arm writes the plan's `contentVersion`. Reviewers re-run
+  (iii) in this form.

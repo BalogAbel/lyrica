@@ -1476,29 +1476,6 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
     }
   }
 
-  @override
-  Future<void> advanceAcceptedPlanContentVersion({
-    required String userId,
-    required String organizationId,
-    required PlanningMutationRecord accepted,
-  }) async {
-    final planId = accepted.kind.aggregateType == 'plan'
-        ? accepted.aggregateId
-        : accepted.planId;
-    final acceptedContentVersion = accepted.acceptedPlanContentVersion;
-    // D7 rule 1a -- the projection, in the local store's own transaction.
-    if (accepted.kind.bumpsPlanContent &&
-        planId != null &&
-        acceptedContentVersion != null) {
-      await _localStore.advanceSyncedPlanContentVersion(
-        userId: userId,
-        organizationId: organizationId,
-        planId: planId,
-        acceptedContentVersion: acceptedContentVersion,
-      );
-    }
-  }
-
   // D7 rules 1b and 2. Only exact contiguity with the backend-returned
   // value ever moves a base (I3): anything else leaves it stale, and a
   // stale base conflicts -- the fail-safe direction.

@@ -613,21 +613,4 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
       remoteResponse: remoteResponse,
     ),
   );
-
-  // MG4: rule 1a, queued like the effects call (it writes the projection of
-  // this context), never budget-guarded (it never grows the store), no
-  // recovery boundary (nothing to grow).
-  @override
-  Future<void> advanceAcceptedPlanContentVersion({
-    required String userId,
-    required String organizationId,
-    required PlanningMutationRecord accepted,
-  }) => _queuedWrite(
-    PlanningMutationContext(userId: userId, organizationId: organizationId),
-    () => _delegate.advanceAcceptedPlanContentVersion(
-      userId: userId,
-      organizationId: organizationId,
-      accepted: accepted,
-    ),
-  );
 }

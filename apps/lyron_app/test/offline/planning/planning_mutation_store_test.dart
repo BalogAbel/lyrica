@@ -2748,8 +2748,8 @@ void main() {
           planId: 'plan-1',
         ))?.plan.contentVersion;
 
-    test('applyAcceptedWriteEffects no longer advances the projection content '
-        'version (MG4)', () async {
+    test('applyAcceptedWriteEffects never moves the projection content '
+        'version (MG4, F1)', () async {
       await localStore.replaceActiveProjection(
         userId: 'user-1',
         organizationId: 'org-1',
@@ -2791,17 +2791,10 @@ void main() {
         remoteResponse: true,
       );
       expect(await projectionContentVersion(), 3);
-
-      await store.advanceAcceptedPlanContentVersion(
-        userId: 'user-1',
-        organizationId: 'org-1',
-        accepted: rename,
-      );
-      expect(await projectionContentVersion(), 4);
     });
 
-    test('rule 1: a contiguous own child write rebases the pending plan '
-        'delete and the projection', () async {
+    test('rule 1b: a contiguous own child write rebases the pending plan '
+        'delete', () async {
       await store.recordPlanDelete(
         context: context,
         draft: const PlanningPlanDeleteMutationDraft(
@@ -2825,17 +2818,6 @@ void main() {
       expect((await planRow())!.baseContentVersion, 6);
       // MG4: the effects call no longer moves the projection (rule 1a).
       expect(await projectionContentVersion(), 5);
-
-      await store.advanceAcceptedPlanContentVersion(
-        userId: 'user-1',
-        organizationId: 'org-1',
-        accepted: accepted(
-          PlanningMutationKind.sessionItemCreateSong,
-          version: 4,
-          planContentVersion: 6,
-        ),
-      );
-      expect(await projectionContentVersion(), 6);
     });
 
     test('rule 1: a gap (foreign write interleaved) changes nothing', () async {
@@ -2905,33 +2887,6 @@ void main() {
         expect((await planRow())!.baseContentVersion, 6);
         // MG4: the effects call no longer moves the projection (rule 1a).
         expect(await projectionContentVersion(), 5);
-
-        // Rule 1a, now its own call: idempotent, and a planEdit/planCreate
-        // response (neither bumps plan content) never advances it.
-        for (var i = 0; i < 2; i += 1) {
-          await store.advanceAcceptedPlanContentVersion(
-            userId: 'user-1',
-            organizationId: 'org-1',
-            accepted: child,
-          );
-        }
-        expect(await projectionContentVersion(), 6);
-        for (final kind in [
-          PlanningMutationKind.planEdit,
-          PlanningMutationKind.planCreate,
-        ]) {
-          await store.advanceAcceptedPlanContentVersion(
-            userId: 'user-1',
-            organizationId: 'org-1',
-            accepted: accepted(
-              kind,
-              aggregateId: 'plan-1',
-              version: 9,
-              planContentVersion: 7,
-            ),
-          );
-        }
-        expect(await projectionContentVersion(), 6);
       },
     );
 

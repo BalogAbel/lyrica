@@ -1063,43 +1063,32 @@ void main() {
             planId: planId,
           ))?.plan.contentVersion;
 
-      test(
-        'advanceSyncedPlanContentVersion moves only a contiguous value',
-        () async {
-          await seed();
-
-          await store.advanceSyncedPlanContentVersion(
+      Future<void> accept(int acceptedContentVersion, {String? planId}) =>
+          store.applyAcceptedWrite(
             userId: 'user-1',
             organizationId: 'org-1',
-            planId: 'plan-1',
-            acceptedContentVersion: 6,
-          );
-          expect(
-            await contentVersion('plan-1'),
-            4,
-            reason: 'gap: foreign write',
+            gate: PlanningAcceptedWriteGate(
+              planId: planId ?? 'plan-1',
+              acceptedContentVersion: acceptedContentVersion,
+            ),
+            apply: () async {},
           );
 
-          await store.advanceSyncedPlanContentVersion(
-            userId: 'user-1',
-            organizationId: 'org-1',
-            planId: 'plan-1',
-            acceptedContentVersion: 5,
-          );
-          expect(await contentVersion('plan-1'), 5);
+      test('applyAcceptedWrite advances only a contiguous value', () async {
+        await seed();
 
-          await store.advanceSyncedPlanContentVersion(
-            userId: 'user-1',
-            organizationId: 'org-1',
-            planId: 'plan-1',
-            acceptedContentVersion: 5,
-          );
-          expect(await contentVersion('plan-1'), 5, reason: 'idempotent');
-        },
-      );
+        await accept(6);
+        expect(await contentVersion('plan-1'), 4, reason: 'gap: foreign write');
+
+        await accept(5);
+        expect(await contentVersion('plan-1'), 5);
+
+        await accept(5);
+        expect(await contentVersion('plan-1'), 5, reason: 'idempotent');
+      });
 
       test(
-        'advanceSyncedPlanContentVersion never fills a null value (I7)',
+        'applyAcceptedWrite never fills a null content version (I7)',
         () async {
           await store.replaceActiveProjection(
             userId: 'user-1',
@@ -1121,11 +1110,20 @@ void main() {
           );
 
           for (final accepted in [0, 1, 2]) {
-            await store.advanceSyncedPlanContentVersion(
+            var applied = 0;
+            await store.applyAcceptedWrite(
               userId: 'user-1',
               organizationId: 'org-1',
-              planId: 'plan-1',
-              acceptedContentVersion: accepted,
+              gate: PlanningAcceptedWriteGate(
+                planId: 'plan-1',
+                acceptedContentVersion: accepted,
+              ),
+              apply: () async => applied += 1,
+            );
+            expect(
+              applied,
+              1,
+              reason: 'accepted $accepted: R unknown, applied',
             );
             expect(
               await contentVersion('plan-1'),
@@ -1135,6 +1133,190 @@ void main() {
           }
         },
       );
+
+      group('applyAcceptedWrite (F1)', () {
+        late int applied;
+
+        setUp(() => applied = 0);
+
+        Future<void> gated(PlanningAcceptedWriteGate gate) =>
+            store.applyAcceptedWrite(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              gate: gate,
+              apply: () async => applied += 1,
+            );
+
+        test('skips the write and the advance when the projection is at or '
+            'past R', () async {
+          await seed();
+
+          await gated(
+            const PlanningAcceptedWriteGate(
+              planId: 'plan-1',
+              acceptedContentVersion: 4,
+            ),
+          );
+          await gated(
+            const PlanningAcceptedWriteGate(
+              planId: 'plan-1',
+              acceptedContentVersion: 3,
+            ),
+          );
+
+          expect(applied, 0);
+          expect(await contentVersion('plan-1'), 4);
+        });
+
+        test(
+          'applies and advances exactly at R - 1, and is idempotent',
+          () async {
+            await seed();
+
+            await gated(
+              const PlanningAcceptedWriteGate(
+                planId: 'plan-1',
+                acceptedContentVersion: 5,
+              ),
+            );
+            expect(applied, 1);
+            expect(await contentVersion('plan-1'), 5);
+
+            await gated(
+              const PlanningAcceptedWriteGate(
+                planId: 'plan-1',
+                acceptedContentVersion: 5,
+              ),
+            );
+            expect(applied, 1);
+            expect(await contentVersion('plan-1'), 5);
+          },
+        );
+
+        test('applies without advancing below R - 1', () async {
+          await seed();
+
+          await gated(
+            const PlanningAcceptedWriteGate(
+              planId: 'plan-1',
+              acceptedContentVersion: 6,
+            ),
+          );
+
+          expect(applied, 1);
+          expect(await contentVersion('plan-1'), 4);
+        });
+
+        test('skips the write when the versioned row is newer than the written '
+            'version', () async {
+          await seed();
+
+          for (final (kind, id) in [
+            (PlanningProjectionRowKind.plan, 'plan-1'),
+            (PlanningProjectionRowKind.session, 'session-1'),
+            (PlanningProjectionRowKind.sessionItem, 'item-1'),
+          ]) {
+            applied = 0;
+            Future<void> withWritten(int writtenVersion) => gated(
+              PlanningAcceptedWriteGate(
+                versionedRow: PlanningVersionedRow(
+                  kind: kind,
+                  id: id,
+                  writtenVersion: writtenVersion,
+                ),
+              ),
+            );
+
+            await withWritten(0);
+            expect(applied, 0, reason: '$kind written 0: projection is newer');
+            await withWritten(1);
+            expect(applied, 1, reason: '$kind written 1: same state');
+            await withWritten(2);
+            expect(applied, 2, reason: '$kind written 2: older projection');
+          }
+        });
+
+        test(
+          'an absent row, plan or projection never blocks the write',
+          () async {
+            await seed();
+
+            await gated(
+              const PlanningAcceptedWriteGate(
+                planId: 'plan-x',
+                acceptedContentVersion: 5,
+                versionedRow: PlanningVersionedRow(
+                  kind: PlanningProjectionRowKind.session,
+                  id: 'session-x',
+                  writtenVersion: 1,
+                ),
+              ),
+            );
+            expect(applied, 1);
+            expect(await contentVersion('plan-1'), 4);
+
+            final emptyDatabase = PlanningLocalDatabase.inMemory();
+            addTearDown(emptyDatabase.close);
+            await DriftPlanningLocalStore(emptyDatabase).applyAcceptedWrite(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              gate: const PlanningAcceptedWriteGate(
+                planId: 'plan-1',
+                acceptedContentVersion: 5,
+                versionedRow: PlanningVersionedRow(
+                  kind: PlanningProjectionRowKind.plan,
+                  id: 'plan-1',
+                  writtenVersion: 1,
+                ),
+              ),
+              apply: () async => applied += 1,
+            );
+            expect(applied, 2);
+          },
+        );
+
+        test(
+          'a throwing apply rolls back its writes and the advance',
+          () async {
+            await seed();
+
+            await expectLater(
+              store.applyAcceptedWrite(
+                userId: 'user-1',
+                organizationId: 'org-1',
+                gate: const PlanningAcceptedWriteGate(
+                  planId: 'plan-1',
+                  acceptedContentVersion: 5,
+                ),
+                apply: () async {
+                  await store.upsertSyncedSession(
+                    userId: 'user-1',
+                    organizationId: 'org-1',
+                    refreshedAt: DateTime.utc(2026, 9, 29),
+                    session: const CachedSessionRecord(
+                      id: 'session-1',
+                      planId: 'plan-1',
+                      position: 1,
+                      name: 'Partial',
+                      version: 2,
+                    ),
+                  );
+                  throw StateError('boom');
+                },
+              ),
+              throwsStateError,
+            );
+
+            final detail = await store.readPlanDetail(
+              userId: 'user-1',
+              organizationId: 'org-1',
+              planId: 'plan-1',
+            );
+            expect(detail!.sessions.single.name, 'S');
+            expect(detail.plan.contentVersion, 4);
+          },
+        );
+      });
 
       test('deleteSyncedPlan removes the plan, its sessions and items, and '
           'releases its song references', () async {

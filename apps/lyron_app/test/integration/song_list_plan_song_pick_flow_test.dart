@@ -384,13 +384,6 @@ class _NoopPlanningMutationStore implements PlanningMutationStore {
   }) async {}
 
   @override
-  Future<void> advanceAcceptedPlanContentVersion({
-    required String userId,
-    required String organizationId,
-    required PlanningMutationRecord accepted,
-  }) async {}
-
-  @override
   Future<void> recordPlanEdit({
     required PlanningMutationContext context,
     required PlanningPlanEditMutationDraft draft,

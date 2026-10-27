@@ -1887,15 +1887,6 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   }
 
   @override
-  Future<void> advanceAcceptedPlanContentVersion({
-    required String userId,
-    required String organizationId,
-    required PlanningMutationRecord accepted,
-  }) async {
-    _log('advance:${accepted.aggregateId}');
-  }
-
-  @override
   Future<void> recordPlanEdit({
     required PlanningMutationContext context,
     required PlanningPlanEditMutationDraft draft,
