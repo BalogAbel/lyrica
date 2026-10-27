@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:drift/native.dart';
@@ -67,6 +68,157 @@ void main() {
       );
 
       expect(committedRowCounts, [1]);
+    });
+
+    group('applyAcceptedWrite footprint reports (F1)', () {
+      late PlanningLocalDatabase trackedDatabase;
+      late DriftPlanningLocalStore trackedStore;
+      late List<String?> committedSessionNames;
+      late List<Future<Object?>> probes;
+      var tracking = false;
+
+      // A file-backed database so an independent connection sees only what
+      // the transaction has committed.
+      setUp(() async {
+        final directory = await Directory.systemTemp.createTemp(
+          'planning-accepted-write-footprint-test',
+        );
+        addTearDown(() async {
+          if (await directory.exists()) {
+            await directory.delete(recursive: true);
+          }
+        });
+        final dbFile = File(p.join(directory.path, 'planning.sqlite'));
+        trackedDatabase = PlanningLocalDatabase.connect(
+          NativeDatabase.createInBackground(dbFile),
+        );
+        addTearDown(trackedDatabase.close);
+        final observer = sqlite3.open(dbFile.path);
+        addTearDown(observer.close);
+        committedSessionNames = [];
+        probes = [];
+        tracking = false;
+        trackedStore = DriftPlanningLocalStore(
+          trackedDatabase,
+          onStorageFootprintChanged: () {
+            if (!tracking) {
+              return;
+            }
+            final rows = observer.select(
+              'SELECT name FROM cached_planning_sessions '
+              "WHERE session_id = 'session-1'",
+            );
+            committedSessionNames.add(
+              rows.isEmpty ? null : rows.single['name'] as String,
+            );
+            // A scheduler such as Riverpod's runs follow-up reads from a
+            // timer scheduled inside the callback; it must not inherit the
+            // transaction's zone.
+            Timer(
+              Duration.zero,
+              () => probes.add(
+                trackedDatabase.customSelect('SELECT 1').get().then((r) => r),
+              ),
+            );
+          },
+        );
+        await trackedStore.replaceActiveProjection(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          plans: [
+            CachedPlanRecord(
+              id: 'plan-1',
+              slug: 'plan-1',
+              name: 'Plan',
+              description: null,
+              scheduledFor: null,
+              updatedAt: DateTime.utc(2026, 9, 29),
+              contentVersion: 4,
+            ),
+          ],
+          sessions: const [
+            CachedSessionRecord(
+              id: 'session-1',
+              planId: 'plan-1',
+              position: 1,
+              name: 'S',
+            ),
+          ],
+          items: const [],
+          refreshedAt: DateTime.utc(2026, 9, 29),
+        );
+        tracking = true;
+      });
+
+      Future<void> renameTo(String name) => trackedStore.upsertSyncedSession(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        refreshedAt: DateTime.utc(2026, 9, 29, 1),
+        session: CachedSessionRecord(
+          id: 'session-1',
+          planId: 'plan-1',
+          position: 1,
+          name: name,
+          version: 2,
+        ),
+      );
+
+      test('reports projection storage once, only after the concrete '
+          'commit', () async {
+        await trackedStore.applyAcceptedWrite(
+          userId: 'user-1',
+          organizationId: 'org-1',
+          gate: const PlanningAcceptedWriteGate(
+            planId: 'plan-1',
+            acceptedContentVersion: 5,
+          ),
+          apply: () async {
+            await renameTo('Mine');
+            await renameTo('Mine again');
+          },
+        );
+        await Future<void>.delayed(Duration.zero);
+        await Future.wait(probes);
+
+        expect(committedSessionNames, ['Mine again']);
+      });
+
+      test('reports nothing when the transaction rolls back', () async {
+        await expectLater(
+          trackedStore.applyAcceptedWrite(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            gate: const PlanningAcceptedWriteGate(
+              planId: 'plan-1',
+              acceptedContentVersion: 5,
+            ),
+            apply: () async {
+              await renameTo('Partial');
+              throw StateError('boom');
+            },
+          ),
+          throwsStateError,
+        );
+
+        expect(committedSessionNames, isEmpty);
+      });
+
+      test(
+        'reports nothing when the apply and rule 1a change nothing',
+        () async {
+          await renameTo('Same');
+          committedSessionNames.clear();
+
+          await trackedStore.applyAcceptedWrite(
+            userId: 'user-1',
+            organizationId: 'org-1',
+            gate: const PlanningAcceptedWriteGate(planId: 'plan-1'),
+            apply: () => renameTo('Same'),
+          );
+
+          expect(committedSessionNames, isEmpty);
+        },
+      );
     });
 
     test('does not report a projection throw or true no-op', () async {

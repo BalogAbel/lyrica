@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart';
 import 'package:lyron_app/src/application/storage/local_storage_domain_rejection.dart';
 import 'package:lyron_app/src/application/storage/local_storage_footprint_revision.dart';
@@ -284,6 +286,12 @@ abstract interface class PlanningLocalStore {
   });
 }
 
+/// Records, for one [DriftPlanningLocalStore.applyAcceptedWrite], whether any
+/// write inside its transaction changed the storage footprint.
+class _FootprintCollector {
+  bool changed = false;
+}
+
 class DriftPlanningLocalStore implements PlanningLocalStore {
   const DriftPlanningLocalStore(
     this._database, {
@@ -301,6 +309,24 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
   /// production wiring always supplies it, mirroring how
   /// [_onStorageFootprintChanged] is injected.
   final LocalStorageWriteRecovery? _writeRecovery;
+
+  /// The zone key of the footprint collector [applyAcceptedWrite] installs. It
+  /// names this store's database and callback, so a concurrent write through
+  /// another store, or outside the transaction's zone, still emits at once.
+  Object get _collectorKey => (_database, _onStorageFootprintChanged);
+
+  /// Reports a committed footprint change. Inside [applyAcceptedWrite]'s
+  /// transaction the report is recorded instead and emitted once, after the
+  /// outermost commit and outside the transaction's zone (see
+  /// [LocalStorageFootprintChanged]); a rolled-back transaction emits nothing.
+  void _footprintChanged() {
+    final collector = Zone.current[_collectorKey];
+    if (collector is _FootprintCollector) {
+      collector.changed = true;
+    } else {
+      _onStorageFootprintChanged?.call();
+    }
+  }
 
   Future<T> _guarded<T>(Future<T> Function() write) {
     final recovery = _writeRecovery;
@@ -432,7 +458,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       });
       _ensureProjectionCurrent(shouldContinue);
     });
-    _onStorageFootprintChanged?.call();
+    _footprintChanged();
   }
 
   @override
@@ -695,7 +721,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       return deletedRows;
     });
     if (deletedRows > 0) {
-      _onStorageFootprintChanged?.call();
+      _footprintChanged();
     }
   }
 
@@ -735,7 +761,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       return ensuredOwner.changed || rowChanged;
     });
     if (changed) {
-      _onStorageFootprintChanged?.call();
+      _footprintChanged();
     }
   }
 
@@ -775,7 +801,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       return ensuredOwner.changed || rowChanged;
     });
     if (changed) {
-      _onStorageFootprintChanged?.call();
+      _footprintChanged();
     }
   }
 
@@ -786,59 +812,71 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
     required PlanningAcceptedWriteGate gate,
     required Future<void> Function() apply,
   }) async {
-    var changed = false;
-    await _database.transaction(() async {
-      final owner = await _readOwner(
-        userId: userId,
-        organizationId: organizationId,
-      );
-      final planId = gate.planId;
-      final plan = owner == null || planId == null
-          ? null
-          : await (_database.select(_database.cachedPlanningPlans)..where(
-                  (table) =>
-                      table.userId.equals(userId) &
-                      table.organizationId.equals(organizationId) &
-                      table.snapshotVersion.equals(owner.snapshotVersion) &
-                      table.planId.equals(planId),
-                ))
-                .getSingleOrNull();
-      final current = plan?.contentVersion;
-      final accepted = gate.acceptedContentVersion;
-      if (accepted != null && current != null && current >= accepted) {
-        return;
-      }
-      final row = gate.versionedRow;
-      if (row != null && owner != null) {
-        final projected = await _projectedVersion(
+    // Footprint reports of the writes inside the transaction are collected
+    // (zone-scoped, so an unrelated concurrent write still reports at once)
+    // and emitted once below, after the commit and in this call's own zone.
+    // A rolled-back transaction throws past that point and emits nothing.
+    final collector = _FootprintCollector();
+    await runZoned(
+      () => _database.transaction(() async {
+        final owner = await _readOwner(
           userId: userId,
           organizationId: organizationId,
-          snapshotVersion: owner.snapshotVersion,
-          row: row,
         );
-        if (projected != null && projected > row.writtenVersion) {
+        final planId = gate.planId;
+        final plan = owner == null || planId == null
+            ? null
+            : await (_database.select(_database.cachedPlanningPlans)..where(
+                    (table) =>
+                        table.userId.equals(userId) &
+                        table.organizationId.equals(organizationId) &
+                        table.snapshotVersion.equals(owner.snapshotVersion) &
+                        table.planId.equals(planId),
+                  ))
+                  .getSingleOrNull();
+        final current = plan?.contentVersion;
+        final accepted = gate.acceptedContentVersion;
+        if (accepted != null && current != null && current >= accepted) {
           return;
         }
-      }
-      await apply();
-      changed = true;
-      if (accepted != null && planId != null && current == accepted - 1) {
-        // D7 rule 1a: the same contiguous UPDATE as ever, now inside the
-        // transaction of the write it accounts for.
-        await (_database.update(_database.cachedPlanningPlans)..where(
-              (table) =>
-                  table.userId.equals(userId) &
-                  table.organizationId.equals(organizationId) &
-                  table.snapshotVersion.equals(owner!.snapshotVersion) &
-                  table.planId.equals(planId) &
-                  table.contentVersion.equals(accepted - 1),
-            ))
-            .write(
-              CachedPlanningPlansCompanion(contentVersion: Value(accepted)),
-            );
-      }
-    });
-    if (changed) {
+        final row = gate.versionedRow;
+        if (row != null && owner != null) {
+          final projected = await _projectedVersion(
+            userId: userId,
+            organizationId: organizationId,
+            snapshotVersion: owner.snapshotVersion,
+            row: row,
+          );
+          if (projected != null && projected > row.writtenVersion) {
+            return;
+          }
+        }
+        await apply();
+        if (accepted != null && planId != null && current == accepted - 1) {
+          // D7 rule 1a: the same contiguous UPDATE as ever, now inside the
+          // transaction of the write it accounts for.
+          final updatedRows =
+              await (_database.update(_database.cachedPlanningPlans)..where(
+                    (table) =>
+                        table.userId.equals(userId) &
+                        table.organizationId.equals(organizationId) &
+                        table.snapshotVersion.equals(owner!.snapshotVersion) &
+                        table.planId.equals(planId) &
+                        table.contentVersion.equals(accepted - 1),
+                  ))
+                  .write(
+                    CachedPlanningPlansCompanion(
+                      contentVersion: Value(accepted),
+                    ),
+                  );
+          if (updatedRows > 0) {
+            collector.changed = true;
+          }
+        }
+      }),
+      zoneValues: {_collectorKey: collector},
+    );
+    if (collector.changed) {
       _onStorageFootprintChanged?.call();
     }
   }
@@ -938,7 +976,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       return changed;
     });
     if (changed) {
-      _onStorageFootprintChanged?.call();
+      _footprintChanged();
     }
   }
 
@@ -982,7 +1020,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       return changed;
     });
     if (changed) {
-      _onStorageFootprintChanged?.call();
+      _footprintChanged();
     }
   }
 
@@ -1038,7 +1076,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       return updatedPlanRows > 0 || changed;
     });
     if (changed) {
-      _onStorageFootprintChanged?.call();
+      _footprintChanged();
     }
   }
 
@@ -1097,7 +1135,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       return updatedSessionRows > 0 || changed;
     });
     if (changed) {
-      _onStorageFootprintChanged?.call();
+      _footprintChanged();
     }
   }
 
@@ -1144,7 +1182,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       return updatedSessionRows > 0 || changed;
     });
     if (changed) {
-      _onStorageFootprintChanged?.call();
+      _footprintChanged();
     }
   }
 
@@ -1183,7 +1221,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
               ),
             );
     if (updated > 0) {
-      _onStorageFootprintChanged?.call();
+      _footprintChanged();
     }
   }
 
@@ -1245,7 +1283,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       return updatedSessionRows > 0 || changed;
     });
     if (changed) {
-      _onStorageFootprintChanged?.call();
+      _footprintChanged();
     }
   }
 
@@ -1443,7 +1481,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       ),
     );
     if (deletedRows > 0) {
-      _onStorageFootprintChanged?.call();
+      _footprintChanged();
     }
   }
 
