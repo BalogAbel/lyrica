@@ -203,11 +203,13 @@ Follow-ups this slice created, each recorded under `docs/deferred/`:
   truncate a plan's session list and put `contentVersion` ahead of the
   projected sessions. Found by review gate 2; it depends on data volume. Resolved on 2026-10-12 by
   `docs/specs/2026-10-12-paged-remote-pulls.md` and ADR-041.
-- `docs/deferred/2026-09-30-session-rename-retry-never-rebases.md`: a retried
+- `docs/deferred/2026-09-30-session-rename-retry-never-rebases.md`
+  (resolved by S5b PR 2, entry removed): a retried
   conflicted `sessionRename` never rebases, because `_currentBaseVersionFor`
   keys on `sessionId`, which session rows do not set. Found by review gate 3;
   it predates this slice and is unrelated to the cascade.
-- `docs/deferred/2026-09-30-stranded-create-tombstones.md`: a `cancelling`
+- `docs/deferred/2026-09-30-stranded-create-tombstones.md`
+  (resolved by S5b PR 2, entry removed): a `cancelling`
   create tombstone is never resolved if the sync run that would resolve it is
   interrupted. The in-slice plan case is fixed; the general family (sessions
   and items) becomes its own slice.
@@ -259,9 +261,9 @@ migration `supabase/migrations/202610130001_session_item_key.sql`.
 ## Amendment: rule 1a placement and the retry rule (2026-10-21, S5b)
 
 **Status:** Accepted (2026-10-22, S5b design gate). Item 1 (MG4) is
-implemented by S5b PR 1 (#97); item 2 (MG8) is still to be implemented by
-S5b PR 2.
-**Spec:** `docs/specs/2026-10-21-planning-mutation-gaps.md` (MG4, MG8).
+implemented by S5b PR 1 (#97); item 2 (MG8) and item 3 (F1) are implemented
+by S5b PR 2 (`fix/planning-unresolved-rows`).
+**Spec:** `docs/specs/2026-10-21-planning-mutation-gaps.md` (MG4, MG8, F1).
 
 1. **Rule 1a runs only after a successful reconcile of the same record
    (MG4).** Decision 4's projection advance (D7 rule 1a) leaves the
@@ -275,13 +277,11 @@ S5b PR 2.
    the projection at R without W and broke I7 (the deferred entry for
    review gate 4's F6 finding, removed when this item was implemented).
    This now cannot happen: a context switch, a failed or skipped reconcile
-   never leaves the projection at R without W. One race stays, pre-existing
-   and not closed here (F1): a pull for the same context stored between C5
-   and the reconcile, after which the reconcile writes the older W over the
-   pull's newer content while the projection keeps the pull's content
-   version. I7 holds except for it; the fix (reconcile and advance in one
-   transaction, only at exactly R - 1) is scheduled for PR 2, see
-   `docs/deferred/2026-10-22-content-version-ahead-of-content.md`.
+   never leaves the projection at R without W. One race stayed, pre-existing
+   and not closed by PR 1 (F1): a pull for the same context stored between
+   C5 and the reconcile, after which the reconcile writes the older W over
+   the pull's newer content while the projection keeps the pull's content
+   version. Item 3 below closes it.
    A delete recorded earlier in the run reads R - 1 and is still rebased by
    rule 1b at batch end. Accepted narrow window (refresh-failed branch
    only): a `planDelete` recorded between a record's batch-end effects call
@@ -302,3 +302,29 @@ S5b PR 2.
    rebasing in any status (they add or remove the user's own object). The
    session-rename lookup (`_currentBaseVersionFor` keyed on `sessionId`,
    which a session row does not set) resolves the session by `aggregateId`.
+3. **The reconcile and rule 1a are one projection transaction, applied only
+   when the projection does not already hold the write (F1, S5b PR 2).**
+   `PlanningLocalStore.applyAcceptedWrite` reads the projected plan content
+   version `C` and the gate's versioned row, decides, runs the reconcile's
+   per-kind writes, then performs rule 1a, in one Drift transaction, so a
+   pull cannot store in between. With `R` the record's accepted content
+   version (in memory only, backend responses only) and the written version
+   the one the reconcile writes: `C >= R` skips reconcile and advance; a
+   versioned row (plan, session, session item, by kind) projected above the
+   written version skips both; `C == R - 1` applies and sets `C := R`;
+   anything else (`C < R - 1`, `C` or `R` unknown) applies without the
+   advance. A crash-resumed marker and a key edit not provably the caller's
+   own have no `R` and are gated by their versioned row only. The separate
+   rule-1a store call and its swallowed failure (item 1) are gone: an
+   exception rolls back both and propagates, the rows stay `accepted` and
+   the next run resumes them. User decisions (2026-10-27): (1) the
+   versioned-row check extends the deferred entry's sketch (which gated only
+   `planEdit` and `planCreate`) to every kind, so a pull stored after a
+   crash cannot be overwritten by a resumed marker's older base; (2) below
+   `R - 1` the write is applied without the advance, so an offline sync
+   against a stale projection does not hide the user's own write. Residual,
+   pre-existing: a plan deleted by another member after an own `planCreate`
+   or `planEdit`, with a pull stored before the reconcile, is re-inserted
+   until the next refresh (plan writes do not bump the content version, and
+   an absent row cannot show it is newer); it holds no foreign content and
+   its delete ends visibly (`plan_not_found`, `failedRemoteDelete`).

@@ -1,6 +1,7 @@
 # Planning Mutation Gaps, PR 2 (Rows That Never Resolve, F1) Implementation Plan
 
-> Status: Ready (2026-10-27). Covers PR 2 of
+> Status: Implemented (2026-10-27) on `fix/planning-unresolved-rows`;
+> deviations under Execution Notes. Covers PR 2 of
 > `docs/specs/2026-10-21-planning-mutation-gaps.md` only: MG6–MG9, their MG13
 > rows, and decision F1 (design gate approved 2026-10-27). PR 3
 > (`fix/purge-and-pull-guards`, MG10–MG12) gets its own plan after this PR
@@ -379,10 +380,10 @@ if (applied) _onStorageFootprintChanged?.call();
   advance on `current < accepted` instead of `current == accepted - 1` and
   drop the rule-1a UPDATE's `content_version = R - 1` predicate →
   `'applies without advancing below R - 1'` and
-  `'applyAcceptedWrite advances only a contiguous value'` fail (E5); (iv) run the `_required` checks inside `apply` → `'a corrupt record
-  throws before any projection write…'` fails; (v) call `apply()` outside the
-  transaction → `'a throwing apply rolls back its writes and the advance'`
-  fails.
+  `'applyAcceptedWrite advances only a contiguous value'` fail (E5); (iv) run
+  the `_required` checks inside `apply` → `'a corrupt record throws before
+  any projection write…'` fails; (v) call `apply()` outside the transaction
+  → `'a throwing apply rolls back its writes and the advance'` fails.
 - [ ] **Step 12: Commit.**
   `fix(planning): reconcile and rule 1a in one projection transaction (F1)`
 
