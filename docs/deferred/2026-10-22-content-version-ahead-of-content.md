@@ -10,7 +10,11 @@ amendment), `docs/deferred/2026-10-22-other-organization-pending-work.md`.
 that state the intended behavior are committed and skipped:
 `apps/lyron_app/test/offline/adversarial/planning_content_version_ahead_test.dart`.
 
-**Scheduled: S5b PR 2 (fix/planning-unresolved-rows)**
+**Scheduled: S5b PR 2 (fix/planning-unresolved-rows)**. Design approved on
+2026-10-27 as decision F1 of `docs/specs/2026-10-21-planning-mutation-gaps.md`
+(this sketch plus a versioned-row check that also covers records without a
+returned content version); plan `docs/plans/2026-10-27-planning-unresolved-rows.md`.
+This entry is removed when PR 2 lands.
 
 ## What MG4 guarantees, and what it does not
 

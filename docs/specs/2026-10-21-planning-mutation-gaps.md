@@ -389,6 +389,75 @@ residual R1, generalized.)
   boundary, like `clearMutation`.
 - `clearMutation` stays for the sync's revision-gated clears.
 
+**F1. The reconcile and rule 1a are one projection transaction, applied only
+when the projection does not already hold the write.** (Design gate approved
+2026-10-27; closes `docs/deferred/2026-10-22-content-version-ahead-of-content.md`.)
+
+- New `PlanningLocalStore.applyAcceptedWrite({userId, organizationId, gate,
+  apply})`. One Drift transaction reads the projected plan's content
+  version `C` and the gate's versioned row, decides, runs `apply` (the
+  reconciler's existing per-kind writes; their own transactions nest as
+  savepoints), then performs rule 1a. A pull cannot store between the
+  decision and the writes.
+- The gate (`PlanningAcceptedWriteGate`) carries the rule-1a plan id (the
+  moved MG4 block: `aggregateId` for a plan kind, `planId` otherwise), `R`
+  (the record's `acceptedPlanContentVersion`, for a `bumpsPlanContent` kind
+  only) and an optional versioned row (kind, id, the version the reconcile
+  writes). Decision, in order:
+
+  | Condition | Reconcile | Rule 1a |
+  |---|---|---|
+  | `R` and `C` known, `C >= R` | skipped | skipped |
+  | the versioned row is projected at a version **greater** than the one the reconcile writes | skipped | skipped |
+  | `R` known, `C == R - 1` | applied | `C := R` |
+  | otherwise (`C < R - 1`, `C` unknown, `R` unknown) | applied | none |
+
+  | Kind | `R` | Versioned row (written version) |
+  |---|---|---|
+  | `planCreate`, `planEdit` | — | plan `aggregateId` (`baseVersion ?? 1`) |
+  | `planDelete` | — | — (a delete is monotone) |
+  | `sessionCreate`, `sessionRename` | yes | session `aggregateId` (`baseVersion ?? 1`) |
+  | `sessionDelete` | yes | — |
+  | `sessionReorder` | yes | plan `planId ?? aggregateId` (`baseVersion ?? 1`) |
+  | `sessionItemCreateSong`, `sessionItemDelete`, `sessionItemReorder` | yes | session `sessionId` (`baseVersion ?? 1`) |
+  | `sessionItemKeyEdit` | yes | session item `aggregateId` (`baseVersion`) |
+
+  The written version is what the reconcile already writes: the returned
+  version for a backend response, the old base for a crash-resumed
+  `accepted` marker. "Greater", not "equal": an equal version is the same
+  state, and rewriting it changes nothing.
+- `R` exists only on a record mapped from a backend response
+  (`acceptedPlanContentVersion` is in memory only, never persisted), and the
+  PS15 gate nulls it for a key edit that is not provably the caller's own.
+  A crash-resumed marker and such a key edit are therefore gated by their
+  versioned row only and never advance; the reconciler needs no
+  `remoteResponse` flag.
+- The reconciler validates every required field (LF-8) before any store
+  call, so a corrupt record still ends `failedDependency` whatever the
+  projection holds, and a throw never leaves a partial write.
+- `PlanningMutationSyncController` makes no separate rule-1a call any more:
+  `PlanningMutationStore.advanceAcceptedPlanContentVersion` and
+  `PlanningLocalStore.advanceSyncedPlanContentVersion` are removed. An
+  exception in the transaction rolls back the reconcile and the advance
+  together and propagates like any reconcile exception: the rows stay
+  `accepted`, the next run resumes them without `R`, and the projection lags
+  (fail-safe). MG4's "a failed advance is swallowed" no longer applies.
+- **User decisions (2026-10-27).** (1) The versioned-row check is an
+  extension of the deferred entry's sketch, which gated only `planEdit` and
+  `planCreate` on the plan version. It closes the same race for records
+  without `R`: a pull stored after a crash, then a resumed marker's
+  reconcile writing the old base over newer content (the next plan delete
+  would absorb it). (2) Below `R - 1` the write is applied without the
+  advance, as today. Skipping it there would hide the user's own write after
+  an offline sync against a stale projection until the next successful
+  refresh.
+- **Residual, pre-existing.** A plan deleted by another member after an own
+  `planCreate` or `planEdit`, with a pull stored before the reconcile, is
+  re-inserted by the reconcile until the next refresh (plan writes do not
+  bump the content version, and an absent row cannot show it is newer). It
+  holds no foreign content, and a delete of it ends visibly
+  (`plan_not_found`, `failedRemoteDelete`).
+
 ### PR 3 — purge and pull guards
 
 **MG10. The D5 purge resets act only for the current user.** (O3.)
@@ -540,12 +609,13 @@ every task.
 
 ### PR 2 — rows that never resolve (`fix/planning-unresolved-rows`)
 
-- MG6, MG7, MG8, MG9, and the F1 fix (reconcile and rule-1a advance in one
-  local-store transaction, only at exactly R - 1;
+- MG6, MG7, MG8, MG9, and the F1 fix (decision F1 above;
   `docs/deferred/2026-10-22-content-version-ahead-of-content.md`).
+- Plan: `docs/plans/2026-10-27-planning-unresolved-rows.md`.
 - Files: `drift_planning_mutation_store.dart`, `budgeted_planning_mutation_store.dart`,
   `planning_mutation_sync_types.dart`, `planning_local_database.dart`
-  (schema 9), `planning_mutation_sync_controller.dart` (run start, discard),
+  (schema 9), `planning_local_store.dart` and `planning_mutation_reconciler.dart`
+  (F1), `planning_mutation_sync_controller.dart` (run start, discard, F1),
   the Supabase planning mutation repository (`*_not_found` classification
   for tombstone-origin rows, if it is done there), the song catalog store
   and `song_mutation_sync_controller.dart`.
