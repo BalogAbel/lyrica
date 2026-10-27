@@ -801,6 +801,30 @@ abstract interface class PlanningMutationStore {
     int? acceptedBaseVersion,
   });
 
+  /// MG6 (`docs/specs/2026-10-21-planning-mutation-gaps.md`): turns every
+  /// `cancelling` create tombstone of this context into a pending delete. A
+  /// tombstone is only ever resolved by the run that sent its create; one that
+  /// outlived that run (a crash between the create's response and
+  /// [resolveCancelledCreate]) would otherwise stay invisible forever.
+  ///
+  /// Meant to be called at the start of a run, when no remote call of this
+  /// context is in flight, so every `cancelling` row is stale. Per row, in
+  /// `orderKey` order and in its own transaction that re-reads the row and
+  /// converts it only if it is still `cancelling`: `planCreate` becomes a
+  /// `planDelete` based on `(1, 1)`, `sessionCreate` a `sessionDelete` based
+  /// on 1, `sessionItemCreateSong` a `sessionItemDelete` based on the create's
+  /// base + 1 (a missing base stays missing, which the backend rejects as a
+  /// conflict). The converted row carries
+  /// `PlanningMutationRecord.resolvesCancelledCreate`, so a `*_not_found`
+  /// answer to it closes the row (the create never committed) instead of
+  /// staying a visible failure.
+  ///
+  /// Reports a footprint change when it converted anything.
+  Future<void> convertStaleCreateTombstones({
+    required String userId,
+    required String organizationId,
+  });
+
   /// Spec D7 + D8: the store-side consequences of a backend-accepted write.
   ///
   /// When [remoteResponse] is true, [accepted] was mapped from an RPC

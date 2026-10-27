@@ -3634,4 +3634,314 @@ void main() {
       expect(await reader.countPlanningPendingWork(userId: 'user-1'), 0);
     });
   });
+
+  group('convertStaleCreateTombstones (MG6)', () {
+    late PlanningLocalDatabase database;
+    late DriftPlanningMutationStore store;
+    late int footprintCalls;
+    const context = PlanningMutationContext(
+      userId: 'user-1',
+      organizationId: 'org-1',
+    );
+
+    setUp(() {
+      database = PlanningLocalDatabase.inMemory();
+      footprintCalls = 0;
+      store = DriftPlanningMutationStore(
+        database: database,
+        localStore: DriftPlanningLocalStore(database),
+        onStorageFootprintChanged: () => footprintCalls += 1,
+      );
+    });
+
+    tearDown(() async {
+      await database.close();
+    });
+
+    Future<PlanningMutationRecord?> read(
+      String aggregateType,
+      String aggregateId, {
+      String organizationId = 'org-1',
+    }) => store.readMutation(
+      userId: 'user-1',
+      organizationId: organizationId,
+      aggregateType: aggregateType,
+      aggregateId: aggregateId,
+    );
+
+    Future<List<PlanningMutationRecord>> all() =>
+        store.readAllMutations(userId: 'user-1', organizationId: 'org-1');
+
+    Future<void> markSending(
+      String aggregateType,
+      String aggregateId, {
+      String organizationId = 'org-1',
+    }) async {
+      final row = await read(
+        aggregateType,
+        aggregateId,
+        organizationId: organizationId,
+      );
+      await store.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: organizationId,
+        aggregateType: aggregateType,
+        aggregateId: aggregateId,
+        syncStatus: PlanningMutationSyncStatus.sending,
+        expectedRevision: row!.localRevision,
+      );
+    }
+
+    // Strands a plan create tombstone: the create was `sending` when the user
+    // deleted the plan, and no run ever resolved the row.
+    Future<void> strandPlan({String planId = 'plan-1'}) async {
+      await store.recordPlanCreate(
+        context: context,
+        draft: PlanningPlanCreateMutationDraft(
+          planId: planId,
+          slug: planId,
+          name: 'Created $planId',
+        ),
+      );
+      await markSending('plan', planId);
+      await store.recordPlanDelete(
+        context: context,
+        draft: PlanningPlanDeleteMutationDraft(planId: planId),
+      );
+    }
+
+    Future<void> strandSession({
+      String sessionId = 'session-1',
+      String planId = 'plan-1',
+      PlanningMutationContext ctx = context,
+    }) async {
+      await store.recordSessionCreate(
+        context: ctx,
+        draft: PlanningSessionCreateMutationDraft(
+          sessionId: sessionId,
+          planId: planId,
+          slug: sessionId,
+          name: 'Created $sessionId',
+          position: 1,
+        ),
+      );
+      await markSending(
+        'session',
+        sessionId,
+        organizationId: ctx.organizationId,
+      );
+      await store.recordSessionDelete(
+        context: ctx,
+        draft: PlanningSessionDeleteMutationDraft(
+          sessionId: sessionId,
+          planId: planId,
+        ),
+      );
+    }
+
+    Future<void> strandItem({int? baseVersion = 2}) async {
+      await store.recordSessionItemCreateSong(
+        context: context,
+        draft: PlanningSessionItemCreateSongMutationDraft(
+          sessionItemId: 'item-1',
+          sessionId: 'session-1',
+          planId: 'plan-1',
+          songId: 'song-1',
+          songTitle: 'Song',
+          position: 1,
+          baseVersion: baseVersion,
+        ),
+      );
+      await markSending('session_item', 'item-1');
+      await store.recordSessionItemDelete(
+        context: context,
+        draft: const PlanningSessionItemDeleteMutationDraft(
+          sessionItemId: 'item-1',
+          sessionId: 'session-1',
+          planId: 'plan-1',
+        ),
+      );
+    }
+
+    Future<void> convert({String organizationId = 'org-1'}) =>
+        store.convertStaleCreateTombstones(
+          userId: 'user-1',
+          organizationId: organizationId,
+        );
+
+    test('a plan create tombstone becomes a pending plan delete based on '
+        '(1, 1)', () async {
+      await strandPlan();
+      await store.recordSessionRename(
+        context: context,
+        draft: const PlanningSessionRenameMutationDraft(
+          sessionId: 'session-x',
+          planId: 'plan-2',
+          name: 'Other',
+          baseVersion: 1,
+        ),
+      );
+      expect(
+        (await read('plan', 'plan-1'))!.syncStatus,
+        isNot(PlanningMutationSyncStatus.pending),
+      );
+
+      await convert();
+
+      final delete = (await read('plan', 'plan-1'))!;
+      expect(delete.kind, PlanningMutationKind.planDelete);
+      expect(delete.syncStatus, PlanningMutationSyncStatus.pending);
+      expect(delete.baseVersion, 1);
+      expect(delete.baseContentVersion, 1);
+      expect(delete.resolvesCancelledCreate, isTrue);
+      expect(delete.slug, isNull);
+      expect(delete.name, isNull);
+      expect(delete.originSnapshot, {'name': 'Created plan-1'});
+      final others = (await all()).where((r) => r.aggregateId != 'plan-1');
+      expect(
+        delete.orderKey,
+        greaterThan(
+          others.map((r) => r.orderKey).reduce((a, b) => a > b ? a : b),
+        ),
+      );
+    });
+
+    test('a session create tombstone becomes a pending session delete based '
+        'on 1', () async {
+      await strandSession();
+
+      await convert();
+
+      final delete = (await read('session', 'session-1'))!;
+      expect(delete.kind, PlanningMutationKind.sessionDelete);
+      expect(delete.syncStatus, PlanningMutationSyncStatus.pending);
+      expect(delete.baseVersion, 1);
+      expect(delete.planId, 'plan-1');
+      expect(delete.resolvesCancelledCreate, isTrue);
+      expect(delete.slug, isNull);
+      expect(delete.name, isNull);
+      expect(delete.originSnapshot, {'name': 'Created session-1'});
+    });
+
+    test('an item create tombstone becomes a pending item delete based on '
+        'b + 1', () async {
+      await strandItem(baseVersion: 2);
+
+      await convert();
+
+      final delete = (await read('session_item', 'item-1'))!;
+      expect(delete.kind, PlanningMutationKind.sessionItemDelete);
+      expect(delete.syncStatus, PlanningMutationSyncStatus.pending);
+      expect(delete.baseVersion, 3);
+      expect(delete.sessionId, 'session-1');
+      expect(delete.planId, 'plan-1');
+      expect(delete.resolvesCancelledCreate, isTrue);
+    });
+
+    test('an item create tombstone without a base stays without one', () async {
+      await strandItem(baseVersion: null);
+
+      await convert();
+
+      final delete = (await read('session_item', 'item-1'))!;
+      expect(delete.kind, PlanningMutationKind.sessionItemDelete);
+      expect(delete.baseVersion, isNull);
+    });
+
+    test('only cancelling rows of the given context are converted', () async {
+      await store.recordSessionCreate(
+        context: context,
+        draft: const PlanningSessionCreateMutationDraft(
+          sessionId: 'session-pending',
+          planId: 'plan-1',
+          slug: 'pending',
+          name: 'Pending',
+          position: 2,
+        ),
+      );
+      const otherContext = PlanningMutationContext(
+        userId: 'user-1',
+        organizationId: 'org-2',
+      );
+      await strandSession(
+        sessionId: 'session-other',
+        planId: 'plan-9',
+        ctx: otherContext,
+      );
+      footprintCalls = 0;
+
+      await convert();
+
+      final pending = (await read('session', 'session-pending'))!;
+      expect(pending.kind, PlanningMutationKind.sessionCreate);
+      expect(pending.syncStatus, PlanningMutationSyncStatus.pending);
+      expect(pending.resolvesCancelledCreate, isFalse);
+      final other = (await read(
+        'session',
+        'session-other',
+        organizationId: 'org-2',
+      ))!;
+      expect(other.kind, PlanningMutationKind.sessionCreate);
+      expect(other.syncStatus, PlanningMutationSyncStatus.cancelling);
+      expect(footprintCalls, 0);
+    });
+
+    test('converting fires the footprint callback once', () async {
+      await strandSession();
+      footprintCalls = 0;
+
+      await convert();
+
+      expect(footprintCalls, 1);
+    });
+
+    test(
+      'a user-recorded delete over a converted row clears the marker',
+      () async {
+        await strandSession();
+        await convert();
+        expect(
+          (await read('session', 'session-1'))!.resolvesCancelledCreate,
+          isTrue,
+        );
+
+        await store.recordSessionDelete(
+          context: context,
+          draft: const PlanningSessionDeleteMutationDraft(
+            sessionId: 'session-1',
+            planId: 'plan-1',
+            baseVersion: 2,
+          ),
+        );
+
+        final row = (await read('session', 'session-1'))!;
+        expect(row.kind, PlanningMutationKind.sessionDelete);
+        expect(row.resolvesCancelledCreate, isFalse);
+      },
+    );
+
+    test('retry keeps the marker', () async {
+      await strandSession();
+      await convert();
+      await store.saveSyncAttemptResult(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'session',
+        aggregateId: 'session-1',
+        syncStatus: PlanningMutationSyncStatus.conflict,
+        errorCode: PlanningMutationSyncErrorCode.conflict,
+      );
+
+      await store.retryMutation(
+        userId: 'user-1',
+        organizationId: 'org-1',
+        aggregateType: 'session',
+        aggregateId: 'session-1',
+      );
+
+      final row = (await read('session', 'session-1'))!;
+      expect(row.syncStatus, PlanningMutationSyncStatus.pending);
+      expect(row.resolvesCancelledCreate, isTrue);
+    });
+  });
 }

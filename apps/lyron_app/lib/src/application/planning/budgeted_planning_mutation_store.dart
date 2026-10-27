@@ -595,6 +595,22 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
     ),
   );
 
+  // MG6: queued with every other write for this context (it rewrites
+  // tombstone rows in place), never budget-admitted (it never grows the
+  // store), no recovery boundary: a failure leaves the rows `cancelling` and
+  // the next run converts them again.
+  @override
+  Future<void> convertStaleCreateTombstones({
+    required String userId,
+    required String organizationId,
+  }) => _queuedWrite(
+    PlanningMutationContext(userId: userId, organizationId: organizationId),
+    () => _delegate.convertStaleCreateTombstones(
+      userId: userId,
+      organizationId: organizationId,
+    ),
+  );
+
   // Spec D7/D8: queued with every other write for this context (it
   // rewrites delete rows and purges children), never budget-guarded (it
   // never grows the store), no recovery boundary (nothing to grow).

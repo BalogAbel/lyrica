@@ -855,3 +855,41 @@ authoritative where they differ from the plan text.
   fails with a null-check error while mapping the missing
   `resolves_cancelled_create` column (`$CachedPlanningMutationsTable.map`),
   not a literal "no such column" message. The failure is the intended one.
+
+### Task 3
+
+- The controller test's fake store already had `Exception? effectsError`
+  (throws from `applyAcceptedWriteEffects`), so the purge-failure test uses
+  `effectsError = Exception('effects')` instead of a new `throwOnEffects`
+  flag. The fake gains only `convertCalls`, `throwOnConvert` and `runCalls`.
+- Test doubles migrated mechanically (a no-op `convertStaleCreateTombstones`,
+  nothing else changed): the fake in `planning_mutation_sync_controller_test.dart`
+  (counting, see above), the three doubles in
+  `budgeted_planning_mutation_store_test.dart`, and one each in
+  `planning_local_read_repository_test.dart`, `providers_test.dart`,
+  `planning_invalidation_scope_test.dart`, `unified_discard_controller_test.dart`,
+  `unified_row_recovery_controller_test.dart`,
+  `song_list_plan_song_pick_flow_test.dart`, `planning_fault_injection_test.dart`,
+  `planning_reconcile_failure_isolation_test.dart`, `plan_detail_screen_test.dart`,
+  `plan_list_screen_test.dart` and `plan_song_item_row_test.dart`. The
+  `noSuchMethod` double `_KeyEditStore` (`plan_key_write_fakes.dart`) is not
+  reached by `_run` and is untouched.
+- Marker clearing (ruling R3-1): every `record*` `copyWith` site was audited
+  and none can see a marked row (they fold onto create rows, tombstone a
+  `sending`/`accepted` create, or edit key and reorder rows); a user-recorded
+  delete over a converted `planDelete`/`sessionDelete`/`sessionItemDelete`
+  falls through to a fresh `PlanningMutationRecord`, which carries the default
+  `false`. No production change was needed; the store test and the run test
+  pin it. `retryMutation`, the D7 rebases and `saveSyncAttemptResult` keep the
+  marker.
+- `convertStaleCreateTombstones` skips a `cancelling` row of an unexpected
+  kind instead of throwing like `resolveCancelledCreate`: it runs at the start
+  of every run, and a throw would stop the conversion of the rows behind it.
+- Extra tests beyond the brief: the store group also pins that an item
+  tombstone without a base stays without one and that the footprint callback
+  fires once; the controller group pins the positive not_found close (purge,
+  then clear). The session case of the run test is two tests (committed,
+  never committed).
+- E1 guard proof (vi): replacing the `on Exception` catch around the
+  conversion with `finally` makes `'a failed tombstone conversion does not
+  stop the run'` fail with `Exception: convert`.

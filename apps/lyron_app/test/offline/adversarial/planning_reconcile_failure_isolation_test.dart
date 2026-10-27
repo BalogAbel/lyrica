@@ -164,6 +164,12 @@ void main() {
 /// `planning_mutation_sync_controller_test.dart`'s `_FakePlanningMutationStore`
 /// but is local to this file to keep this regression test self-contained.
 class _FakePlanningMutationStore implements PlanningMutationStore {
+  @override
+  Future<void> convertStaleCreateTombstones({
+    required String userId,
+    required String organizationId,
+  }) async {}
+
   // Stub for docs/specs/2026-08-06-in-flight-create-cancellation.md (D3):
   // none of these tests exercise the in-flight-create-cancellation
   // tombstone path, which is covered against the real

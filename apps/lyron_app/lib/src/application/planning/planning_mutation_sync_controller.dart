@@ -105,6 +105,25 @@ class PlanningMutationSyncController {
     ActivePlanningReadContext context, {
     PlanningMutationFailureObserver? onMutationFailure,
   }) async {
+    // MG6 (await point A0): the first statement of a run. Runs are
+    // single-flight per context, so no remote call of this context is in
+    // flight here and every `cancelling` row is stale -- a create tombstone
+    // no run resolved. Each becomes a pending delete before the candidates
+    // are read, so the same run sends it.
+    //
+    // Best-effort: the conversion has no recovery boundary, and an exception
+    // escaping `_run` reaches `PlanningWriteService` through `syncScheduler`
+    // (try/finally, no catch), so an unrelated new write would report
+    // failure. A failed conversion leaves the rows `cancelling`; the next run
+    // retries it. An Error still propagates.
+    try {
+      await _mutationStore().convertStaleCreateTombstones(
+        userId: context.userId,
+        organizationId: context.organizationId,
+      );
+    } on Exception {
+      // Intentionally swallowed -- see the comment above.
+    }
     final allMutations = await _mutationStore().readAllMutations(
       userId: context.userId,
       organizationId: context.organizationId,
@@ -352,6 +371,38 @@ class PlanningMutationSyncController {
         final contextMoved = !_isRunContextActive(context);
         if (!resolvedTombstone && contextMoved) {
           await _resetToPending(context, mutation, sendingRevision);
+        } else if (!resolvedTombstone &&
+            error.code == PlanningMutationSyncErrorCode.remoteMissing &&
+            mutation.resolvesCancelledCreate) {
+          // MG6: this delete was converted from a stale create tombstone and
+          // never rewritten by the user since, so `*_not_found` means the
+          // create never committed: there is nothing to delete, which is the
+          // outcome the user asked for. Close the row like a tombstone whose
+          // create failed (D3) instead of leaving a failure the user never
+          // caused. A delete the user recorded themselves does not carry the
+          // marker and stays a visible failure (D9).
+          //
+          // The purge is the delete's D8 effect for a plan or session (no
+          // rebases without a response); when it fails the row goes back to
+          // `pending` so the next run closes it, never clearing a row whose
+          // children still stand. Both writes are gated on `sendingRevision`:
+          // a fold that landed in the meantime wins.
+          final purged = await _applyAcceptedEffects(
+            context,
+            mutation,
+            remoteResponse: false,
+          );
+          if (purged) {
+            await _mutationStore().clearMutation(
+              userId: context.userId,
+              organizationId: context.organizationId,
+              aggregateType: mutation.kind.aggregateType,
+              aggregateId: mutation.aggregateId,
+              expectedRevision: sendingRevision,
+            );
+          } else {
+            await _resetToPending(context, mutation, sendingRevision);
+          }
         } else if (!resolvedTombstone) {
           // Finding B (PR #64 review, 2026-08-06 remediation round): this
           // write USED to be unconditional -- deliberately ungated,

@@ -1080,6 +1080,12 @@ void main() {
 /// prohibits in prose. Used only to pin the N4 reentrancy assert; every
 /// other member is unused and throws if called.
 class _ReentrantPlanningMutationStore implements PlanningMutationStore {
+  @override
+  Future<void> convertStaleCreateTombstones({
+    required String userId,
+    required String organizationId,
+  }) async {}
+
   late BudgetedPlanningMutationStore reentrantTarget;
   late PlanningMutationContext reentrantContext;
   late PlanningPlanCreateMutationDraft reentrantDraft;
@@ -1253,6 +1259,12 @@ class _ReentrantPlanningMutationStore implements PlanningMutationStore {
 /// Only `recordPlanCreate` is hooked; every other member is unused by these
 /// tests and throws if called.
 class _HookedPlanningMutationStore implements PlanningMutationStore {
+  @override
+  Future<void> convertStaleCreateTombstones({
+    required String userId,
+    required String organizationId,
+  }) async {}
+
   // Stub for docs/specs/2026-08-06-in-flight-create-cancellation.md (D3):
   // none of these tests exercise the in-flight-create-cancellation
   // tombstone path, which is covered against the real
@@ -1662,6 +1674,12 @@ class _ScriptedInsertTransactionExecutor implements TransactionExecutor {
 /// `DriftPlanningMutationStore.recordSessionDelete`'s own internal
 /// `existing?.kind == sessionCreate` re-check inside its transaction.
 class _CollapseRaceMutationStore implements PlanningMutationStore {
+  @override
+  Future<void> convertStaleCreateTombstones({
+    required String userId,
+    required String organizationId,
+  }) async {}
+
   // Stub for docs/specs/2026-08-06-in-flight-create-cancellation.md (D3):
   // none of these tests exercise the in-flight-create-cancellation
   // tombstone path, which is covered against the real

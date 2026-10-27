@@ -4105,6 +4105,12 @@ class _PlanDetailTestPlanningRepository implements PlanningRepository {
 }
 
 class _PlanDetailTestPlanningMutationStore implements PlanningMutationStore {
+  @override
+  Future<void> convertStaleCreateTombstones({
+    required String userId,
+    required String organizationId,
+  }) async {}
+
   PlanningPlanDeleteMutationDraft? recordedPlanDelete;
   PlanningSessionDeleteMutationDraft? recordedSessionDelete;
 

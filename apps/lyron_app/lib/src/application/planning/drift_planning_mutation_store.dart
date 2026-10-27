@@ -1398,6 +1398,99 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
   }
 
   @override
+  Future<void> convertStaleCreateTombstones({
+    required String userId,
+    required String organizationId,
+  }) async {
+    final stale =
+        await (_database.select(_database.cachedPlanningMutations)
+              ..where(
+                (table) =>
+                    table.userId.equals(userId) &
+                    table.organizationId.equals(organizationId) &
+                    table.syncStatus.equals(
+                      PlanningMutationSyncStatus.cancelling.value,
+                    ),
+              )
+              ..orderBy([(table) => OrderingTerm.asc(table.orderKey)]))
+            .map((row) => (row.aggregateType, row.aggregateId))
+            .get();
+    var convertedAny = false;
+    for (final (aggregateType, aggregateId) in stale) {
+      // One transaction per row that re-reads it: a write landing between
+      // the listing above and this row (a user delete or edit, a discard)
+      // wins, and a row that is no longer `cancelling` is left alone.
+      final converted = await _database.transaction(() async {
+        final existing = await _readMutationByKey(
+          userId: userId,
+          organizationId: organizationId,
+          aggregateType: aggregateType,
+          aggregateId: aggregateId,
+        );
+        if (existing == null ||
+            existing.syncStatus != PlanningMutationSyncStatus.cancelling) {
+          return false;
+        }
+        final deleteKind = switch (existing.kind) {
+          PlanningMutationKind.planCreate => PlanningMutationKind.planDelete,
+          PlanningMutationKind.sessionCreate =>
+            PlanningMutationKind.sessionDelete,
+          PlanningMutationKind.sessionItemCreateSong =>
+            PlanningMutationKind.sessionItemDelete,
+          // Only these three kinds become tombstones (D2, spec D5(b)); an
+          // unexpected `cancelling` row is left for a human, never thrown at
+          // the run that called this.
+          _ => null,
+        };
+        if (deleteKind == null) {
+          return false;
+        }
+        final isPlan = existing.kind == PlanningMutationKind.planCreate;
+        final isItem =
+            existing.kind == PlanningMutationKind.sessionItemCreateSong;
+        // The create's own base is the version the backend moved from, so the
+        // item's create bumped the session to `b + 1`; a plan or a session
+        // starts at 1. A missing item base stays missing (copyWith keeps
+        // null), which the delete RPC rejects as a conflict (fail-safe).
+        final itemBase = existing.baseVersion;
+        await _upsertRecord(
+          context: PlanningMutationContext(
+            userId: userId,
+            organizationId: organizationId,
+          ),
+          aggregateType: aggregateType,
+          record: existing.copyWith(
+            kind: deleteKind,
+            syncStatus: PlanningMutationSyncStatus.pending,
+            orderKey: await _nextOrderKey(
+              userId: userId,
+              organizationId: organizationId,
+            ),
+            updatedAt: DateTime.now().toUtc(),
+            baseVersion: isItem ? (itemBase == null ? null : itemBase + 1) : 1,
+            baseContentVersion: isPlan ? 1 : null,
+            clearSlug: true,
+            clearName: true,
+            clearErrorCode: true,
+            clearErrorMessage: true,
+            resolvesCancelledCreate: true,
+            // The label recordPlanDelete's stranded-tombstone branch keeps,
+            // since the name column is dropped above.
+            originSnapshot: isItem
+                ? existing.originSnapshot
+                : existing.originSnapshot ?? {'name': existing.name},
+          ),
+        );
+        return true;
+      });
+      convertedAny = converted || convertedAny;
+    }
+    if (convertedAny) {
+      _onStorageFootprintChanged?.call();
+    }
+  }
+
+  @override
   Future<void> applyAcceptedWriteEffects({
     required String userId,
     required String organizationId,
