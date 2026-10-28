@@ -395,6 +395,8 @@ residual R1, generalized.)
     entry in the pending session reorder;
   - `planCreate`: every child row of the plan.
 - A discarded in-flight create keeps its dependents: its call may commit.
+  A dependent kept this way that is itself in flight (for example a `sending`
+  key edit of a discarded failed item create) ends visibly if it then fails.
 - Write queue only (ADR-028 D3/D9): never budget-admitted, no recovery
   boundary, like `clearMutation`.
 - `clearMutation` stays for the sync's revision-gated clears.

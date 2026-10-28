@@ -70,7 +70,7 @@ stateDiagram-v2
 ### Discard Actions
 
 - `discard create`: the local created record is removed from the authenticated cache.
-  - Discarding a planning create also removes its dependent rows (a plan's sessions and items, a session's items and their orders, key edits), because they could only fail later; the exception is a create that is in flight (`sending` or `accepted`), whose dependents stay.
+  - Discarding a planning create also removes its dependent rows (a plan's sessions and items, a session's items and their orders, key edits), because they could only fail later; the exception is a create that is in flight (`sending`, `accepted` or `cancelling`), whose dependents stay.
 - `stale cancelling row`: a `cancelling` create tombstone that no run resolved is converted at the next run start of its context into a pending delete (planning and song), so the delete intent is not lost if the create had committed.
 - `discard edit`: the local edited version is replaced by the backend-accepted or restored canonical local state.
 - `discard remove`: the local remove intent is cleared, the item returns to `Synced`, and the item becomes visible in normal UI again.

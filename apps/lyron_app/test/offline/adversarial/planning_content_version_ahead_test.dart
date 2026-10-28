@@ -16,7 +16,7 @@ import 'package:lyron_app/src/offline/song_catalog/song_catalog_store.dart';
 
 import '../../support/planning_run_fixtures.dart';
 
-/// F1 (docs/deferred/2026-10-22-content-version-ahead-of-content.md): a
+/// F1 (spec decision F1, ADR-038 2026-10-21 amendment item 3): a
 /// reconcile that lands after a newer pull for the same context was stored
 /// must not write the older accepted write over the newer content while the
 /// projection keeps the newer plan content version (I7). The race predates

@@ -4401,6 +4401,78 @@ void main() {
       });
     }
 
+    // A delete over a `sending` create strands it as a `cancelling`
+    // tombstone, which discard treats as in flight (its dependents stay).
+    final tombstones = <(String, String, Future<void> Function())>[
+      (
+        'session_item',
+        'item-1',
+        () async {
+          await recordItem('item-1');
+          await setStatus(
+            'session_item',
+            'item-1',
+            PlanningMutationSyncStatus.sending,
+          );
+          await store.recordSessionItemDelete(
+            context: context,
+            draft: const PlanningSessionItemDeleteMutationDraft(
+              sessionItemId: 'item-1',
+              sessionId: 'session-1',
+              planId: 'plan-1',
+            ),
+          );
+        },
+      ),
+      (
+        'session',
+        'session-1',
+        () async {
+          await recordSession('session-1');
+          await setStatus(
+            'session',
+            'session-1',
+            PlanningMutationSyncStatus.sending,
+          );
+          await store.recordSessionDelete(
+            context: context,
+            draft: const PlanningSessionDeleteMutationDraft(
+              sessionId: 'session-1',
+              planId: 'plan-1',
+            ),
+          );
+        },
+      ),
+      (
+        'plan',
+        'plan-1',
+        () async {
+          await recordPlan();
+          await setStatus('plan', 'plan-1', PlanningMutationSyncStatus.sending);
+          await store.recordPlanDelete(
+            context: context,
+            draft: const PlanningPlanDeleteMutationDraft(planId: 'plan-1'),
+          );
+        },
+      ),
+    ];
+    for (final (aggregateType, aggregateId, strand) in tombstones) {
+      test('discarding a cancelling $aggregateType create tombstone keeps '
+          'its dependents', () async {
+        await strand();
+        expect(
+          (await read(aggregateType, aggregateId))!.syncStatus,
+          PlanningMutationSyncStatus.cancelling,
+        );
+        await recordKeyEdit('item-1');
+
+        expect(await discard(aggregateType, aggregateId), isTrue);
+
+        expect(await read(aggregateType, aggregateId), isNull);
+        expect(await read('session_item_key', 'item-1'), isNotNull);
+      });
+    }
+
     test(
       'discarding a failed item create keeps a key edit that is in flight',
       () async {

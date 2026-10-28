@@ -1534,9 +1534,9 @@ class DriftPlanningMutationStore implements PlanningMutationStore {
             PlanningMutationKind.sessionDelete,
           PlanningMutationKind.sessionItemCreateSong =>
             PlanningMutationKind.sessionItemDelete,
-          // Only these three kinds become tombstones (D2, spec D5(b)); an
-          // unexpected `cancelling` row is left for a human, never thrown at
-          // the run that called this.
+          // Only these three kinds become tombstones (D2, spec D5(b)), so
+          // any other kind here is unreachable today. It is skipped, not
+          // thrown, so one bad row cannot stop the conversion of the rest.
           _ => null,
         };
         if (deleteKind == null) {
