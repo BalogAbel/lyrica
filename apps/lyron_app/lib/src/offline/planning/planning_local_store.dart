@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart';
 import 'package:lyron_app/src/application/storage/local_storage_domain_rejection.dart';
 import 'package:lyron_app/src/application/storage/local_storage_footprint_revision.dart';
@@ -88,6 +90,42 @@ class CachedSessionItemRecord {
   final int? capo;
 }
 
+/// The projected row kinds a [PlanningVersionedRow] can name.
+enum PlanningProjectionRowKind { plan, session, sessionItem }
+
+/// A projected row and the version an accepted write would store on it
+/// (spec F1): the write is skipped when the projection already holds that row
+/// at a greater version.
+class PlanningVersionedRow {
+  const PlanningVersionedRow({
+    required this.kind,
+    required this.id,
+    required this.writtenVersion,
+  });
+
+  final PlanningProjectionRowKind kind;
+  final String id;
+  final int writtenVersion;
+}
+
+/// What [PlanningLocalStore.applyAcceptedWrite] decides on (spec F1).
+class PlanningAcceptedWriteGate {
+  const PlanningAcceptedWriteGate({
+    this.planId,
+    this.acceptedContentVersion,
+    this.versionedRow,
+  });
+
+  /// The plan whose content version rule 1a reads and advances.
+  final String? planId;
+
+  /// The plan content version the backend returned for this write (`R`).
+  /// Null when the record carries none or its kind does not bump plan content.
+  final int? acceptedContentVersion;
+
+  final PlanningVersionedRow? versionedRow;
+}
+
 abstract interface class PlanningLocalStore {
   Future<void> replaceActiveProjection({
     required String userId,
@@ -158,16 +196,28 @@ abstract interface class PlanningLocalStore {
     required DateTime refreshedAt,
   });
 
-  /// Spec D7 rule 1a (docs/specs/2026-09-29-plan-delete-and-session-cascade.md):
-  /// sets the synced plan's contentVersion to [acceptedContentVersion] only
-  /// when it currently equals `acceptedContentVersion - 1`, i.e. the
-  /// accepted write was the only one since the projection's value. No-op
-  /// otherwise (I3: never absorb a foreign write).
-  Future<void> advanceSyncedPlanContentVersion({
+  /// Spec F1 (docs/specs/2026-10-21-planning-mutation-gaps.md): applies one
+  /// backend-accepted write to the projection and runs D7 rule 1a for it,
+  /// all in one transaction, so a pull cannot store between the decision and
+  /// the writes.
+  ///
+  /// [apply] (the reconciler's per-kind writes; its own transactions nest as
+  /// savepoints) is skipped, together with the advance, when
+  /// - the projected plan's content version `C` is known and
+  ///   `C >= gate.acceptedContentVersion`: a pull already holds the write, or
+  /// - the projection holds `gate.versionedRow` at a version greater than
+  ///   `writtenVersion`: the write is older than the projection.
+  /// Otherwise [apply] runs, and when `C == acceptedContentVersion - 1`
+  /// (the write was the only one since the projection's value) the plan's
+  /// content version becomes `acceptedContentVersion` (I3: a gap never
+  /// absorbs a foreign write; I7: a null `C` is never filled). A throwing
+  /// [apply] rolls back its writes and the advance. An absent owner, plan or
+  /// row never blocks [apply].
+  Future<void> applyAcceptedWrite({
     required String userId,
     required String organizationId,
-    required String planId,
-    required int acceptedContentVersion,
+    required PlanningAcceptedWriteGate gate,
+    required Future<void> Function() apply,
   });
 
   /// Spec D8: removes a synced plan and all of its sessions and session
@@ -236,6 +286,12 @@ abstract interface class PlanningLocalStore {
   });
 }
 
+/// Records, for one [DriftPlanningLocalStore.applyAcceptedWrite], whether any
+/// write inside its transaction changed the storage footprint.
+class _FootprintCollector {
+  bool changed = false;
+}
+
 class DriftPlanningLocalStore implements PlanningLocalStore {
   const DriftPlanningLocalStore(
     this._database, {
@@ -253,6 +309,24 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
   /// production wiring always supplies it, mirroring how
   /// [_onStorageFootprintChanged] is injected.
   final LocalStorageWriteRecovery? _writeRecovery;
+
+  /// The zone key of the footprint collector [applyAcceptedWrite] installs. It
+  /// names this store's database and callback, so a concurrent write through
+  /// another store, or outside the transaction's zone, still emits at once.
+  Object get _collectorKey => (_database, _onStorageFootprintChanged);
+
+  /// Reports a committed footprint change. Inside [applyAcceptedWrite]'s
+  /// transaction the report is recorded instead and emitted once, after the
+  /// outermost commit and outside the transaction's zone (see
+  /// [LocalStorageFootprintChanged]); a rolled-back transaction emits nothing.
+  void _footprintChanged() {
+    final collector = Zone.current[_collectorKey];
+    if (collector is _FootprintCollector) {
+      collector.changed = true;
+    } else {
+      _onStorageFootprintChanged?.call();
+    }
+  }
 
   Future<T> _guarded<T>(Future<T> Function() write) {
     final recovery = _writeRecovery;
@@ -384,7 +458,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       });
       _ensureProjectionCurrent(shouldContinue);
     });
-    _onStorageFootprintChanged?.call();
+    _footprintChanged();
   }
 
   @override
@@ -647,7 +721,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       return deletedRows;
     });
     if (deletedRows > 0) {
-      _onStorageFootprintChanged?.call();
+      _footprintChanged();
     }
   }
 
@@ -687,7 +761,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       return ensuredOwner.changed || rowChanged;
     });
     if (changed) {
-      _onStorageFootprintChanged?.call();
+      _footprintChanged();
     }
   }
 
@@ -727,40 +801,127 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       return ensuredOwner.changed || rowChanged;
     });
     if (changed) {
-      _onStorageFootprintChanged?.call();
+      _footprintChanged();
     }
   }
 
   @override
-  Future<void> advanceSyncedPlanContentVersion({
+  Future<void> applyAcceptedWrite({
     required String userId,
     required String organizationId,
-    required String planId,
-    required int acceptedContentVersion,
+    required PlanningAcceptedWriteGate gate,
+    required Future<void> Function() apply,
   }) async {
-    final owner = await _readOwner(
-      userId: userId,
-      organizationId: organizationId,
+    // Footprint reports of the writes inside the transaction are collected
+    // (zone-scoped, so an unrelated concurrent write still reports at once)
+    // and emitted once below, after the commit and in this call's own zone.
+    // A rolled-back transaction throws past that point and emits nothing.
+    final collector = _FootprintCollector();
+    await runZoned(
+      () => _database.transaction(() async {
+        final owner = await _readOwner(
+          userId: userId,
+          organizationId: organizationId,
+        );
+        final planId = gate.planId;
+        final plan = owner == null || planId == null
+            ? null
+            : await (_database.select(_database.cachedPlanningPlans)..where(
+                    (table) =>
+                        table.userId.equals(userId) &
+                        table.organizationId.equals(organizationId) &
+                        table.snapshotVersion.equals(owner.snapshotVersion) &
+                        table.planId.equals(planId),
+                  ))
+                  .getSingleOrNull();
+        final current = plan?.contentVersion;
+        final accepted = gate.acceptedContentVersion;
+        if (accepted != null && current != null && current >= accepted) {
+          return;
+        }
+        final row = gate.versionedRow;
+        if (row != null && owner != null) {
+          final projected = await _projectedVersion(
+            userId: userId,
+            organizationId: organizationId,
+            snapshotVersion: owner.snapshotVersion,
+            row: row,
+          );
+          if (projected != null && projected > row.writtenVersion) {
+            return;
+          }
+        }
+        await apply();
+        if (accepted != null && planId != null && current == accepted - 1) {
+          // D7 rule 1a: the same contiguous UPDATE as ever, now inside the
+          // transaction of the write it accounts for.
+          final updatedRows =
+              await (_database.update(_database.cachedPlanningPlans)..where(
+                    (table) =>
+                        table.userId.equals(userId) &
+                        table.organizationId.equals(organizationId) &
+                        table.snapshotVersion.equals(owner!.snapshotVersion) &
+                        table.planId.equals(planId) &
+                        table.contentVersion.equals(accepted - 1),
+                  ))
+                  .write(
+                    CachedPlanningPlansCompanion(
+                      contentVersion: Value(accepted),
+                    ),
+                  );
+          if (updatedRows > 0) {
+            collector.changed = true;
+          }
+        }
+      }),
+      zoneValues: {_collectorKey: collector},
     );
-    if (owner == null) {
-      return;
-    }
-    final updatedRows =
-        await (_database.update(_database.cachedPlanningPlans)..where(
-              (table) =>
-                  table.userId.equals(userId) &
-                  table.organizationId.equals(organizationId) &
-                  table.snapshotVersion.equals(owner.snapshotVersion) &
-                  table.planId.equals(planId) &
-                  table.contentVersion.equals(acceptedContentVersion - 1),
-            ))
-            .write(
-              CachedPlanningPlansCompanion(
-                contentVersion: Value(acceptedContentVersion),
-              ),
-            );
-    if (updatedRows > 0) {
+    if (collector.changed) {
       _onStorageFootprintChanged?.call();
+    }
+  }
+
+  /// The `version` of the projected row [row] names in [snapshotVersion], or
+  /// null when the projection holds no such row.
+  Future<int?> _projectedVersion({
+    required String userId,
+    required String organizationId,
+    required int snapshotVersion,
+    required PlanningVersionedRow row,
+  }) async {
+    switch (row.kind) {
+      case PlanningProjectionRowKind.plan:
+        return (await (_database.select(_database.cachedPlanningPlans)..where(
+                  (table) =>
+                      table.userId.equals(userId) &
+                      table.organizationId.equals(organizationId) &
+                      table.snapshotVersion.equals(snapshotVersion) &
+                      table.planId.equals(row.id),
+                ))
+                .getSingleOrNull())
+            ?.version;
+      case PlanningProjectionRowKind.session:
+        return (await (_database.select(_database.cachedPlanningSessions)
+                  ..where(
+                    (table) =>
+                        table.userId.equals(userId) &
+                        table.organizationId.equals(organizationId) &
+                        table.snapshotVersion.equals(snapshotVersion) &
+                        table.sessionId.equals(row.id),
+                  ))
+                .getSingleOrNull())
+            ?.version;
+      case PlanningProjectionRowKind.sessionItem:
+        return (await (_database.select(_database.cachedPlanningSessionItems)
+                  ..where(
+                    (table) =>
+                        table.userId.equals(userId) &
+                        table.organizationId.equals(organizationId) &
+                        table.snapshotVersion.equals(snapshotVersion) &
+                        table.sessionItemId.equals(row.id),
+                  ))
+                .getSingleOrNull())
+            ?.version;
     }
   }
 
@@ -815,7 +976,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       return changed;
     });
     if (changed) {
-      _onStorageFootprintChanged?.call();
+      _footprintChanged();
     }
   }
 
@@ -859,7 +1020,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       return changed;
     });
     if (changed) {
-      _onStorageFootprintChanged?.call();
+      _footprintChanged();
     }
   }
 
@@ -915,7 +1076,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       return updatedPlanRows > 0 || changed;
     });
     if (changed) {
-      _onStorageFootprintChanged?.call();
+      _footprintChanged();
     }
   }
 
@@ -974,7 +1135,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       return updatedSessionRows > 0 || changed;
     });
     if (changed) {
-      _onStorageFootprintChanged?.call();
+      _footprintChanged();
     }
   }
 
@@ -1021,7 +1182,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       return updatedSessionRows > 0 || changed;
     });
     if (changed) {
-      _onStorageFootprintChanged?.call();
+      _footprintChanged();
     }
   }
 
@@ -1060,7 +1221,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
               ),
             );
     if (updated > 0) {
-      _onStorageFootprintChanged?.call();
+      _footprintChanged();
     }
   }
 
@@ -1122,7 +1283,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       return updatedSessionRows > 0 || changed;
     });
     if (changed) {
-      _onStorageFootprintChanged?.call();
+      _footprintChanged();
     }
   }
 
@@ -1165,7 +1326,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
             updatedAt: plan.updatedAt.toUtc(),
             version: plan.version,
             // Spec D4/I7: only a full refresh (replaceActiveProjection) or
-            // the contiguous own-write rule (advanceSyncedPlanContentVersion)
+            // the contiguous own-write rule of applyAcceptedWrite (F1)
             // may change an existing row's content version. A reconcile
             // upsert keeps it; a brand-new row takes the reconciled value.
             contentVersion: Value(
@@ -1320,7 +1481,7 @@ class DriftPlanningLocalStore implements PlanningLocalStore {
       ),
     );
     if (deletedRows > 0) {
-      _onStorageFootprintChanged?.call();
+      _footprintChanged();
     }
   }
 

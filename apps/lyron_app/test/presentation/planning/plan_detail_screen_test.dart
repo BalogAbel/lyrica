@@ -4105,6 +4105,12 @@ class _PlanDetailTestPlanningRepository implements PlanningRepository {
 }
 
 class _PlanDetailTestPlanningMutationStore implements PlanningMutationStore {
+  @override
+  Future<void> convertStaleCreateTombstones({
+    required String userId,
+    required String organizationId,
+  }) async {}
+
   PlanningPlanDeleteMutationDraft? recordedPlanDelete;
   PlanningSessionDeleteMutationDraft? recordedSessionDelete;
 
@@ -4144,6 +4150,14 @@ class _PlanDetailTestPlanningMutationStore implements PlanningMutationStore {
     required String aggregateType,
     required String aggregateId,
     int? expectedRevision,
+  }) async => false;
+
+  @override
+  Future<bool> discardMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
   }) async => false;
 
   @override
@@ -4195,13 +4209,6 @@ class _PlanDetailTestPlanningMutationStore implements PlanningMutationStore {
     required String organizationId,
     required PlanningMutationRecord accepted,
     required bool remoteResponse,
-  }) async {}
-
-  @override
-  Future<void> advanceAcceptedPlanContentVersion({
-    required String userId,
-    required String organizationId,
-    required PlanningMutationRecord accepted,
   }) async {}
 
   @override

@@ -1498,12 +1498,12 @@ class _RecordingPlanningLocalStore implements PlanningLocalStore {
   }) => throw UnimplementedError();
 
   @override
-  Future<void> advanceSyncedPlanContentVersion({
+  Future<void> applyAcceptedWrite({
     required String userId,
     required String organizationId,
-    required String planId,
-    required int acceptedContentVersion,
-  }) => throw UnimplementedError();
+    required PlanningAcceptedWriteGate gate,
+    required Future<void> Function() apply,
+  }) => apply();
 
   @override
   Future<void> deleteSyncedPlan({

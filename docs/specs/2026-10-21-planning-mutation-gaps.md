@@ -1,8 +1,10 @@
 # Spec: Planning Mutation Gaps (S5b)
 
 > Status: Accepted (2026-10-22, design gate approved). PR 1 (MG1–MG5 and
-> their MG13 rows) is implemented on `fix/planning-mutation-gaps` (#97,
-> 2026-10-22); PR 2 and PR 3 are not started. PR 1
+> their MG13 rows) merged as #97 (`9c16d79`, 2026-10-27). PR 2 (MG6–MG9 and
+> the F1 fix) is implemented on `fix/planning-unresolved-rows`, PR #99 open
+> (plan: `docs/plans/2026-10-27-planning-unresolved-rows.md`); PR 3 is not
+> started. PR 1
 > plan: `docs/plans/2026-10-22-planning-run-boundaries.md`. Amends ADR-030 (in-flight create
 > cancellation follow-up), ADR-035 (organization switch, import runs, D5
 > purge ownership) and ADR-038 (rule 1a placement, retry rule), and
@@ -31,8 +33,8 @@ analysis and recorded as deferred work:
 | Content-version advance on a mid-run context switch | `2026-09-30-content-version-advance-on-context-switch.md` | I7 broken for the old context until its next refresh; a plan delete confirmation can under-count |
 | A sync run keeps sending after the context moved (O2) | `2026-10-05-gate-cross-user-leaks.md` | The previous user's rows go out with the new token and end `failedAuthorization` / `conflict` |
 | A coalesced refresh can predate the write (R3) | `2026-10-14-key-edit-residuals.md` | One visible self-conflict on the next edit, every versioned kind |
-| Stranded create tombstones | `2026-09-30-stranded-create-tombstones.md` | A `cancelling` row nobody resolves; delete intent lost if the create committed |
-| Session-rename retry never rebases | `2026-09-30-session-rename-retry-never-rebases.md` | Keep mine on a rename conflicts forever |
+| Stranded create tombstones (resolved by PR 2) | `2026-09-30-stranded-create-tombstones.md` (removed) | A `cancelling` row nobody resolves; delete intent lost if the create committed |
+| Session-rename retry never rebases (resolved by PR 2) | `2026-09-30-session-rename-retry-never-rebases.md` (removed) | Keep mine on a rename conflicts forever |
 | Discarding a failed create orphans its dependents (R1) | `2026-10-14-key-edit-residuals.md` | Key-edit and order rows fail later, visibly |
 | D5 purge resets ignore ownership (O3) | `2026-10-05-gate-cross-user-leaks.md` | A purge for A completing after B became current clears B's planning state |
 | Membership purge has no import check | `2026-10-11-membership-purge-import-gap.md` | Rows an import writes between the recount and the deletion are purged uncounted |
@@ -80,10 +82,10 @@ Unchanged, restated because every decision below is checked against them:
   stale: a stale base conflicts (fail-safe), an over-advanced base absorbs a
   foreign write (fail-open, never acceptable).
 - **I7.** The projection's `contentVersion` never runs ahead of the content
-  it reflects, except for the F1 race (a pull for the same context stored
-  between C5 and the reconcile, then the older accepted write written over
-  it; pre-existing, scheduled for PR 2:
-  `docs/deferred/2026-10-22-content-version-ahead-of-content.md`).
+  it reflects. The F1 race (a pull for the same context stored between C5
+  and the reconcile, then the older accepted write written over it) is
+  closed by PR 2: the reconcile and rule 1a are one transaction gated on
+  the projection (decision F1 below).
 - **ADR-019 exactly-once.** An `accepted` row is never resent.
 - **ADR-030 D2/D3.** Every write that concludes a remote exchange is gated on
   the revision that was sent; a miss is not an error.
@@ -205,7 +207,7 @@ song side.)
   1b, 2 and 3 (pending delete rebases), the PS15 fold rebase and the D8
   purges, which act on rows of the run's own context, and it runs exactly
   where it runs today (post-RPC and at batch end, unconditionally).
-- Rule 1a becomes its own store call, `advanceAcceptedPlanContentVersion`
+- (Superseded by decision F1, PR 2.) Rule 1a becomes its own store call, `advanceAcceptedPlanContentVersion`
   (it wraps `PlanningLocalStore.advanceSyncedPlanContentVersion`, only for a
   `remoteResponse` record whose kind `bumpsPlanContent`, with the PS15
   own-write gate for key edits unchanged). The store keeps the moved
@@ -224,10 +226,11 @@ song side.)
     exception) means no advance: a context switch or a failed or skipped
     reconcile never leaves the projection at R without W. It does not cover
     the F1 race (a pull for the same context stored between C5 and the
-    reconcile, then W written over it; pre-existing, fix scheduled for PR 2:
-    `docs/deferred/2026-10-22-content-version-ahead-of-content.md`).
+    reconcile, then W written over it); decision F1 (PR 2) closes it.
   - A failed advance (an `Exception`, swallowed like the effects call) leaves
-    the projection behind: at most one visible false conflict later.
+    the projection behind: at most one visible false conflict later. PR 2
+    removed the separate advance (decision F1): reconcile and advance are one
+    transaction, and an exception there propagates.
 - In the refreshed branch the refresh stored a pull that started after the
   write (MG5); it already holds R or later, so 1a is not called.
 - The same-context `planCreate` case is unchanged: the `planCreate` is
@@ -289,7 +292,12 @@ song side.)
 (Stranded tombstones: option (a); the session-item base overridden.)
 
 - `_run` first calls a new store method,
-  `convertStaleCreateTombstones(context)`, then reads its candidates. Under
+  `convertStaleCreateTombstones(context)`, then reads its candidates. The
+  conversion is best-effort: the call is wrapped in `try { … } on Exception
+  { }` (an `Error` still propagates). A failed conversion leaves the rows
+  `cancelling` and the next run retries; it never stops the run, because an
+  exception escaping `_run` would fail an unrelated new write through
+  `syncScheduler`. Under
   the per-context single-flight no remote call of this context is in flight
   at that moment, so every `cancelling` row is stale.
 - The conversion, in one transaction per row:
@@ -344,7 +352,10 @@ song side.)
 
 - `SongMutationSyncController._runSync` first converts every `cancelling` row
   of its context to `pendingDelete` with version 1 (`create_song` inserts
-  version 1), then reads its candidates.
+  version 1), then reads its candidates. Best-effort like MG6: wrapped in
+  `try { … } on Exception { }` (an `Error` propagates); a failed conversion
+  leaves the rows `cancelling` and the next run retries, so the outbox never
+  stops on it.
 - No marker: a `remoteDeleted` answer to a `pendingDelete` already deletes
   the local row (`_runSync`'s existing branch). A conflict ends `conflict`,
   resolved by the existing Keep mine (`overwrite_song_delete`).
@@ -384,9 +395,83 @@ residual R1, generalized.)
     entry in the pending session reorder;
   - `planCreate`: every child row of the plan.
 - A discarded in-flight create keeps its dependents: its call may commit.
+  A dependent kept this way that is itself in flight (for example a `sending`
+  key edit of a discarded failed item create) ends visibly if it then fails.
 - Write queue only (ADR-028 D3/D9): never budget-admitted, no recovery
   boundary, like `clearMutation`.
 - `clearMutation` stays for the sync's revision-gated clears.
+
+**F1. The reconcile and rule 1a are one projection transaction, applied only
+when the projection does not already hold the write.** (Design gate approved
+2026-10-27; closes `docs/deferred/2026-10-22-content-version-ahead-of-content.md`.)
+
+- New `PlanningLocalStore.applyAcceptedWrite({userId, organizationId, gate,
+  apply})`. One Drift transaction reads the projected plan's content
+  version `C` and the gate's versioned row, decides, runs `apply` (the
+  reconciler's existing per-kind writes; their own transactions nest as
+  savepoints), then performs rule 1a. A pull cannot store between the
+  decision and the writes.
+- The gate (`PlanningAcceptedWriteGate`) carries the rule-1a plan id (the
+  moved MG4 block: `aggregateId` for a plan kind, `planId` otherwise), `R`
+  (the record's `acceptedPlanContentVersion`, for a `bumpsPlanContent` kind
+  only) and an optional versioned row (kind, id, the version the reconcile
+  writes). Decision, in order:
+
+  | Condition | Reconcile | Rule 1a |
+  |---|---|---|
+  | `R` and `C` known, `C >= R` | skipped | skipped |
+  | the versioned row is projected at a version **greater** than the one the reconcile writes | skipped | skipped |
+  | `R` known, `C == R - 1` | applied | `C := R` |
+  | otherwise (`C < R - 1`, `C` unknown, `R` unknown) | applied | none |
+
+  | Kind | `R` | Versioned row (written version) |
+  |---|---|---|
+  | `planCreate`, `planEdit` | — | plan `aggregateId` (`baseVersion ?? 1`) |
+  | `planDelete` | — | — (a delete is monotone) |
+  | `sessionCreate` | yes | session `aggregateId` (**1**, never `baseVersion`: `create_session` always inserts version 1 and takes no base, and MG8 can rebase a retried create onto the plan version) |
+  | `sessionRename` | yes | session `aggregateId` (`baseVersion ?? 1`) |
+  | `sessionDelete` | yes | — |
+  | `sessionReorder` | yes | plan `planId ?? aggregateId` (`baseVersion ?? 1`) |
+  | `sessionItemCreateSong`, `sessionItemDelete`, `sessionItemReorder` | yes | session `sessionId` (`baseVersion ?? 1`) |
+  | `sessionItemKeyEdit` | yes | session item `aggregateId` (`baseVersion`) |
+
+  The written version is what the reconcile already writes: the returned
+  version for a backend response, the old base for a crash-resumed
+  `accepted` marker, except a `sessionCreate`, which is written (and gated)
+  at version 1 whatever its base: the base of a retried create is a plan
+  version, not the session's (final review I-1). "Greater", not "equal": an equal version is the same
+  state, and rewriting it changes nothing.
+- `R` exists only on a record mapped from a backend response
+  (`acceptedPlanContentVersion` is in memory only, never persisted), and the
+  PS15 gate nulls it for a key edit that is not provably the caller's own.
+  A crash-resumed marker and such a key edit are therefore gated by their
+  versioned row only and never advance; the reconciler needs no
+  `remoteResponse` flag.
+- The reconciler validates every required field (LF-8) before any store
+  call, so a corrupt record still ends `failedDependency` whatever the
+  projection holds, and a throw never leaves a partial write.
+- `PlanningMutationSyncController` makes no separate rule-1a call any more:
+  `PlanningMutationStore.advanceAcceptedPlanContentVersion` and
+  `PlanningLocalStore.advanceSyncedPlanContentVersion` are removed. An
+  exception in the transaction rolls back the reconcile and the advance
+  together and propagates like any reconcile exception: the rows stay
+  `accepted`, the next run resumes them without `R`, and the projection lags
+  (fail-safe). MG4's "a failed advance is swallowed" no longer applies.
+- **User decisions (2026-10-27).** (1) The versioned-row check is an
+  extension of the deferred entry's sketch, which gated only `planEdit` and
+  `planCreate` on the plan version. It closes the same race for records
+  without `R`: a pull stored after a crash, then a resumed marker's
+  reconcile writing the old base over newer content (the next plan delete
+  would absorb it). (2) Below `R - 1` the write is applied without the
+  advance, as today. Skipping it there would hide the user's own write after
+  an offline sync against a stale projection until the next successful
+  refresh.
+- **Residual, pre-existing.** A plan deleted by another member after an own
+  `planCreate` or `planEdit`, with a pull stored before the reconcile, is
+  re-inserted by the reconcile until the next refresh (plan writes do not
+  bump the content version, and an absent row cannot show it is newer). It
+  holds no foreign content, and a delete of it ends visibly
+  (`plan_not_found`, `failedRemoteDelete`).
 
 ### PR 3 — purge and pull guards
 
@@ -459,7 +544,7 @@ Every gated write is listed with what a miss means after S5b:
 
 | # | Await | A fold or delete lands here | The context moves here |
 |---|---|---|---|
-| A0 | `convertStaleCreateTombstones` (MG6) | n/a (no candidate read yet) | conversion is local to the run's context; C1 stops the loop |
+| A0 | `convertStaleCreateTombstones` (MG6), implemented by PR 2 | n/a (no candidate read yet) | conversion is local to the run's context; C1 stops the loop; best-effort: an `Exception` is swallowed, the rows stay `cancelling`, the next run retries |
 | A1 | `readAllMutations` | the snapshot misses it; the next run sends it | C1 stops before any send |
 | A2 | `sending` write (gated) | the write misses → skip (D3) | C2: resolve as not created / gated reset to `pending`; stop |
 | A3 | `syncMutation` (the token is read inside it) | the accept write misses (A5) | inside the call's own `getSession` await: the MG2 residual; a failure lands on C6 |
@@ -468,7 +553,7 @@ Every gated write is listed with what a miss means after S5b:
 | A6 | failure path: `resolveCancelledCreate`, failure write (gated) | today's rules | C6 replaces the failure status with a gated reset to `pending` |
 | A7 | batch-end refresh | a fold during it makes the clear miss (A10) | C3 before it skips it; C4 = "a pull for the run's context, started after the request, was stored" |
 | A8 | batch-end effects (1b/2/3, PS15, D8) | idempotent | unconditional |
-| A9 | reconcile, then 1a (C5-guarded, 1a only after a reconcile that did not throw) | the clear misses | C5 checked once before both; a switch between them still leaves W in the projection before the advance |
+| A9 | reconcile and 1a in one transaction (F1) | the clear misses; a pull stored before the transaction makes the gate skip both | C5 checked once before the transaction; the transaction is a single projection write, so a switch cannot land between W and the advance |
 | A10 | clear (gated) | miss → PS15 re-rebase for key edits | the clear still runs (rows of the run's own context) |
 
 ## Roadmap Defaults: Confirmed or Overridden
@@ -539,12 +624,14 @@ every task.
 
 ### PR 2 — rows that never resolve (`fix/planning-unresolved-rows`)
 
-- MG6, MG7, MG8, MG9, and the F1 fix (reconcile and rule-1a advance in one
-  local-store transaction, only at exactly R - 1;
-  `docs/deferred/2026-10-22-content-version-ahead-of-content.md`).
+- MG6, MG7, MG8, MG9, and the F1 fix (decision F1 above;
+  `docs/deferred/2026-10-22-content-version-ahead-of-content.md`, removed by
+  this PR).
+- Plan: `docs/plans/2026-10-27-planning-unresolved-rows.md`.
 - Files: `drift_planning_mutation_store.dart`, `budgeted_planning_mutation_store.dart`,
   `planning_mutation_sync_types.dart`, `planning_local_database.dart`
-  (schema 9), `planning_mutation_sync_controller.dart` (run start, discard),
+  (schema 9), `planning_local_store.dart` and `planning_mutation_reconciler.dart`
+  (F1), `planning_mutation_sync_controller.dart` (run start, discard, F1),
   the Supabase planning mutation repository (`*_not_found` classification
   for tombstone-origin rows, if it is done there), the song catalog store
   and `song_mutation_sync_controller.dart`.
@@ -585,9 +672,9 @@ every task.
 | `2026-09-30-content-version-advance-on-context-switch.md` | removed by PR 1 |
 | `2026-10-05-gate-cross-user-leaks.md` | O2 narrowed by PR 1 to the token-binding residual (MG2), O3 removed by PR 3; C4, F5, N1, N2 stay |
 | `2026-10-14-key-edit-residuals.md` | R3 removed by PR 1, R1 by PR 2; R2, R4 stay |
-| `2026-09-30-stranded-create-tombstones.md` | removed by PR 2 |
-| `2026-09-30-session-rename-retry-never-rebases.md` | removed by PR 2 |
-| `2026-10-22-content-version-ahead-of-content.md` | added by PR 1 (F1); removed by PR 2 |
+| `2026-09-30-stranded-create-tombstones.md` | removed by PR 2 (done) |
+| `2026-09-30-session-rename-retry-never-rebases.md` | removed by PR 2 (done) |
+| `2026-10-22-content-version-ahead-of-content.md` | added by PR 1 (F1); removed by PR 2 (done) |
 | `2026-10-11-membership-purge-import-gap.md` | removed by PR 3 |
 | `2026-10-12-paged-pull-residuals.md` | R2 removed by PR 3; R1, R3, R4 stay |
 | `2026-10-11-session-transition-coordinator.md` | not triggered (no new writer or purge) |
@@ -599,8 +686,8 @@ every task.
   rows and projection survive a switch and sync when it is active again.
 - No run sends a candidate after its context moved, in either controller.
 - After a mid-run switch, no projection holds a `contentVersion` ahead of its
-  content, except for the F1 race (pre-existing, scheduled for PR 2; two
-  skipped tests state the intended behavior).
+  content (the F1 race is closed by PR 2's gated transaction; its tests no
+  longer skip).
 - An after-write refresh never reuses a pull that started before the write.
 - No `cancelling` row survives the next run of its context.
 - Keep mine works for a conflicted rename; no Retry overwrites a foreign value

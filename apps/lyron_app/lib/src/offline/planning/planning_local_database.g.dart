@@ -2657,6 +2657,21 @@ class $CachedPlanningMutationsTable extends CachedPlanningMutations
     requiredDuringInsert: false,
     defaultValue: const Constant(1),
   );
+  static const VerificationMeta _resolvesCancelledCreateMeta =
+      const VerificationMeta('resolvesCancelledCreate');
+  @override
+  late final GeneratedColumn<bool> resolvesCancelledCreate =
+      GeneratedColumn<bool>(
+        'resolves_cancelled_create',
+        aliasedName,
+        false,
+        type: DriftSqlType.bool,
+        requiredDuringInsert: false,
+        defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("resolves_cancelled_create" IN (0, 1))',
+        ),
+        defaultValue: const Constant(false),
+      );
   @override
   List<GeneratedColumn> get $columns => [
     userId,
@@ -2689,6 +2704,7 @@ class $CachedPlanningMutationsTable extends CachedPlanningMutations
     orderKey,
     updatedAt,
     localRevision,
+    resolvesCancelledCreate,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2949,6 +2965,15 @@ class $CachedPlanningMutationsTable extends CachedPlanningMutations
         ),
       );
     }
+    if (data.containsKey('resolves_cancelled_create')) {
+      context.handle(
+        _resolvesCancelledCreateMeta,
+        resolvesCancelledCreate.isAcceptableOrUnknown(
+          data['resolves_cancelled_create']!,
+          _resolvesCancelledCreateMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -3083,6 +3108,10 @@ class $CachedPlanningMutationsTable extends CachedPlanningMutations
         DriftSqlType.int,
         data['${effectivePrefix}local_revision'],
       )!,
+      resolvesCancelledCreate: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}resolves_cancelled_create'],
+      )!,
     );
   }
 
@@ -3143,6 +3172,12 @@ class CachedPlanningMutation extends DataClass
   /// (LF-T6), so only a store-owned counter is guaranteed monotonic. See
   /// `docs/specs/2026-08-05-sync-snapshot-identity.md` (D1).
   final int localRevision;
+
+  /// Tombstone-origin marker (S5b MG6, docs/specs/2026-10-21-planning-
+  /// mutation-gaps.md): true on a delete that was converted from a stale
+  /// create tombstone. Retry keeps it; any user-recorded write to the
+  /// aggregate replaces the record and clears it. False for every other row.
+  final bool resolvesCancelledCreate;
   const CachedPlanningMutation({
     required this.userId,
     required this.organizationId,
@@ -3174,6 +3209,7 @@ class CachedPlanningMutation extends DataClass
     required this.orderKey,
     required this.updatedAt,
     required this.localRevision,
+    required this.resolvesCancelledCreate,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3250,6 +3286,7 @@ class CachedPlanningMutation extends DataClass
     map['order_key'] = Variable<int>(orderKey);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     map['local_revision'] = Variable<int>(localRevision);
+    map['resolves_cancelled_create'] = Variable<bool>(resolvesCancelledCreate);
     return map;
   }
 
@@ -3323,6 +3360,7 @@ class CachedPlanningMutation extends DataClass
       orderKey: Value(orderKey),
       updatedAt: Value(updatedAt),
       localRevision: Value(localRevision),
+      resolvesCancelledCreate: Value(resolvesCancelledCreate),
     );
   }
 
@@ -3366,6 +3404,9 @@ class CachedPlanningMutation extends DataClass
       orderKey: serializer.fromJson<int>(json['orderKey']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       localRevision: serializer.fromJson<int>(json['localRevision']),
+      resolvesCancelledCreate: serializer.fromJson<bool>(
+        json['resolvesCancelledCreate'],
+      ),
     );
   }
   @override
@@ -3402,6 +3443,9 @@ class CachedPlanningMutation extends DataClass
       'orderKey': serializer.toJson<int>(orderKey),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'localRevision': serializer.toJson<int>(localRevision),
+      'resolvesCancelledCreate': serializer.toJson<bool>(
+        resolvesCancelledCreate,
+      ),
     };
   }
 
@@ -3436,6 +3480,7 @@ class CachedPlanningMutation extends DataClass
     int? orderKey,
     DateTime? updatedAt,
     int? localRevision,
+    bool? resolvesCancelledCreate,
   }) => CachedPlanningMutation(
     userId: userId ?? this.userId,
     organizationId: organizationId ?? this.organizationId,
@@ -3477,6 +3522,8 @@ class CachedPlanningMutation extends DataClass
     orderKey: orderKey ?? this.orderKey,
     updatedAt: updatedAt ?? this.updatedAt,
     localRevision: localRevision ?? this.localRevision,
+    resolvesCancelledCreate:
+        resolvesCancelledCreate ?? this.resolvesCancelledCreate,
   );
   CachedPlanningMutation copyWithCompanion(
     CachedPlanningMutationsCompanion data,
@@ -3548,6 +3595,9 @@ class CachedPlanningMutation extends DataClass
       localRevision: data.localRevision.present
           ? data.localRevision.value
           : this.localRevision,
+      resolvesCancelledCreate: data.resolvesCancelledCreate.present
+          ? data.resolvesCancelledCreate.value
+          : this.resolvesCancelledCreate,
     );
   }
 
@@ -3583,7 +3633,8 @@ class CachedPlanningMutation extends DataClass
           ..write('errorMessage: $errorMessage, ')
           ..write('orderKey: $orderKey, ')
           ..write('updatedAt: $updatedAt, ')
-          ..write('localRevision: $localRevision')
+          ..write('localRevision: $localRevision, ')
+          ..write('resolvesCancelledCreate: $resolvesCancelledCreate')
           ..write(')'))
         .toString();
   }
@@ -3620,6 +3671,7 @@ class CachedPlanningMutation extends DataClass
     orderKey,
     updatedAt,
     localRevision,
+    resolvesCancelledCreate,
   ]);
   @override
   bool operator ==(Object other) =>
@@ -3654,7 +3706,8 @@ class CachedPlanningMutation extends DataClass
           other.errorMessage == this.errorMessage &&
           other.orderKey == this.orderKey &&
           other.updatedAt == this.updatedAt &&
-          other.localRevision == this.localRevision);
+          other.localRevision == this.localRevision &&
+          other.resolvesCancelledCreate == this.resolvesCancelledCreate);
 }
 
 class CachedPlanningMutationsCompanion
@@ -3689,6 +3742,7 @@ class CachedPlanningMutationsCompanion
   final Value<int> orderKey;
   final Value<DateTime> updatedAt;
   final Value<int> localRevision;
+  final Value<bool> resolvesCancelledCreate;
   final Value<int> rowid;
   const CachedPlanningMutationsCompanion({
     this.userId = const Value.absent(),
@@ -3721,6 +3775,7 @@ class CachedPlanningMutationsCompanion
     this.orderKey = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.localRevision = const Value.absent(),
+    this.resolvesCancelledCreate = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   CachedPlanningMutationsCompanion.insert({
@@ -3754,6 +3809,7 @@ class CachedPlanningMutationsCompanion
     required int orderKey,
     required DateTime updatedAt,
     this.localRevision = const Value.absent(),
+    this.resolvesCancelledCreate = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : userId = Value(userId),
        organizationId = Value(organizationId),
@@ -3794,6 +3850,7 @@ class CachedPlanningMutationsCompanion
     Expression<int>? orderKey,
     Expression<DateTime>? updatedAt,
     Expression<int>? localRevision,
+    Expression<bool>? resolvesCancelledCreate,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -3829,6 +3886,8 @@ class CachedPlanningMutationsCompanion
       if (orderKey != null) 'order_key': orderKey,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (localRevision != null) 'local_revision': localRevision,
+      if (resolvesCancelledCreate != null)
+        'resolves_cancelled_create': resolvesCancelledCreate,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -3864,6 +3923,7 @@ class CachedPlanningMutationsCompanion
     Value<int>? orderKey,
     Value<DateTime>? updatedAt,
     Value<int>? localRevision,
+    Value<bool>? resolvesCancelledCreate,
     Value<int>? rowid,
   }) {
     return CachedPlanningMutationsCompanion(
@@ -3897,6 +3957,8 @@ class CachedPlanningMutationsCompanion
       orderKey: orderKey ?? this.orderKey,
       updatedAt: updatedAt ?? this.updatedAt,
       localRevision: localRevision ?? this.localRevision,
+      resolvesCancelledCreate:
+          resolvesCancelledCreate ?? this.resolvesCancelledCreate,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -3994,6 +4056,11 @@ class CachedPlanningMutationsCompanion
     if (localRevision.present) {
       map['local_revision'] = Variable<int>(localRevision.value);
     }
+    if (resolvesCancelledCreate.present) {
+      map['resolves_cancelled_create'] = Variable<bool>(
+        resolvesCancelledCreate.value,
+      );
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -4033,6 +4100,7 @@ class CachedPlanningMutationsCompanion
           ..write('orderKey: $orderKey, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('localRevision: $localRevision, ')
+          ..write('resolvesCancelledCreate: $resolvesCancelledCreate, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -5304,6 +5372,7 @@ typedef $$CachedPlanningMutationsTableCreateCompanionBuilder =
       required int orderKey,
       required DateTime updatedAt,
       Value<int> localRevision,
+      Value<bool> resolvesCancelledCreate,
       Value<int> rowid,
     });
 typedef $$CachedPlanningMutationsTableUpdateCompanionBuilder =
@@ -5338,6 +5407,7 @@ typedef $$CachedPlanningMutationsTableUpdateCompanionBuilder =
       Value<int> orderKey,
       Value<DateTime> updatedAt,
       Value<int> localRevision,
+      Value<bool> resolvesCancelledCreate,
       Value<int> rowid,
     });
 
@@ -5497,6 +5567,11 @@ class $$CachedPlanningMutationsTableFilterComposer
 
   ColumnFilters<int> get localRevision => $composableBuilder(
     column: $table.localRevision,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get resolvesCancelledCreate => $composableBuilder(
+    column: $table.resolvesCancelledCreate,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -5659,6 +5734,11 @@ class $$CachedPlanningMutationsTableOrderingComposer
     column: $table.localRevision,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get resolvesCancelledCreate => $composableBuilder(
+    column: $table.resolvesCancelledCreate,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$CachedPlanningMutationsTableAnnotationComposer
@@ -5795,6 +5875,11 @@ class $$CachedPlanningMutationsTableAnnotationComposer
     column: $table.localRevision,
     builder: (column) => column,
   );
+
+  GeneratedColumn<bool> get resolvesCancelledCreate => $composableBuilder(
+    column: $table.resolvesCancelledCreate,
+    builder: (column) => column,
+  );
 }
 
 class $$CachedPlanningMutationsTableTableManager
@@ -5873,6 +5958,7 @@ class $$CachedPlanningMutationsTableTableManager
                 Value<int> orderKey = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> localRevision = const Value.absent(),
+                Value<bool> resolvesCancelledCreate = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CachedPlanningMutationsCompanion(
                 userId: userId,
@@ -5905,6 +5991,7 @@ class $$CachedPlanningMutationsTableTableManager
                 orderKey: orderKey,
                 updatedAt: updatedAt,
                 localRevision: localRevision,
+                resolvesCancelledCreate: resolvesCancelledCreate,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -5939,6 +6026,7 @@ class $$CachedPlanningMutationsTableTableManager
                 required int orderKey,
                 required DateTime updatedAt,
                 Value<int> localRevision = const Value.absent(),
+                Value<bool> resolvesCancelledCreate = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CachedPlanningMutationsCompanion.insert(
                 userId: userId,
@@ -5971,6 +6059,7 @@ class $$CachedPlanningMutationsTableTableManager
                 orderKey: orderKey,
                 updatedAt: updatedAt,
                 localRevision: localRevision,
+                resolvesCancelledCreate: resolvesCancelledCreate,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

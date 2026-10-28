@@ -145,9 +145,10 @@ those are the only calls that can introduce or grow a pending aggregate.
 admitted against the mutation budget**. This is deliberate, not an
 oversight: they modify or shrink an existing row rather than growing one,
 and guarding them would make a full store unrecoverable. Once the mutation
-budget is exhausted, `clearMutation` is the only way out — discard has to
-keep working unconditionally, or the budget becomes a trap with no recovery
-path.
+budget is exhausted, `discardMutation` (the discard path since S5b MG9;
+`clearMutation` remains the sync's revision-gated clear) is the only way out —
+discard has to keep working unconditionally, or the budget becomes a trap
+with no recovery path.
 
 **Corrected, 2026-08-04 (second PR #64 re-review round, commits `ba62067`,
 `dc6a401`, `2b84978`, `39da44f`).** This section previously said the three
@@ -165,6 +166,8 @@ writes are not one undifferentiated group; they split three ways:
 | `saveSyncAttemptResult` | never | yes | yes |
 | `retryMutation` | never | yes | no |
 | `clearMutation` | never | yes | no |
+| `convertStaleCreateTombstones` (S5b MG6) | never | yes | no |
+| `discardMutation` (S5b MG9) | never | yes | no |
 
 `saveSyncAttemptResult` needs recovery because it is the only one of the
 three that can *grow* the stored row — it writes through the same
@@ -381,6 +384,16 @@ directly — it never goes through any guarded store method. So a guarded
 write's recovery path can never call back into a guard: eviction is
 structurally outside every write this boundary protects, and shrinking
 writes are never guarded in the first place.
+
+**Amendment, 2026-10-27 (S5b PR 2, F1): guarded writes inside
+`PlanningLocalStore.applyAcceptedWrite`.** The accepted-write transaction
+(spec decision F1) runs the reconciler's guarded projection writes inside one
+outer Drift transaction. Each guarded write there runs in a savepoint, and a
+recovery retry runs in a fresh savepoint, so a failed attempt does not
+poison the outer transaction. If SQLite aborts the outer transaction anyway,
+the exception propagates and the rows stay `accepted` (fail-safe): the next
+run resumes them. No test drives a guarded inner write retried inside the
+outer transaction; there is no planned trigger for it.
 
 ### D9 — Serialise measure, check and write per context
 
@@ -878,6 +891,12 @@ an actual change":
 
 - **Delete and clear paths key off affected-row counts.** A `DELETE`/clear
   that matched zero rows emits nothing — there was nothing to remeasure.
+- **A transaction emits once, after the outermost commit (S5b PR 2, F1).**
+  `DriftPlanningLocalStore.applyAcceptedWrite` collects the footprint
+  reports of the writes inside its transaction (a zone-scoped collector) and
+  emits once after the outermost commit, outside the transaction's zone, and
+  only when something changed; a rollback emits nothing. Writes outside it
+  emit as before.
 - **Idempotent upserts compare the persisted payload before deciding to
   emit.** A write whose incoming content is identical to what is already
   stored is a true no-op and emits nothing, so re-saving unchanged data does

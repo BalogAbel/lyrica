@@ -70,6 +70,8 @@ stateDiagram-v2
 ### Discard Actions
 
 - `discard create`: the local created record is removed from the authenticated cache.
+  - Discarding a planning create also removes its dependent rows (a plan's sessions and items, a session's items and their orders, key edits), because they could only fail later; the exception is a create that is in flight (`sending`, `accepted` or `cancelling`), whose dependents stay.
+- `stale cancelling row`: a `cancelling` create tombstone that no run resolved is converted at the next run start of its context into a pending delete (planning and song), so the delete intent is not lost if the create had committed.
 - `discard edit`: the local edited version is replaced by the backend-accepted or restored canonical local state.
 - `discard remove`: the local remove intent is cleared, the item returns to `Synced`, and the item becomes visible in normal UI again.
 
@@ -79,7 +81,7 @@ stateDiagram-v2
 - **Edit conflicts**: resolved by editing the conflicted item into a new `Edited` intent, discarding the edit, or using an explicit backend-authorized overwrite path. The item only returns to `Synced` through explicit overwrite after the backend accepts that overwrite.
 - **Remove conflicts**: resolved by discarding the remove intent or using an explicit backend-authorized remove path. The record only leaves local state after the backend accepts the explicit remove.
 - **Retry guards for planning writes**: three rules keep an explicit retry from acting on a row the user has not seen in that state.
-  - **Conflict-only rebase.** A cascade delete (`planDelete`, `sessionDelete`) is rebased onto the refreshed projection on retry only when its status is `conflict`, that is, after the user saw a visible conflict. The plan or session stays hidden behind its pending delete, so a refresh can bring in foreign writes the user never saw; a retry from any other status resends the original bases so those writes surface as a conflict.
+  - **Conflict-only rebase.** A cascade delete (`planDelete`, `sessionDelete`) and every edit that overwrites a shared value (`planEdit`, `sessionRename`, `sessionReorder`, `sessionItemReorder` and the key edit) is rebased onto the refreshed projection on retry only when its status is `conflict`, that is, after the user saw a visible conflict. A hidden pending delete or an overlay-shown edit means a refresh can bring in foreign writes the user never saw; a retry from any other status resends the original bases so those writes surface as a conflict. Creates and `sessionItemDelete` rebase from any status.
   - **Shown-status guard.** A grouped retry (the sync popup's keep-mine over a plan group) carries the status each row had when the popup showed it (`UnifiedSyncPlanMutationRef.syncStatus`, passed to `retryMutation(expectedStatus:)`) and skips a row whose status has changed since. The skip is silent: the row stays visible in its new state for the user to decide.
   - **In-flight rows are never retried.** `retryMutation` leaves a `sending`, `accepted`, or `cancelling` row untouched. Retrying a create tombstone (`cancelling`) would re-create the object the user deleted.
 

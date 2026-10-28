@@ -14,25 +14,9 @@ The review found no silent loss and no absorbed foreign write after its two
 fixes. These are the residuals it rated non-blocking. Each ends in a visible
 state (a failed row or one visible conflict), never in a wrong silent write.
 
-**Triage (2026-10-22):** R1 is scheduled in roadmap slice S5b PR 2
-(`docs/plans/2026-10-01-delivery-roadmap.md`), next to the other planning
-mutation gaps. R3 was fixed by S5b PR 1 (#97, MG5) and is removed. R2 and R4
-stay here, unscheduled.
-
-## R1. Discarding a failed item create orphans its key-edit row
-
-**What.** Discarding a FAILED `session_item` create through `clearMutation`
-(the discard path of the sync controller) removes only the create row. A
-dependent `session_item_key` row stays and later fails visibly
-(`failedDependency` or `remoteMissing`). The `session_item_order` rows behave
-the same way.
-
-**Why deferred.** Visible and recoverable with Discard; the fix belongs with
-the generic child-row cleanup that the other dependent kinds also need.
-
-**Where.** The discard path in `planning_mutation_sync_controller.dart`
-(`discardMutation`) and `DriftPlanningMutationStore.clearMutation`: purge the
-dependent key row, and the order rows, when a failed create is discarded.
+**Triage (2026-10-27):** R1 (discarding a failed item create orphaned its
+key-edit and order rows) was fixed by S5b PR 2 (MG9) and R3 by S5b PR 1
+(#97, MG5); both are removed. R2 and R4 stay here, unscheduled.
 
 ## R2. The create overlay builds a v1 item over an already-versioned one
 
@@ -59,4 +43,4 @@ base the draft was built from. Inherited shape of the other planning writes.
 **Where.** `PlanningWriteService.setSessionItemKey`: resolve the base inside
 the mutation store's record transaction.
 
-S5b spec (2026-10-21): R1 decided as MG9 (S5b PR 2) of `docs/specs/2026-10-21-planning-mutation-gaps.md`; R3 was fixed as MG5 (S5b PR 1, #97); R2 and R4 stay here.
+S5b spec (2026-10-21): R1 was fixed as MG9 (S5b PR 2) and R3 as MG5 (S5b PR 1, #97) of `docs/specs/2026-10-21-planning-mutation-gaps.md`; R2 and R4 stay here.

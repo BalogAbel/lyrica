@@ -67,6 +67,54 @@ void main() {
       },
     );
 
+    test('a sync run converts stale song tombstones first', () async {
+      final store = _FakeSongMutationStore();
+      final controller = SongMutationSyncController(
+        isContextActive: (_) => true,
+        store: store,
+        remoteRepository: _FakeSongMutationRemoteRepository(
+          syncHandler: (record) async => record,
+        ),
+      );
+
+      await controller.syncPendingSongs(
+        const SongMutationContext(userId: 'user-1', organizationId: 'org-1'),
+      );
+
+      expect(store.runCalls.take(2), ['convert', 'readPending']);
+    });
+
+    test('a failed tombstone conversion does not stop the run', () async {
+      final store = _FakeSongMutationStore(
+        pendingSongs: const [
+          SongMutationRecord(
+            id: 'song-1',
+            organizationId: 'org-1',
+            slug: 'alpha',
+            title: 'Alpha',
+            chordproSource: '{title: Alpha}',
+            version: 3,
+            baseVersion: 3,
+            syncStatus: SongSyncStatus.pendingUpdate,
+          ),
+        ],
+      )..throwOnConvert = true;
+      final repository = _FakeSongMutationRemoteRepository(
+        syncHandler: (record) async => record,
+      );
+      final controller = SongMutationSyncController(
+        isContextActive: (_) => true,
+        store: store,
+        remoteRepository: repository,
+      );
+
+      await controller.syncPendingSongs(
+        const SongMutationContext(userId: 'user-1', organizationId: 'org-1'),
+      );
+
+      expect(repository.syncedSongIds, ['song-1']);
+    });
+
     test('a 401 (unknown, not authorizationDenied) stays retryable and is '
         'resent on the next sync pass -- regression guard for ordinary token '
         'expiry (spec D5.6 / ADR-035)', () async {
@@ -1030,6 +1078,19 @@ class _FakeSongMutationStore implements SongMutationStore {
   void Function()? onMarkCreateSending;
   final List<bool> resolveCancelledCreatedArgs = [];
   int markCreateSendingCalls = 0;
+  final List<String> runCalls = [];
+  bool throwOnConvert = false;
+
+  @override
+  Future<void> convertStaleSongCreateTombstones({
+    required String userId,
+    required String organizationId,
+  }) async {
+    runCalls.add('convert');
+    if (throwOnConvert) {
+      throw Exception('convert');
+    }
+  }
 
   @override
   Future<SongMutationRecord?> readById({
@@ -1050,7 +1111,12 @@ class _FakeSongMutationStore implements SongMutationStore {
   Future<List<SongMutationRecord>> readPendingSongs({
     required String userId,
     required String organizationId,
-  }) async => _mutations.values
+  }) async {
+    runCalls.add('readPending');
+    return _pendingSongs();
+  }
+
+  List<SongMutationRecord> _pendingSongs() => _mutations.values
       .where(
         (record) => switch (record.syncStatus) {
           SongSyncStatus.pendingCreate ||

@@ -449,6 +449,12 @@ class _FakePlanningRepository implements PlanningRepository {
 }
 
 class _FakePlanningMutationStore implements PlanningMutationStore {
+  @override
+  Future<void> convertStaleCreateTombstones({
+    required String userId,
+    required String organizationId,
+  }) async {}
+
   // Stub for docs/specs/2026-08-06-in-flight-create-cancellation.md (D3):
   // none of these tests exercise the in-flight-create-cancellation
   // tombstone path, which is covered against the real
@@ -485,6 +491,14 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
     required String aggregateType,
     required String aggregateId,
     int? expectedRevision,
+  }) async => false;
+
+  @override
+  Future<bool> discardMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
   }) async => false;
 
   @override
@@ -534,13 +548,6 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
     required String organizationId,
     required PlanningMutationRecord accepted,
     required bool remoteResponse,
-  }) async {}
-
-  @override
-  Future<void> advanceAcceptedPlanContentVersion({
-    required String userId,
-    required String organizationId,
-    required PlanningMutationRecord accepted,
   }) async {}
 
   @override

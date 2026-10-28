@@ -706,6 +706,33 @@ void main() {
       },
     );
 
+    test(
+      'discardMutation goes through the store discard, then syncs',
+      () async {
+        final store = _FakePlanningMutationStore(pending: const []);
+        final repository = _FakePlanningMutationRemoteRepository();
+        final controller = PlanningMutationSyncController(
+          mutationStore: () => store,
+          remoteRepository: () => repository,
+          refreshPlanning: (_) async => true,
+          isRunContextActive: (_) => true,
+          reconcileAcceptedMutation: (_, _) async {},
+        );
+
+        await controller.discardMutation(
+          const ActivePlanningReadContext(
+            userId: 'user-1',
+            organizationId: 'org-1',
+          ),
+          aggregateType: PlanningMutationKind.planCreate.aggregateType,
+          aggregateId: 'plan-1',
+        );
+
+        expect(store.discardedAggregateIds, ['plan-1']);
+        expect(store.runCalls, contains('readAll'));
+      },
+    );
+
     test('discarding a conflict works offline and clears mutation', () async {
       final store = _FakePlanningMutationStore(
         pending: [
@@ -1454,6 +1481,140 @@ void main() {
       });
     }
 
+    group('stale create tombstones (MG6)', () {
+      const context = ActivePlanningReadContext(
+        userId: 'user-1',
+        organizationId: 'org-1',
+      );
+      const remoteMissing = PlanningMutationSyncException(
+        PlanningMutationSyncErrorCode.remoteMissing,
+      );
+
+      PlanningMutationRecord convertedDelete(
+        String id, {
+        PlanningMutationKind kind = PlanningMutationKind.sessionDelete,
+      }) => PlanningMutationRecord(
+        aggregateId: id,
+        organizationId: 'org-1',
+        planId: 'plan-1',
+        baseVersion: 1,
+        baseContentVersion: kind == PlanningMutationKind.planDelete ? 1 : null,
+        kind: kind,
+        syncStatus: PlanningMutationSyncStatus.pending,
+        orderKey: 1,
+        updatedAt: DateTime.utc(2026),
+        resolvesCancelledCreate: true,
+      );
+
+      PlanningMutationSyncController controllerFor(
+        _FakePlanningMutationStore store,
+        _FakePlanningMutationRemoteRepository repository, {
+        PlanningRunContextGuard? isRunContextActive,
+      }) => PlanningMutationSyncController(
+        mutationStore: () => store,
+        remoteRepository: () => repository,
+        refreshPlanning: (_) async => true,
+        isRunContextActive: isRunContextActive ?? (_) => true,
+        reconcileAcceptedMutation: (_, _) async {},
+      );
+
+      test('a run converts stale tombstones before it reads its '
+          'candidates', () async {
+        final store = _FakePlanningMutationStore(pending: []);
+
+        await controllerFor(
+          store,
+          _FakePlanningMutationRemoteRepository(),
+        ).syncPendingMutations(context);
+
+        expect(store.runCalls.take(2), ['convert', 'readAll']);
+        expect(store.convertCalls, 1);
+      });
+
+      test('a failed tombstone conversion does not stop the run', () async {
+        final store = _FakePlanningMutationStore(
+          pending: [
+            PlanningMutationRecord(
+              aggregateId: 'plan-1',
+              organizationId: 'org-1',
+              name: 'Plan',
+              kind: PlanningMutationKind.planEdit,
+              syncStatus: PlanningMutationSyncStatus.pending,
+              orderKey: 1,
+              updatedAt: DateTime.utc(2026),
+            ),
+          ],
+        )..throwOnConvert = true;
+        final repository = _FakePlanningMutationRemoteRepository();
+
+        await controllerFor(store, repository).syncPendingMutations(context);
+
+        expect(store.convertCalls, 1);
+        expect(repository.calls, 1);
+        expect(store.events, contains('save:accepted:plan-1'));
+      });
+
+      test('a not_found answered for a converted delete closes it after '
+          'the purge', () async {
+        final store = _FakePlanningMutationStore(
+          pending: [
+            convertedDelete('plan-1', kind: PlanningMutationKind.planDelete),
+          ],
+        );
+        final repository = _FakePlanningMutationRemoteRepository(
+          error: remoteMissing,
+        );
+
+        await controllerFor(store, repository).syncPendingMutations(context);
+
+        expect(store.events, ['save:sending:plan-1', 'effects:plan-1:false']);
+        expect(store.clearedAggregateIds, ['plan-1']);
+      });
+
+      test('a not_found answered after a context change resets the converted '
+          'delete instead of closing it', () async {
+        var active = true;
+        final store = _FakePlanningMutationStore(
+          pending: [convertedDelete('session-1')],
+        );
+        final completer = Completer<void>();
+        final repository = _FakePlanningMutationRemoteRepository(
+          error: remoteMissing,
+          slowCompleter: completer,
+        );
+
+        final run = controllerFor(
+          store,
+          repository,
+          isRunContextActive: (_) => active,
+        ).syncPendingMutations(context);
+        await Future<void>.delayed(Duration.zero);
+        active = false;
+        completer.complete();
+        await run;
+
+        expect(store.events, contains('save:pending:session-1'));
+        expect(store.clearedAggregateIds, isEmpty);
+      });
+
+      test('a not_found close whose purge fails resets the row to '
+          'pending', () async {
+        final store = _FakePlanningMutationStore(
+          pending: [
+            convertedDelete('plan-1', kind: PlanningMutationKind.planDelete),
+          ],
+        )..effectsError = Exception('effects');
+        final repository = _FakePlanningMutationRemoteRepository(
+          error: remoteMissing,
+        );
+
+        await controllerFor(store, repository).syncPendingMutations(context);
+
+        expect(store.clearedAggregateIds, isEmpty);
+        expect(store.events, contains('save:pending:plan-1'));
+      });
+    });
+
     group('a run stops when its context moves (MG2)', () {
       const context = ActivePlanningReadContext(
         userId: 'user-1',
@@ -1725,6 +1886,7 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   final List<PlanningMutationRecord> pending;
   final List<PlanningMutationRecord> all;
   final List<String> clearedAggregateIds = [];
+  final List<String> discardedAggregateIds = [];
   final List<String> retriedAggregateIds = [];
   PlanningMutationSyncStatus? lastSavedStatus;
   final List<String> events = [];
@@ -1744,6 +1906,28 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
   /// model a failing purge/rebase. `null` keeps the call succeeding.
   Exception? effectsError;
 
+  /// Number of [convertStaleCreateTombstones] calls (it logs no event).
+  int convertCalls = 0;
+
+  /// Makes [convertStaleCreateTombstones] throw `Exception('convert')`.
+  bool throwOnConvert = false;
+
+  /// `'convert'` / `'readAll'` for every [convertStaleCreateTombstones] /
+  /// [readAllMutations] call, in call order (separate from [events]).
+  final List<String> runCalls = [];
+
+  @override
+  Future<void> convertStaleCreateTombstones({
+    required String userId,
+    required String organizationId,
+  }) async {
+    runCalls.add('convert');
+    convertCalls += 1;
+    if (throwOnConvert) {
+      throw Exception('convert');
+    }
+  }
+
   @override
   Future<bool> clearMutation({
     required String userId,
@@ -1752,6 +1936,18 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
     required String aggregateId,
     int? expectedRevision,
   }) async {
+    clearedAggregateIds.add(aggregateId);
+    return true;
+  }
+
+  @override
+  Future<bool> discardMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+  }) async {
+    discardedAggregateIds.add(aggregateId);
     clearedAggregateIds.add(aggregateId);
     return true;
   }
@@ -1780,6 +1976,7 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
     required String userId,
     required String organizationId,
   }) async {
+    runCalls.add('readAll');
     // Combine pending and all, preferring pending versions (retried mutations)
     final seen = <String>{};
     final merged = <PlanningMutationRecord>[];
@@ -1884,15 +2081,6 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
     if (error != null) {
       throw error;
     }
-  }
-
-  @override
-  Future<void> advanceAcceptedPlanContentVersion({
-    required String userId,
-    required String organizationId,
-    required PlanningMutationRecord accepted,
-  }) async {
-    _log('advance:${accepted.aggregateId}');
   }
 
   @override

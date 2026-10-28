@@ -327,7 +327,8 @@ specific finding:
   context. When the active catalog context moves, the run stops before the next song, and a
   failure answered after the move is not written as that song's verdict (no `conflict`); real
   Drift stores, remote double gated on a `Completer`.
-- `apps/lyron_app/test/offline/adversarial/planning_content_version_ahead_test.dart` — skipped red tests for the content-version-ahead race (F1); un-skip them in S5b PR 2 (see `docs/deferred/2026-10-22-content-version-ahead-of-content.md`).
+- `apps/lyron_app/test/offline/adversarial/planning_content_version_ahead_test.dart` — the content-version-ahead race (F1): a pull stored between the run's context check and the reconcile makes the gated `applyAcceptedWrite` skip both the reconcile and the advance. Un-skipped by S5b PR 2.
+- `planning_stranded_tombstone_test.dart`, `song_stranded_tombstone_test.dart` and `planning_retry_rebase_test.dart` (under `apps/lyron_app/test/offline/adversarial/`) — S5b PR 2 (MG6–MG9): a `cancelling` create tombstone left by an aborted run is converted to a pending delete at the next run start and resolved, for plan, session and item (planning) and for a song, with committed and uncommitted creates, `*_not_found`, conflict and connectivity answers; a failed conversion does not stop the run; a Retry rebases only from a visible `conflict`; discarding a create removes its dependents unless it is in flight. Real Drift stores, remote double gated on a `Completer`.
 - `test/application/storage/local_storage_budget_test.dart`,
   `planning_storage_accountant_test.dart`, `local_storage_monitor_test.dart` — the
   content-derived footprint and pressure-classification contracts behind ADR-028: bytes

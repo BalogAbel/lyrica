@@ -357,6 +357,12 @@ class _FakeSongStore implements SongMutationStore {
   final Map<String, SongMutationRecord> _mutations;
 
   @override
+  Future<void> convertStaleSongCreateTombstones({
+    required String userId,
+    required String organizationId,
+  }) async {}
+
+  @override
   Future<SongMutationRecord?> readById({
     required String userId,
     required String organizationId,
@@ -566,6 +572,12 @@ class _SyncOwnedSongController extends SongMutationSyncController {
 /// Minimal in-memory PlanningMutationStore, matching the shape used in
 /// unified_discard_controller_test.dart.
 class _FakePlanningStore implements PlanningMutationStore {
+  @override
+  Future<void> convertStaleCreateTombstones({
+    required String userId,
+    required String organizationId,
+  }) async {}
+
   // Stub for docs/specs/2026-08-06-in-flight-create-cancellation.md (D3):
   // none of these tests exercise the in-flight-create-cancellation
   // tombstone path, which is covered against the real
@@ -634,6 +646,16 @@ class _FakePlanningStore implements PlanningMutationStore {
     required String aggregateType,
     required String aggregateId,
     int? expectedRevision,
+  }) async {
+    return _mutations.remove(_key(aggregateType, aggregateId)) != null;
+  }
+
+  @override
+  Future<bool> discardMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
   }) async {
     return _mutations.remove(_key(aggregateType, aggregateId)) != null;
   }
@@ -720,13 +742,6 @@ class _FakePlanningStore implements PlanningMutationStore {
     required String organizationId,
     required PlanningMutationRecord accepted,
     required bool remoteResponse,
-  }) async {}
-
-  @override
-  Future<void> advanceAcceptedPlanContentVersion({
-    required String userId,
-    required String organizationId,
-    required PlanningMutationRecord accepted,
   }) async {}
 
   @override

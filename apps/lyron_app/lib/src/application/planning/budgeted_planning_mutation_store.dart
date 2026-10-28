@@ -566,6 +566,25 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
     ),
   );
 
+  // Like clearMutation: a pure delete (plus deletes of dependents), so it
+  // goes through the write queue only -- never budget-admitted, no recovery
+  // boundary.
+  @override
+  Future<bool> discardMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+  }) => _queuedWrite(
+    PlanningMutationContext(userId: userId, organizationId: organizationId),
+    () => _delegate.discardMutation(
+      userId: userId,
+      organizationId: organizationId,
+      aggregateType: aggregateType,
+      aggregateId: aggregateId,
+    ),
+  );
+
   // Queued through the same storage-recovery boundary as
   // saveSyncAttemptResult, for the same reason: this can rewrite the row's
   // content (kind, syncStatus, baseVersion) when it resolves a cancellation
@@ -595,6 +614,22 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
     ),
   );
 
+  // MG6: queued with every other write for this context (it rewrites
+  // tombstone rows in place), never budget-admitted (it never grows the
+  // store), no recovery boundary: a failure leaves the rows `cancelling` and
+  // the next run converts them again.
+  @override
+  Future<void> convertStaleCreateTombstones({
+    required String userId,
+    required String organizationId,
+  }) => _queuedWrite(
+    PlanningMutationContext(userId: userId, organizationId: organizationId),
+    () => _delegate.convertStaleCreateTombstones(
+      userId: userId,
+      organizationId: organizationId,
+    ),
+  );
+
   // Spec D7/D8: queued with every other write for this context (it
   // rewrites delete rows and purges children), never budget-guarded (it
   // never grows the store), no recovery boundary (nothing to grow).
@@ -611,23 +646,6 @@ class BudgetedPlanningMutationStore implements PlanningMutationStore {
       organizationId: organizationId,
       accepted: accepted,
       remoteResponse: remoteResponse,
-    ),
-  );
-
-  // MG4: rule 1a, queued like the effects call (it writes the projection of
-  // this context), never budget-guarded (it never grows the store), no
-  // recovery boundary (nothing to grow).
-  @override
-  Future<void> advanceAcceptedPlanContentVersion({
-    required String userId,
-    required String organizationId,
-    required PlanningMutationRecord accepted,
-  }) => _queuedWrite(
-    PlanningMutationContext(userId: userId, organizationId: organizationId),
-    () => _delegate.advanceAcceptedPlanContentVersion(
-      userId: userId,
-      organizationId: organizationId,
-      accepted: accepted,
     ),
   );
 }

@@ -108,9 +108,18 @@ class PlanningLocalDatabase extends _$PlanningLocalDatabase {
           await m.addColumn(cachedPlanningMutations, column);
         }
       }
+      if (from < 9) {
+        // S5b PR 2 (docs/specs/2026-10-21-planning-mutation-gaps.md, MG6):
+        // every pre-9 mutation row is user-recorded, so none is a delete
+        // converted from a stale create tombstone -- the default false.
+        await m.addColumn(
+          cachedPlanningMutations,
+          cachedPlanningMutations.resolvesCancelledCreate,
+        );
+      }
     },
   );
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 }

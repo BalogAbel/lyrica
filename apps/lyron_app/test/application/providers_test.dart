@@ -1656,6 +1656,12 @@ class _MutablePlanningRepository implements PlanningRepository {
 }
 
 class _MutablePlanningMutationStore implements PlanningMutationStore {
+  @override
+  Future<void> convertStaleCreateTombstones({
+    required String userId,
+    required String organizationId,
+  }) async {}
+
   // Stub for docs/specs/2026-08-06-in-flight-create-cancellation.md (D3):
   // none of these tests exercise the in-flight-create-cancellation
   // tombstone path, which is covered against the real
@@ -1700,6 +1706,14 @@ class _MutablePlanningMutationStore implements PlanningMutationStore {
     required String aggregateType,
     required String aggregateId,
     int? expectedRevision,
+  }) async => false;
+
+  @override
+  Future<bool> discardMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
   }) async => false;
 
   @override
@@ -1774,13 +1788,6 @@ class _MutablePlanningMutationStore implements PlanningMutationStore {
     required String organizationId,
     required PlanningMutationRecord accepted,
     required bool remoteResponse,
-  }) async {}
-
-  @override
-  Future<void> advanceAcceptedPlanContentVersion({
-    required String userId,
-    required String organizationId,
-    required PlanningMutationRecord accepted,
   }) async {}
 
   @override
@@ -1940,17 +1947,17 @@ class _BlockingDeletePlanningLocalStore implements PlanningLocalStore {
   }
 
   @override
-  Future<void> advanceSyncedPlanContentVersion({
+  Future<void> applyAcceptedWrite({
     required String userId,
     required String organizationId,
-    required String planId,
-    required int acceptedContentVersion,
+    required PlanningAcceptedWriteGate gate,
+    required Future<void> Function() apply,
   }) {
-    return _delegate.advanceSyncedPlanContentVersion(
+    return _delegate.applyAcceptedWrite(
       userId: userId,
       organizationId: organizationId,
-      planId: planId,
-      acceptedContentVersion: acceptedContentVersion,
+      gate: gate,
+      apply: apply,
     );
   }
 

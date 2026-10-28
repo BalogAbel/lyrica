@@ -1080,6 +1080,12 @@ void main() {
 /// prohibits in prose. Used only to pin the N4 reentrancy assert; every
 /// other member is unused and throws if called.
 class _ReentrantPlanningMutationStore implements PlanningMutationStore {
+  @override
+  Future<void> convertStaleCreateTombstones({
+    required String userId,
+    required String organizationId,
+  }) async {}
+
   late BudgetedPlanningMutationStore reentrantTarget;
   late PlanningMutationContext reentrantContext;
   late PlanningPlanCreateMutationDraft reentrantDraft;
@@ -1117,13 +1123,6 @@ class _ReentrantPlanningMutationStore implements PlanningMutationStore {
     required String organizationId,
     required PlanningMutationRecord accepted,
     required bool remoteResponse,
-  }) => throw UnimplementedError();
-
-  @override
-  Future<void> advanceAcceptedPlanContentVersion({
-    required String userId,
-    required String organizationId,
-    required PlanningMutationRecord accepted,
   }) => throw UnimplementedError();
 
   @override
@@ -1253,6 +1252,14 @@ class _ReentrantPlanningMutationStore implements PlanningMutationStore {
     required String aggregateId,
     int? expectedRevision,
   }) => throw UnimplementedError();
+
+  @override
+  Future<bool> discardMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+  }) => throw UnimplementedError();
 }
 
 /// Minimal fake delegate for concurrency tests that need direct control over
@@ -1260,6 +1267,12 @@ class _ReentrantPlanningMutationStore implements PlanningMutationStore {
 /// Only `recordPlanCreate` is hooked; every other member is unused by these
 /// tests and throws if called.
 class _HookedPlanningMutationStore implements PlanningMutationStore {
+  @override
+  Future<void> convertStaleCreateTombstones({
+    required String userId,
+    required String organizationId,
+  }) async {}
+
   // Stub for docs/specs/2026-08-06-in-flight-create-cancellation.md (D3):
   // none of these tests exercise the in-flight-create-cancellation
   // tombstone path, which is covered against the real
@@ -1301,13 +1314,6 @@ class _HookedPlanningMutationStore implements PlanningMutationStore {
   }) => throw UnimplementedError();
 
   @override
-  Future<void> advanceAcceptedPlanContentVersion({
-    required String userId,
-    required String organizationId,
-    required PlanningMutationRecord accepted,
-  }) => throw UnimplementedError();
-
-  @override
   Future<void> recordPlanEdit({
     required PlanningMutationContext context,
     required PlanningPlanEditMutationDraft draft,
@@ -1433,6 +1439,14 @@ class _HookedPlanningMutationStore implements PlanningMutationStore {
     required String aggregateType,
     required String aggregateId,
     int? expectedRevision,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<bool> discardMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
   }) => throw UnimplementedError();
 }
 
@@ -1676,6 +1690,12 @@ class _ScriptedInsertTransactionExecutor implements TransactionExecutor {
 /// `DriftPlanningMutationStore.recordSessionDelete`'s own internal
 /// `existing?.kind == sessionCreate` re-check inside its transaction.
 class _CollapseRaceMutationStore implements PlanningMutationStore {
+  @override
+  Future<void> convertStaleCreateTombstones({
+    required String userId,
+    required String organizationId,
+  }) async {}
+
   // Stub for docs/specs/2026-08-06-in-flight-create-cancellation.md (D3):
   // none of these tests exercise the in-flight-create-cancellation
   // tombstone path, which is covered against the real
@@ -1766,6 +1786,20 @@ class _CollapseRaceMutationStore implements PlanningMutationStore {
   }
 
   @override
+  Future<bool> discardMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+  }) async {
+    if (_isSessionOne(aggregateType, aggregateId)) {
+      _sessionKind = null;
+      return true;
+    }
+    return false;
+  }
+
+  @override
   Future<void> recordPlanCreate({
     required PlanningMutationContext context,
     required PlanningPlanCreateMutationDraft draft,
@@ -1783,13 +1817,6 @@ class _CollapseRaceMutationStore implements PlanningMutationStore {
     required String organizationId,
     required PlanningMutationRecord accepted,
     required bool remoteResponse,
-  }) => throw UnimplementedError();
-
-  @override
-  Future<void> advanceAcceptedPlanContentVersion({
-    required String userId,
-    required String organizationId,
-    required PlanningMutationRecord accepted,
   }) => throw UnimplementedError();
 
   @override

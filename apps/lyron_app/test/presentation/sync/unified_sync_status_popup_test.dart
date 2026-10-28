@@ -69,6 +69,12 @@ class _SpyDiscardController extends UnifiedDiscardController {
 
 class _FakeSongStore implements SongMutationStore {
   @override
+  Future<void> convertStaleSongCreateTombstones({
+    required String userId,
+    required String organizationId,
+  }) async {}
+
+  @override
   Future<String> allocateUniqueSlug({
     required String userId,
     required String organizationId,

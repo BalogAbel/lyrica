@@ -244,6 +244,7 @@ class PlanningMutationRecord {
     this.errorCode,
     this.errorMessage,
     this.localRevision = 0,
+    this.resolvesCancelledCreate = false,
   });
 
   final String aggregateId;
@@ -297,6 +298,11 @@ class PlanningMutationRecord {
   /// computes the real value on write and callers never need to guess it).
   final int localRevision;
 
+  /// Persisted tombstone-origin marker (MG6): true on a delete converted
+  /// from a stale create tombstone. Retry keeps it; a user-recorded write to
+  /// the aggregate replaces the record and clears it.
+  final bool resolvesCancelledCreate;
+
   PlanningMutationRecord copyWith({
     String? aggregateId,
     String? organizationId,
@@ -347,6 +353,7 @@ class PlanningMutationRecord {
     int? orderKey,
     DateTime? updatedAt,
     int? localRevision,
+    bool? resolvesCancelledCreate,
   }) {
     return PlanningMutationRecord(
       aggregateId: aggregateId ?? this.aggregateId,
@@ -395,6 +402,8 @@ class PlanningMutationRecord {
       orderKey: orderKey ?? this.orderKey,
       updatedAt: updatedAt ?? this.updatedAt,
       localRevision: localRevision ?? this.localRevision,
+      resolvesCancelledCreate:
+          resolvesCancelledCreate ?? this.resolvesCancelledCreate,
     );
   }
 }
@@ -748,6 +757,23 @@ abstract interface class PlanningMutationStore {
     int? expectedRevision,
   });
 
+  /// Explicit user discard of a mutation row (MG9, ADR-028 D10): deletes the
+  /// row and, when it is a not-in-flight create (`planCreate`,
+  /// `sessionCreate`, `sessionItemCreateSong`), also the rows queued against
+  /// the object it would have created, exactly as the `record*Delete`
+  /// collapse branches do. A create that is `sending`, `accepted` or
+  /// `cancelling` keeps its dependents. Unlike [clearMutation] (the sync's
+  /// revision-gated clear) this is unconditional.
+  ///
+  /// Returns `true` if the row existed and was discarded, `false` if it did
+  /// not exist.
+  Future<bool> discardMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
+  });
+
   /// D3 (`docs/specs/2026-08-06-in-flight-create-cancellation.md`): resolves
   /// the outcome of an in-flight `planCreate`/`sessionCreate`/
   /// `sessionItemCreateSong` (`planCreate` per
@@ -792,6 +818,30 @@ abstract interface class PlanningMutationStore {
     int? acceptedBaseVersion,
   });
 
+  /// MG6 (`docs/specs/2026-10-21-planning-mutation-gaps.md`): turns every
+  /// `cancelling` create tombstone of this context into a pending delete. A
+  /// tombstone is only ever resolved by the run that sent its create; one that
+  /// outlived that run (a crash between the create's response and
+  /// [resolveCancelledCreate]) would otherwise stay invisible forever.
+  ///
+  /// Meant to be called at the start of a run, when no remote call of this
+  /// context is in flight, so every `cancelling` row is stale. Per row, in
+  /// `orderKey` order and in its own transaction that re-reads the row and
+  /// converts it only if it is still `cancelling`: `planCreate` becomes a
+  /// `planDelete` based on `(1, 1)`, `sessionCreate` a `sessionDelete` based
+  /// on 1, `sessionItemCreateSong` a `sessionItemDelete` based on the create's
+  /// base + 1 (a missing base stays missing, which the backend rejects as a
+  /// conflict). The converted row carries
+  /// `PlanningMutationRecord.resolvesCancelledCreate`, so a `*_not_found`
+  /// answer to it closes the row (the create never committed) instead of
+  /// staying a visible failure.
+  ///
+  /// Reports a footprint change when it converted anything.
+  Future<void> convertStaleCreateTombstones({
+    required String userId,
+    required String organizationId,
+  });
+
   /// Spec D7 + D8: the store-side consequences of a backend-accepted write.
   ///
   /// When [remoteResponse] is true, [accepted] was mapped from an RPC
@@ -801,7 +851,8 @@ abstract interface class PlanningMutationStore {
   /// still the pre-write base), only the D8 purge runs.
   ///
   /// It never touches the projection: D7 rule 1a (the projection's plan
-  /// content version) lives in [advanceAcceptedPlanContentVersion] (MG4).
+  /// content version) runs inside the reconcile's own transaction
+  /// (`PlanningLocalStore.applyAcceptedWrite`, spec F1).
   ///
   /// D8: when [accepted] is a `planDelete`/`sessionDelete`, every remaining
   /// mutation row of the deleted subtree is removed, in any status.
@@ -812,30 +863,6 @@ abstract interface class PlanningMutationStore {
     required String organizationId,
     required PlanningMutationRecord accepted,
     required bool remoteResponse,
-  });
-
-  /// Spec D7 rule 1a, placed by MG4: advances the projection's plan content
-  /// version across the content-bumping write [accepted] (a record mapped
-  /// from an RPC response in the current run), so the plan's next delete is
-  /// based on a version that already contains it. The caller (the sync
-  /// controller's refresh-failed branch) calls it only for a record whose run
-  /// context is still active and right after that record's reconcile
-  /// completed without throwing; a context switch or a failed or skipped
-  /// reconcile therefore never leaves the projection at the write's content
-  /// version without the write itself (I7). Exception: the F1 race, a pull for
-  /// the same context stored between C5 and the reconcile, then the older
-  /// write reconciled over it (pre-existing; scheduled for S5b PR 2,
-  /// docs/deferred/2026-10-22-content-version-ahead-of-content.md).
-  ///
-  /// Does nothing when the kind does not bump plan content or the response
-  /// carried no content version (the PS15 own-write gate nulls it for a key
-  /// edit that is not provably the caller's own).
-  ///
-  /// Idempotent. Never grows the store.
-  Future<void> advanceAcceptedPlanContentVersion({
-    required String userId,
-    required String organizationId,
-    required PlanningMutationRecord accepted,
   });
 }
 

@@ -105,6 +105,25 @@ class PlanningMutationSyncController {
     ActivePlanningReadContext context, {
     PlanningMutationFailureObserver? onMutationFailure,
   }) async {
+    // MG6 (await point A0): the first statement of a run. Runs are
+    // single-flight per context, so no remote call of this context is in
+    // flight here and every `cancelling` row is stale -- a create tombstone
+    // no run resolved. Each becomes a pending delete before the candidates
+    // are read, so the same run sends it.
+    //
+    // Best-effort: the conversion has no recovery boundary, and an exception
+    // escaping `_run` reaches `PlanningWriteService` through `syncScheduler`
+    // (try/finally, no catch), so an unrelated new write would report
+    // failure. A failed conversion leaves the rows `cancelling`; the next run
+    // retries it. An Error still propagates.
+    try {
+      await _mutationStore().convertStaleCreateTombstones(
+        userId: context.userId,
+        organizationId: context.organizationId,
+      );
+    } on Exception {
+      // Intentionally swallowed -- see the comment above.
+    }
     final allMutations = await _mutationStore().readAllMutations(
       userId: context.userId,
       organizationId: context.organizationId,
@@ -352,6 +371,40 @@ class PlanningMutationSyncController {
         final contextMoved = !_isRunContextActive(context);
         if (!resolvedTombstone && contextMoved) {
           await _resetToPending(context, mutation, sendingRevision);
+        } else if (!resolvedTombstone &&
+            error.code == PlanningMutationSyncErrorCode.remoteMissing &&
+            mutation.resolvesCancelledCreate) {
+          // MG6: this delete was converted from a stale create tombstone and
+          // never rewritten by the user since, so `*_not_found` means the
+          // create never committed: there is nothing to delete, which is the
+          // outcome the user asked for. Close the row like a tombstone whose
+          // create failed (D3) instead of leaving a failure the user never
+          // caused. A delete the user recorded themselves does not carry the
+          // marker and stays a visible failure (D9).
+          //
+          // The purge is the delete's D8 effect for a plan, session or item (no
+          // rebases without a response); when it fails the row goes back to
+          // `pending` so the next run closes it, never clearing a row whose
+          // children still stand. The clear and the reset are gated on
+          // `sendingRevision`: a fold that landed in the meantime wins. The
+          // purge is not (it only removes orphans of an object the server
+          // said does not exist).
+          final purged = await _applyAcceptedEffects(
+            context,
+            mutation,
+            remoteResponse: false,
+          );
+          if (purged) {
+            await _mutationStore().clearMutation(
+              userId: context.userId,
+              organizationId: context.organizationId,
+              aggregateType: mutation.kind.aggregateType,
+              aggregateId: mutation.aggregateId,
+              expectedRevision: sendingRevision,
+            );
+          } else {
+            await _resetToPending(context, mutation, sendingRevision);
+          }
         } else if (!resolvedTombstone) {
           // Finding B (PR #64 review, 2026-08-06 remediation round): this
           // write USED to be unconditional -- deliberately ungated,
@@ -485,34 +538,25 @@ class PlanningMutationSyncController {
           in acceptedRecords) {
         // The rebases and purges of the run's own rows (D7 rules 1b-3, D8),
         // applied before each record's reconcile, in `acceptedRecords` order.
-        // Rule 1a is not among them (MG4): it follows the reconcile below.
+        // Rule 1a is not among them: it runs inside the reconcile below (F1).
         final effectsApplied = await _applyAcceptedEffects(
           context,
           synced,
           remoteResponse: remoteResponse,
         );
         try {
-          // MG4 C5: checked once, before both calls. A context that moved
-          // means the row is cleared without being reconciled and the
-          // projection is not advanced either.
+          // MG4 C5: a context that moved means the row is cleared without
+          // being reconciled. Spec F1: the reconcile also carries D7 rule 1a
+          // (the plan content version advance) in its own projection
+          // transaction, applied only when the projection does not already
+          // hold the write. A context switch, a failed or a skipped reconcile
+          // therefore never leaves the projection at the write's content
+          // version without the write (I7), and a pull stored for this
+          // context before the reconcile is never overwritten. This is what
+          // carries a `planCreate` and its accepted children to their final
+          // content version when the refresh failed.
           if (_isRunContextActive(context)) {
             await _reconcileAcceptedMutation(context, synced);
-            // MG4 rule 1a: only right after this record's reconcile
-            // completed without throwing, so a context switch or a failed or
-            // skipped reconcile never leaves the projection at the write's
-            // content version without the write (I7). Not covered: the F1
-            // race (a pull for this context stored between C5 and the
-            // reconcile, then the older write reconciled over it;
-            // pre-existing, scheduled for S5b PR 2,
-            // docs/deferred/2026-10-22-content-version-ahead-of-content.md).
-            // This is what carries a `planCreate` and its accepted children to
-            // their final content version when the refresh failed: the
-            // reconciler needs no rule-1a code of its own.
-            if (remoteResponse &&
-                synced.kind.bumpsPlanContent &&
-                synced.acceptedPlanContentVersion != null) {
-              await _advanceAcceptedContentVersion(context, synced);
-            }
           }
         } on ReconcileFieldError catch (error) {
           // LF-8 follow-up: a corrupt backend-accepted mutation must not
@@ -652,24 +696,6 @@ class PlanningMutationSyncController {
     } on Exception {
       // Intentionally swallowed -- see the doc comment.
       return false;
-    }
-  }
-
-  /// MG4 rule 1a. Best-effort like [_applyAcceptedEffects]: a failed advance
-  /// leaves the projection behind its content (at most one false conflict on
-  /// a later delete) and must not skip the clear; an Error still propagates.
-  Future<void> _advanceAcceptedContentVersion(
-    ActivePlanningReadContext context,
-    PlanningMutationRecord accepted,
-  ) async {
-    try {
-      await _mutationStore().advanceAcceptedPlanContentVersion(
-        userId: context.userId,
-        organizationId: context.organizationId,
-        accepted: accepted,
-      );
-    } on Exception {
-      // Intentionally swallowed -- see the doc comment.
     }
   }
 
@@ -818,7 +844,7 @@ class PlanningMutationSyncController {
     required String aggregateType,
     required String aggregateId,
   }) async {
-    await _mutationStore().clearMutation(
+    await _mutationStore().discardMutation(
       userId: context.userId,
       organizationId: context.organizationId,
       aggregateType: aggregateType,

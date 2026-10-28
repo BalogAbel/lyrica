@@ -164,6 +164,12 @@ void main() {
 /// `planning_mutation_sync_controller_test.dart`'s `_FakePlanningMutationStore`
 /// but is local to this file to keep this regression test self-contained.
 class _FakePlanningMutationStore implements PlanningMutationStore {
+  @override
+  Future<void> convertStaleCreateTombstones({
+    required String userId,
+    required String organizationId,
+  }) async {}
+
   // Stub for docs/specs/2026-08-06-in-flight-create-cancellation.md (D3):
   // none of these tests exercise the in-flight-create-cancellation
   // tombstone path, which is covered against the real
@@ -191,6 +197,17 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
     required String aggregateType,
     required String aggregateId,
     int? expectedRevision,
+  }) async {
+    clearedAggregateIds.add(aggregateId);
+    return true;
+  }
+
+  @override
+  Future<bool> discardMutation({
+    required String userId,
+    required String organizationId,
+    required String aggregateType,
+    required String aggregateId,
   }) async {
     clearedAggregateIds.add(aggregateId);
     return true;
@@ -274,12 +291,6 @@ class _FakePlanningMutationStore implements PlanningMutationStore {
     required bool remoteResponse,
   }) async {}
 
-  @override
-  Future<void> advanceAcceptedPlanContentVersion({
-    required String userId,
-    required String organizationId,
-    required PlanningMutationRecord accepted,
-  }) async {}
   @override
   Future<void> recordPlanEdit({
     required PlanningMutationContext context,

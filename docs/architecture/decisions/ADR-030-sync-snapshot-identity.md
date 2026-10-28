@@ -1139,7 +1139,7 @@ The in-flight create cancellation follow-up above resolves a `cancelling`
 tombstone only in the run that sent its create. If that run never reaches
 `resolveCancelledCreate` / `resolveCancelledSongCreate` (an app kill, an
 exception from the accept-marker write, an `Error`), nothing revisits the
-row (`docs/deferred/2026-09-30-stranded-create-tombstones.md`).
+row (the deferred entry `2026-09-30-stranded-create-tombstones.md`, resolved and removed by S5b PR 2).
 
 - **Every run starts by converting its context's `cancelling` rows into
   pending deletes.** Under the per-context single-flight no call of that
@@ -1159,8 +1159,20 @@ row (`docs/deferred/2026-09-30-stranded-create-tombstones.md`).
   the create never committed. A user-recorded delete keeps the visible
   `failedRemoteDelete`. A conflict stays visible and Keep mine resolves it; a
   connectivity failure keeps the delete pending.
+  The close purges the child rows first, then clears the row gated on the
+  `sending` revision (ADR-030 D2/D3); if the purge failed, the row is reset
+  to `pending` rather than cleared, so the delete is never lost without a
+  visible state.
 - **Song tombstones become `pendingDelete` with version 1** (`create_song`
   inserts version 1). No marker is needed: a `remoteDeleted` answer to a
   `pendingDelete` already deletes the local row.
 - The conversion rewrites one row as one row: it joins the per-context write
   queue and is never budget-admitted (ADR-028 D3/D9).
+- **The conversion is best-effort.** `PlanningMutationSyncController._run`
+  and `SongMutationSyncController._runSync` wrap the conversion in
+  `try { … } on Exception { }` (an `Error` still propagates). A failed
+  conversion leaves the rows `cancelling` and the next run retries it. It
+  never stops the run: the conversion has no recovery boundary, and an
+  exception escaping `_run` would reach `PlanningWriteService` through the
+  scheduler (try/finally, no catch), so an unrelated new write would report
+  failure; on the song side the outbox would stop.

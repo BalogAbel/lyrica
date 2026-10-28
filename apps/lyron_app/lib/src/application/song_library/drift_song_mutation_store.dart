@@ -178,6 +178,29 @@ class DriftSongMutationStore implements SongMutationStore {
   }
 
   @override
+  Future<void> convertStaleSongCreateTombstones({
+    required String userId,
+    required String organizationId,
+  }) async {
+    final tombstones = await _songCatalogStore.readSongMutations(
+      userId: userId,
+      organizationId: organizationId,
+      syncStatuses: const [SongSyncStatus.cancelling],
+    );
+    for (final tombstone in tombstones) {
+      // `create_song` inserts version 1; the store's D3 branch writes the
+      // `pendingDelete` with that base through its own recovery boundary.
+      await _songCatalogStore.resolveCancelledSongCreate(
+        userId: userId,
+        organizationId: organizationId,
+        songId: tombstone.songId,
+        created: true,
+        acceptedVersion: 1,
+      );
+    }
+  }
+
+  @override
   Future<int?> markCreateSending({
     required String userId,
     required String organizationId,

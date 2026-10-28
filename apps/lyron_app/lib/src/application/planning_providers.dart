@@ -229,6 +229,10 @@ final planningMutationRemoteRepositoryProvider =
       );
     });
 
+// Must stay keepAlive and must not `ref.watch` any mutable state: the
+// controller's per-instance single-flight (`_inFlight`) is what makes every
+// `cancelling` row stale at the start of a run (MG6). A recreated instance
+// could overlap a running one and convert a live tombstone.
 final planningMutationSyncControllerProvider =
     Provider<PlanningMutationSyncController>((ref) {
       return PlanningMutationSyncController(

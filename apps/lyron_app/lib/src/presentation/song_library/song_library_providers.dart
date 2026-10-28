@@ -83,6 +83,10 @@ final songMutationRemoteRepositoryProvider =
       );
     });
 
+// Must stay keepAlive and must not `ref.watch` any mutable state: the
+// controller's per-instance single-flight (`_operations`) is what makes every
+// `cancelling` row stale at the start of a run (MG7). A recreated instance
+// could overlap a running one and convert a live tombstone.
 final songMutationSyncControllerProvider = Provider<SongMutationSyncController>(
   (ref) {
     return SongMutationSyncController(

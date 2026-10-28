@@ -336,6 +336,12 @@ void main() {
 
 class _FakeSongRepository
     implements SongCatalogReadRepository, SongMutationStore {
+  @override
+  Future<void> convertStaleSongCreateTombstones({
+    required String userId,
+    required String organizationId,
+  }) async {}
+
   // Stubs for docs/specs/2026-08-06-in-flight-create-cancellation.md
   // (D1/D3): none of these tests exercise the in-flight-create-cancellation
   // sending marker or tombstone path (SongLibraryService.deleteSong's own
