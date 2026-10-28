@@ -426,7 +426,8 @@ when the projection does not already hold the write.** (Design gate approved
   |---|---|---|
   | `planCreate`, `planEdit` | — | plan `aggregateId` (`baseVersion ?? 1`) |
   | `planDelete` | — | — (a delete is monotone) |
-  | `sessionCreate`, `sessionRename` | yes | session `aggregateId` (`baseVersion ?? 1`) |
+  | `sessionCreate` | yes | session `aggregateId` (**1**, never `baseVersion`: `create_session` always inserts version 1 and takes no base, and MG8 can rebase a retried create onto the plan version) |
+  | `sessionRename` | yes | session `aggregateId` (`baseVersion ?? 1`) |
   | `sessionDelete` | yes | — |
   | `sessionReorder` | yes | plan `planId ?? aggregateId` (`baseVersion ?? 1`) |
   | `sessionItemCreateSong`, `sessionItemDelete`, `sessionItemReorder` | yes | session `sessionId` (`baseVersion ?? 1`) |
@@ -434,7 +435,9 @@ when the projection does not already hold the write.** (Design gate approved
 
   The written version is what the reconcile already writes: the returned
   version for a backend response, the old base for a crash-resumed
-  `accepted` marker. "Greater", not "equal": an equal version is the same
+  `accepted` marker, except a `sessionCreate`, which is written (and gated)
+  at version 1 whatever its base: the base of a retried create is a plan
+  version, not the session's (final review I-1). "Greater", not "equal": an equal version is the same
   state, and rewriting it changes nothing.
 - `R` exists only on a record mapped from a backend response
   (`acceptedPlanContentVersion` is in memory only, never persisted), and the

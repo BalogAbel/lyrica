@@ -199,6 +199,115 @@ void main() {
       isEmpty,
     );
   });
+
+  test('a retried session create resumed after a crash does not overwrite a '
+      'foreign rename (F1)', () async {
+    await store.recordSessionCreate(
+      context: context,
+      draft: const PlanningSessionCreateMutationDraft(
+        sessionId: 'session-new',
+        planId: 'plan-1',
+        slug: 'mine',
+        name: 'Mine',
+        position: 2,
+      ),
+    );
+    Future<PlanningMutationRecord> row() async => (await store.readMutation(
+      userId: 'user-1',
+      organizationId: 'org-1',
+      aggregateType: 'session',
+      aggregateId: 'session-new',
+    ))!;
+    // The first attempt failed, the user pressed Retry: MG8 rebases a create
+    // from any status, so the row's base is now the PLAN version (2), which
+    // is not a session version.
+    await store.saveSyncAttemptResult(
+      userId: 'user-1',
+      organizationId: 'org-1',
+      aggregateType: 'session',
+      aggregateId: 'session-new',
+      syncStatus: PlanningMutationSyncStatus.failedDependency,
+      expectedRevision: (await row()).localRevision,
+    );
+    await store.retryMutation(
+      userId: 'user-1',
+      organizationId: 'org-1',
+      aggregateType: 'session',
+      aggregateId: 'session-new',
+    );
+    expect((await row()).baseVersion, 2);
+    // The retried create was accepted (session v1, content version 4); the
+    // run died before its reconcile and clear.
+    await store.saveSyncAttemptResult(
+      userId: 'user-1',
+      organizationId: 'org-1',
+      aggregateType: 'session',
+      aggregateId: 'session-new',
+      syncStatus: PlanningMutationSyncStatus.accepted,
+      expectedRevision: (await row()).localRevision,
+    );
+    // A pull stored after the crash holds a foreign rename of the new
+    // session: v2 'Foreign', plan content version 5.
+    await localStore.replaceActiveProjection(
+      userId: 'user-1',
+      organizationId: 'org-1',
+      plans: [
+        CachedPlanRecord(
+          id: 'plan-1',
+          slug: 'plan-1',
+          name: 'Plan',
+          description: null,
+          scheduledFor: null,
+          updatedAt: DateTime.utc(2026),
+          version: 2,
+          contentVersion: 5,
+        ),
+      ],
+      sessions: const [
+        CachedSessionRecord(
+          id: 'session-1',
+          planId: 'plan-1',
+          position: 1,
+          name: 'S',
+          version: 2,
+        ),
+        CachedSessionRecord(
+          id: 'session-new',
+          planId: 'plan-1',
+          slug: 'mine',
+          position: 2,
+          name: 'Foreign',
+          version: 2,
+        ),
+      ],
+      items: const [],
+      refreshedAt: DateTime.utc(2026, 1, 2),
+    );
+
+    final controller = PlanningMutationSyncController(
+      mutationStore: () => store,
+      remoteRepository: () =>
+          ScriptedPlanningRemote((_) => fail('a resumed marker is not resent')),
+      refreshPlanning: (_) async => false,
+      isRunContextActive: (_) => true,
+      reconcileAcceptedMutation: reconciler.reconcile,
+    );
+    await controller.syncPendingMutations(readContext);
+
+    final detail = (await localStore.readPlanDetail(
+      userId: 'user-1',
+      organizationId: 'org-1',
+      planId: 'plan-1',
+    ))!;
+    final session = detail.sessions.singleWhere((s) => s.id == 'session-new');
+    expect(detail.plan.contentVersion, 5);
+    expect(session.name, 'Foreign');
+    expect(session.version, 2);
+    expect(
+      await store.readAllMutations(userId: 'user-1', organizationId: 'org-1'),
+      isEmpty,
+    );
+  });
 }
 
 PlanningSyncPayload _payload({

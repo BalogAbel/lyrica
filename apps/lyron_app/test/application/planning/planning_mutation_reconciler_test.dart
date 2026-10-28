@@ -851,6 +851,69 @@ void main() {
       expect(d.plan.contentVersion, 5);
     });
 
+    test('a session create is reconciled and gated at version 1, whatever '
+        'its (retry-rebased) base version', () async {
+      // MG8 keeps rebasing a retried create, so its base can be a PLAN
+      // version (5); create_session always inserts the session at version 1.
+      final create = PlanningMutationRecord(
+        aggregateId: 'session-new',
+        organizationId: organizationId,
+        planId: 'plan-1',
+        kind: PlanningMutationKind.sessionCreate,
+        syncStatus: PlanningMutationSyncStatus.accepted,
+        orderKey: 1,
+        updatedAt: DateTime.utc(2026, 4, 11, 11),
+        name: 'Mine',
+        position: 2,
+        baseVersion: 5,
+      );
+
+      await reconciler.reconcile(testContext, create);
+
+      var d = await detail();
+      final written = d.sessions.singleWhere((s) => s.id == 'session-new');
+      expect(written.name, 'Mine');
+      expect(written.version, 1);
+
+      // A pull stored a foreign rename of the new session (v2): the resumed
+      // marker (no returned content version) must not overwrite it.
+      await localStore.replaceActiveProjection(
+        userId: userId,
+        organizationId: organizationId,
+        plans: [
+          CachedPlanRecord(
+            id: 'plan-1',
+            slug: 'plan-1',
+            name: 'Plan',
+            description: null,
+            scheduledFor: null,
+            updatedAt: DateTime.utc(2026, 4, 11, 10),
+            version: 2,
+            contentVersion: 5,
+          ),
+        ],
+        sessions: const [
+          CachedSessionRecord(
+            id: 'session-new',
+            planId: 'plan-1',
+            position: 2,
+            name: 'Foreign',
+            version: 2,
+          ),
+        ],
+        items: const [],
+        refreshedAt: DateTime.utc(2026, 4, 11, 12),
+      );
+
+      await reconciler.reconcile(testContext, create);
+
+      d = await detail();
+      final kept = d.sessions.singleWhere((s) => s.id == 'session-new');
+      expect(kept.name, 'Foreign');
+      expect(kept.version, 2);
+      expect(d.plan.contentVersion, 5);
+    });
+
     test('a key edit without a returned content version is skipped when the '
         'item is newer', () async {
       final keyEdit = PlanningMutationRecord(

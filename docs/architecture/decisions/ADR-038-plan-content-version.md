@@ -320,7 +320,10 @@ by S5b PR 2 (`fix/planning-unresolved-rows`).
    the next run resumes them. User decisions (2026-10-27): (1) the
    versioned-row check extends the deferred entry's sketch (which gated only
    `planEdit` and `planCreate`) to every kind, so a pull stored after a
-   crash cannot be overwritten by a resumed marker's older base; (2) below
+   crash cannot be overwritten by a resumed marker's older base (a
+   `sessionCreate` is written and gated at version 1, because
+   `create_session` always inserts version 1 and a retried create's base can
+   be the plan version; final review I-1); (2) below
    `R - 1` the write is applied without the advance, so an offline sync
    against a stale projection does not hide the user's own write. Residual,
    pre-existing: a plan deleted by another member after an own `planCreate`

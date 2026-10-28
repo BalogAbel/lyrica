@@ -155,8 +155,16 @@ class PlanningMutationReconciler {
           // name is required on both create and rename drafts: a null
           // here means a corrupt mutation, not an absent optional value.
           name: _required(record.name, 'name', record.kind),
-          // version default for a freshly reconciled aggregate.
-          version: record.baseVersion ?? 1,
+          // A create is written at version 1: create_session always inserts
+          // the session at version 1 and takes no base. A create's
+          // baseVersion is never the session's version (MG8 can rebase a
+          // retried create onto the PLAN version), so it must not become
+          // the written version nor the gate's written version (F1, final
+          // review I-1). A rename keeps its base (version default for a
+          // freshly reconciled aggregate).
+          version: record.kind == PlanningMutationKind.sessionCreate
+              ? 1
+              : record.baseVersion ?? 1,
         );
         return (
           gate: PlanningAcceptedWriteGate(

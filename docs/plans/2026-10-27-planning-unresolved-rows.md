@@ -961,3 +961,27 @@ authoritative where they differ from the plan text.
   `planning_mutation_sync_controller.dart` is corrected (wording only): the
   clear and the reset are gated on `sendingRevision`, the D8 purge is not,
   and the purge is the effect of a plan, session or item delete.
+
+### Final review
+
+- I-1 (Important): the F1 versioned-row gate failed open for a retried,
+  crash-resumed `sessionCreate`. `retryMutation` rebases a create from any
+  status (MG8), and `_currentBaseVersionFor(sessionCreate)` returns the PLAN
+  version, so the row's `baseVersion` became a plan version. The reconciler
+  wrote that value as the session's version and used it as the gate's written
+  version, so a resumed accepted marker, after a pull stored a foreign rename
+  of the session (v2), passed the row check and overwrote it while the
+  projection kept the pull's content version (I7).
+- Ruling (controller): the reconciler writes and gates a `sessionCreate` at
+  version 1 (`create_session` always inserts version 1 and takes no base),
+  whatever the record's `baseVersion`; `sessionRename` keeps
+  `baseVersion ?? 1`. MG8 is unchanged: `retryMutation` and
+  `_currentBaseVersionFor` still rebase creates from any status.
+- Tests: the run-level test `a retried session create resumed after a crash
+  does not overwrite a foreign rename (F1)` in
+  `planning_content_version_ahead_test.dart` (real stores) and the `F1 gate`
+  reconciler test `a session create is reconciled and gated at version 1,
+  whatever its (retry-rebased) base version`. Both fail without the
+  reconciler change.
+- Docs: the spec's F1 per-kind table and written-version sentence, ADR-038
+  amendment item 3 and `architecture.md` now state the version-1 rule.
