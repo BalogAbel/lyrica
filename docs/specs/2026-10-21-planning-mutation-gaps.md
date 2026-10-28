@@ -2,7 +2,7 @@
 
 > Status: Accepted (2026-10-22, design gate approved). PR 1 (MG1–MG5 and
 > their MG13 rows) merged as #97 (`9c16d79`, 2026-10-27). PR 2 (MG6–MG9 and
-> the F1 fix) is implemented on `fix/planning-unresolved-rows`, PR open
+> the F1 fix) is implemented on `fix/planning-unresolved-rows`, PR #99 open
 > (plan: `docs/plans/2026-10-27-planning-unresolved-rows.md`); PR 3 is not
 > started. PR 1
 > plan: `docs/plans/2026-10-22-planning-run-boundaries.md`. Amends ADR-030 (in-flight create
